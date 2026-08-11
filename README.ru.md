@@ -753,8 +753,15 @@ python3 app/tests/run_all.py --quick  # только конвейер, без б
 песню внутри):
 
 ```bash
-KARAOKE_DOCKER=1 python3 app/tests/run_all.py
+KARAOKE_HEAVY=1  python3 app/tests/run_all.py   # настоящие Whisper и Demucs
+KARAOKE_DOCKER=1 python3 app/tests/run_all.py   # собрать образ и запустить
 ```
+
+Обычный прогон нарочно обходит нейросети стороной: он подсовывает готовые
+времена слов и проверяет всё вокруг них — это секунды вместо минут.
+`KARAOKE_HEAVY=1` гоняет по-настоящему: размечает Whisper `tiny` и отделяет
+вокал Demucs, а потом проверяет, что минус и голос вместе дают исходную
+запись.
 
 Что внутри:
 

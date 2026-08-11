@@ -59,6 +59,9 @@ def main():
         body = open(wf, encoding="utf-8").read()
         check("он гоняет полный набор", "tests/run_all.py" in body)
         check("и отдельно контейнер", "test_container.py" in body and "KARAOKE_DOCKER" in body)
+        check("и отдельно нейросети", "test_heavy.py" in body and "KARAOKE_HEAVY" in body)
+        check("пропуск браузерных наборов в CI считается провалом",
+              "KARAOKE_REQUIRE_BROWSER" in body)
         check("запускается и руками", "workflow_dispatch" in body)
     # Всё остальное — внутри app/.
     for name in ("Make-karaoke.bat", "Make-video.bat", "make-karaoke.command",

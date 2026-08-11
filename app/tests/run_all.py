@@ -2,6 +2,8 @@
 """Прогнать все проверки разом.
 
     python3 tests/run_all.py              всё, что доступно
+    KARAOKE_HEAVY=1  … run_all.py         плюс настоящие Whisper и Demucs
+    KARAOKE_DOCKER=1 … run_all.py         плюс сборка и запуск контейнера
     python3 tests/run_all.py --quick      только Python, без браузерных
     python3 tests/run_all.py --list       перечислить наборы и выйти
 
@@ -226,6 +228,14 @@ def main() -> int:
         say("\nПРОВАЛ на проверках командной строки.")
         return 1
 
+    if os.environ.get("KARAOKE_HEAVY"):
+        head("1в–. Настоящие нейросети: Whisper размечает, Demucs отделяет")
+        r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_heavy.py")],
+                           cwd=ROOT)
+        if r.returncode != 0:
+            say("\nПРОВАЛ на проверках с нейросетями.")
+            return 1
+
     if os.environ.get("KARAOKE_DOCKER"):
         head("1в+. Контейнер: образ, окно и сборка песни внутри")
         r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_container.py")],
@@ -248,6 +258,9 @@ def main() -> int:
     if not have_node():
         say("\nNode.js не найден — наборы для окна и страницы пропущены.")
         say("Поставьте Node и `npm install jsdom`, чтобы их прогонять.")
+        if os.environ.get("KARAOKE_REQUIRE_BROWSER"):
+            say("KARAOKE_REQUIRE_BROWSER=1 — пропуск считается провалом.")
+            return 1
         return 0
     if not have_module("jsdom"):
         say("\nНет пакета jsdom — наборы для окна и страницы пропущены.")
@@ -306,6 +319,10 @@ def main() -> int:
         else:
             say("  puppeteer не установлен — пропускаю.")
             say("  npm install puppeteer && npx puppeteer browsers install chrome")
+            # Молчаливый пропуск половины проверок выглядит как «всё зелёное».
+            # На сервере это недопустимо: там просят прогнать всё.
+            if os.environ.get("KARAOKE_REQUIRE_BROWSER"):
+                failed.append("браузерные наборы пропущены")
     finally:
         if srv:
             srv.terminate()

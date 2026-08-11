@@ -328,8 +328,14 @@ installed to look. To run the container check as well (it builds the image and
 makes a song inside it):
 
 ```bash
-KARAOKE_DOCKER=1 python3 app/tests/run_all.py
+KARAOKE_HEAVY=1  python3 app/tests/run_all.py   # real Whisper and Demucs
+KARAOKE_DOCKER=1 python3 app/tests/run_all.py   # build the image, run it
 ```
+
+The everyday run keeps away from the neural nets on purpose: it feeds ready word
+times and checks everything around them, which takes seconds instead of minutes.
+`KARAOKE_HEAVY=1` runs the real thing — aligns with Whisper `tiny` and separates
+with Demucs, then checks that the stems add back up to the original recording.
 
 Runs the pipeline checks, the delivery checks (launchers, file names, settings,
 the language of the console, the audio of the video), 38 suites in jsdom and 8
