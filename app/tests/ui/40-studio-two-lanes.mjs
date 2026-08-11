@@ -90,5 +90,5 @@ await sleep(600);
 
 ok('ошибок JS нет', errs.length === 0, errs.slice(0,2).join(' | '));
 await b.close();
-console.log(fail ? '\nПРОВАЛЕНО: '+fail : '\nВсе проверки пройдены');
+console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

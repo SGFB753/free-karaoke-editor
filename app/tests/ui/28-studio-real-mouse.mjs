@@ -111,5 +111,5 @@ const wr = await p.evaluate(() => {
 ok('нажатие по слову достаётся слову', wr && wr.mine, wr ? wr.cls : 'нет слов');
 
 await b.close();
-console.log(fail ? '\nПРОВАЛЕНО: '+fail : '\nВсе проверки пройдены');
+console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

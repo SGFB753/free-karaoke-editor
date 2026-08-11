@@ -81,5 +81,5 @@ ok('play запускается', !master.paused && doc.body.classList.contains(
 $('btnPlay').click(); await sleep(30);
 ok('pause останавливает', master.paused);
 
-console.log(fail ? `\nПРОВАЛЕНО: ${fail}` : '\nВсе проверки пройдены');
+console.log(fail ? `\nFAILED: ${fail}` : '\nAll checks passed');
 process.exit(fail?1:0);

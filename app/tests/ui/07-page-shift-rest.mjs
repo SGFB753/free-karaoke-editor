@@ -98,5 +98,5 @@ if (w.__errs.length) fail('ошибки JS: ' + w.__errs.slice(0,2).join('; '));
 console.log('  OK   ошибок JS нет');
 
 
-console.log('\nВсе проверки пройдены');
+console.log('\nAll checks passed');
 process.exit(0);

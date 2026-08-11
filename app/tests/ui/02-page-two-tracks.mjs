@@ -35,5 +35,5 @@ ok('рассинхрон дорожек исправляется', Math.abs(voic
    'дельта='+Math.abs(voice.currentTime-master.currentTime).toFixed(3));
 $('btnPlay').click(); await sleep(30);
 ok('pause останавливает обе', master.paused && voice.paused);
-console.log(fail?`\nПРОВАЛЕНО: ${fail}`:'\nВсе проверки пройдены');
+console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

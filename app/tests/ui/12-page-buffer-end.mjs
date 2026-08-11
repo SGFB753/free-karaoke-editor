@@ -108,5 +108,5 @@ console.log('\n--- «Сдвиг» не трогает сам звук ---');
   ok('источники не пересозданы сдвигом текста', w.__live.size===before,
      `было ${before}, стало ${w.__live.size}`);
 }
-console.log(fail?`\nПРОВАЛЕНО: ${fail}`:'\nВсе проверки пройдены');
+console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

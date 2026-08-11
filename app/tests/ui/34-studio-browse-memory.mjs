@@ -104,5 +104,5 @@ ok('открылось рядом с исходным текстом песни'
 close();
 
 ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
-console.log(fail ? '\nПРОВАЛЕНО: '+fail : '\nВсе проверки пройдены');
+console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

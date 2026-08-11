@@ -72,5 +72,5 @@ const d4 = a4[3]-b4[3];
 ok('подсвеченная и все следующие уехали одинаково',
    [4,5].every(i=>Math.abs((a4[i]-b4[i])-d4)<1e-6), `сдвиг ${d4.toFixed(2)}с`);
 ok('ошибок JS нет', w.__errs.length===0, w.__errs.join(';'));
-console.log(fail?`\nПРОВАЛЕНО: ${fail}`:'\nВсе проверки пройдены');
+console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Проверки того, как программа доезжает до человека.
+"""Checks on how the program reaches a person.
 
 Не разметка и не звук, а всё вокруг: чем её запускают, как называются файлы,
 читаются ли настройки, работает ли старая раскладка папок, на каком языке
@@ -25,7 +25,7 @@ failures = []
 
 
 def check(name, cond, extra=""):
-    print(("  OK   " if cond else "  ПРОВАЛ ") + name + (" — " + str(extra) if extra else ""))
+    print(("  OK     " if cond else "  FAILED ") + name + (" — " + str(extra) if extra else ""))
     if not cond:
         failures.append(name)
 
@@ -36,62 +36,62 @@ def run(args, **kw):
 
 
 def main():
-    print("Проверка запуска и имён файлов")
-    # В корне — только то, чем пользуются каждый день: поставить, открыть, прочесть.
+    print("Launchers and file names")
+    # The root holds only the everyday things: install, open, read.
     for name in ("Install.bat", "install.command", "Studio.bat", "studio.command",
                  "README.md", "README.ru.md"):
-        check(f"есть {name}", os.path.isfile(os.path.join(HOME, name)))
-    # На GitHub первым читают README.md — он должен быть английским.
+        check(f"{name} is there", os.path.isfile(os.path.join(HOME, name)))
+    # On GitHub README.md is read first — it has to be the English one.
     head = open(os.path.join(HOME, "README.md"), encoding="utf-8").read()[:900]
-    check("главный README английский", "Karaoke Studio" in head and
+    check("the main README is in English", "Karaoke Studio" in head and
           not re.search("[А-Яа-яЁё]", head.split("\n")[0]), head.split("\n")[0])
-    check("из него есть ссылка на русский", "README.ru.md" in head)
+    check("it links to the Russian one", "README.ru.md" in head)
     ru_head = open(os.path.join(HOME, "README.ru.md"), encoding="utf-8").read()[:900]
-    check("и обратная ссылка работает", "(README.md)" in ru_head and
+    check("and the link back works", "(README.md)" in ru_head and
           "app/README" not in ru_head, ru_head.split("\n")[4] if "\n" in ru_head else "")
-    # На GitHub проверки видно по значку — он должен вести на этот же репозиторий.
-    check("значок проверок стоит в обоих README",
+    # On GitHub the checks show as a badge — it must point at this repository.
+    check("the checks badge is in both READMEs",
           "actions/workflows/tests.yml/badge.svg" in head and
           "actions/workflows/tests.yml/badge.svg" in ru_head)
     wf = os.path.join(HOME, ".github", "workflows", "tests.yml")
-    check("сам рабочий процесс на месте", os.path.isfile(wf))
+    check("the workflow file itself is there", os.path.isfile(wf))
     if os.path.isfile(wf):
         body = open(wf, encoding="utf-8").read()
-        check("он гоняет полный набор", "tests/run_all.py" in body)
-        check("и отдельно контейнер", "test_container.py" in body and "KARAOKE_DOCKER" in body)
-        check("и отдельно нейросети", "test_heavy.py" in body and "KARAOKE_HEAVY" in body)
-        check("пропуск браузерных наборов в CI считается провалом",
+        check("it runs the whole suite", "tests/run_all.py" in body)
+        check("and the container separately", "test_container.py" in body and "KARAOKE_DOCKER" in body)
+        check("and the neural nets separately", "test_heavy.py" in body and "KARAOKE_HEAVY" in body)
+        check("skipping the browser suites in CI counts as a failure",
               "KARAOKE_REQUIRE_BROWSER" in body)
-        check("запускается и руками", "workflow_dispatch" in body)
-    # Всё остальное — внутри app/.
+        check("it can also be started by hand", "workflow_dispatch" in body)
+    # Everything else lives inside app/.
     for name in ("Make-karaoke.bat", "Make-video.bat", "make-karaoke.command",
                  "settings.ini", "START-HERE.txt", "SERVER.md", "Dockerfile",
                  "docker-compose.yml"):
-        check(f"{name} убран в app/", os.path.isfile(os.path.join(ROOT, name)))
+        check(f"{name} moved into app/", os.path.isfile(os.path.join(ROOT, name)))
     cyr = [n for n in os.listdir(HOME)
            if re.search("[А-Яа-яЁё]", n) and not n.startswith(".")]
-    check("кириллицы в именах файлов не осталось", not cyr, ", ".join(cyr))
-    # Ради этого всё и переносилось: в корне только то, что человеку нужно.
+    check("no Cyrillic left in the file names", not cyr, ", ".join(cyr))
+    # This is what the move was for: only what a person needs is in the root.
     root_items = sorted(n for n in os.listdir(HOME)
                         if not n.startswith(".") and n not in ("node_modules", "__pycache__"))
-    check("в корне не больше 8 имён", len(root_items) <= 8,
+    check("no more than 8 names in the root", len(root_items) <= 8,
           f"{len(root_items)}: " + ", ".join(root_items))
-    check("внутренности спрятаны в app/",
+    check("the internals are tucked into app/",
           all(os.path.isdir(os.path.join(HOME, "app", d)) for d in ("kstudio", "tools", "tests")))
-    check("папка песен на виду", os.path.isdir(os.path.join(HOME, "projects"))
+    check("the songs folder is in plain sight", os.path.isdir(os.path.join(HOME, "projects"))
           or "projects" not in root_items)
 
     for name in ("studio.command", "install.command"):
         path = os.path.join(HOME, name)
-        check(f"{name} исполняемый", os.access(path, os.X_OK))
+        check(f"{name} is executable", os.access(path, os.X_OK))
         r = run(["bash", "-n", path])
-        check(f"{name} разбирается", r.returncode == 0, r.stderr.strip()[:80])
-    # запускать окно долго, но проверить, что скрипт передаёт ключи, надо
+        check(f"{name} parses", r.returncode == 0, r.stderr.strip()[:80])
+    # starting the window is slow, but the option passing has to be checked
     src = open(os.path.join(HOME, "studio.command"), encoding="utf-8").read()
-    check("studio.command передаёт ключи дальше", '"$@"' in src)
-    check("studio.command зовёт программу из app/", "app/studio.py" in src)
+    check("studio.command passes the options through", '"$@"' in src)
+    check("studio.command calls the program in app/", "app/studio.py" in src)
 
-    print("\nПроверка настроек")
+    print("\nSettings")
     tmp = tempfile.mkdtemp(prefix="karaoke_deliv_")
     import importlib.util
     spec = importlib.util.spec_from_file_location("auto", os.path.join(ROOT, "tools", "auto.py"))
@@ -103,82 +103,82 @@ def main():
         "оформление = #000000,#ffffff\nнадписи = en\nминусовка = нет\n")
     auto.SETTINGS = ini
     args = auto.read_settings()
-    check("русские ключи читаются", "--align" in args and args[args.index("--align") + 1] == "auto",
+    check("the Russian keys are read", "--align" in args and args[args.index("--align") + 1] == "auto",
           " ".join(args))
-    check("цвета целиком", args[args.index("--colors") + 1] == "#112233,#445566")
-    check("оформление целиком", args[args.index("--theme") + 1] == "#000000,#ffffff")
-    check("язык надписей", args[args.index("--ui-lang") + 1] == "en")
-    check("«минусовка = нет» превращается в --no-separate", "--no-separate" in args)
-    # английские ключи в том же файле
+    check("the colours come through whole", args[args.index("--colors") + 1] == "#112233,#445566")
+    check("the theme comes through whole", args[args.index("--theme") + 1] == "#000000,#ffffff")
+    check("the label language", args[args.index("--ui-lang") + 1] == "en")
+    check("“минусовка = нет” becomes --no-separate", "--no-separate" in args)
+    # the English keys in the same file
     open(ini, "w", encoding="utf-8").write("align = energy\ncolors = #010203,#040506\n"
                                            "theme = #111111,#eeeeee\nui-lang = ru\n")
     args = auto.read_settings()
-    check("английские ключи тоже понимаются",
+    check("the English keys are understood too",
           args[args.index("--align") + 1] == "energy" and
           args[args.index("--ui-lang") + 1] == "ru", " ".join(args))
 
-    print("\nПроверка контейнера")
+    print("\nThe container")
     docker = os.path.join(ROOT, "Dockerfile")
     compose = os.path.join(ROOT, "docker-compose.yml")
-    check("есть Dockerfile", os.path.isfile(docker))
-    check("есть docker-compose.yml", os.path.isfile(compose))
+    check("there is a Dockerfile", os.path.isfile(docker))
+    check("there is a docker-compose.yml", os.path.isfile(compose))
     d = open(docker, encoding="utf-8").read()
     c = open(compose, encoding="utf-8").read()
-    check("образ ставит ffmpeg", "ffmpeg" in d)
-    check("зависимости ставятся до копирования кода",
-          d.index("requirements.txt") < d.index("COPY . /app"), "порядок слоёв")
-    check("песни лежат в томе, а не внутри образа",
+    check("the image installs ffmpeg", "ffmpeg" in d)
+    check("dependencies are installed before the code is copied",
+          d.index("requirements.txt") < d.index("COPY . /app"), "layer order")
+    check("songs live in a volume, not inside the image",
           "KARAOKE_PROJECTS=/songs" in d and "/songs" in c)
-    check("студия слушает наружу контейнера", "--host" in d and "0.0.0.0" in d)
-    check("порт наружу открыт только на localhost", "127.0.0.1:8770:8770" in c)
-    check("модели переживают пересборку", "/cache" in d and "/cache" in c)
-    check("про видеокарту в compose сказано", "nvidia" in c.lower())
-    check("в Dockerfile нет кириллицы", not re.search("[А-Яа-яЁё]", d))
-    # ключ --host обязан существовать на самом деле, а не только в Dockerfile
+    check("the studio listens outside the container", "--host" in d and "0.0.0.0" in d)
+    check("the published port is bound to localhost only", "127.0.0.1:8770:8770" in c)
+    check("the models survive a rebuild", "/cache" in d and "/cache" in c)
+    check("the compose file mentions the graphics card", "nvidia" in c.lower())
+    check("no Cyrillic in the Dockerfile", not re.search("[А-Яа-яЁё]", d))
+    # the --host option must really exist, not only in the Dockerfile
     import studio as _ST
-    check("--host разбирается программой",
+    check("the program parses --host",
           _ST.parse_args(["--host", "0.0.0.0", "--port", "8770"])[2] == "0.0.0.0")
-    check("по умолчанию слушаем только себя", _ST.parse_args([])[2] == "127.0.0.1")
+    check("by default we listen to ourselves only", _ST.parse_args([])[2] == "127.0.0.1")
 
-    print("\nПроверка снимков для README")
+    print("\nScreenshots for the README")
     for shot in ("docs/studio.png", "docs/video.png"):
         p_shot = os.path.join(ROOT, shot)
-        check(f"есть {shot}", os.path.isfile(p_shot) and os.path.getsize(p_shot) > 10000)
+        check(f"{shot} is there", os.path.isfile(p_shot) and os.path.getsize(p_shot) > 10000)
     readme = open(os.path.join(HOME, "README.md"), encoding="utf-8").read()
-    check("снимок вставлен в README", "app/docs/studio.png" in readme)
+    check("the screenshot is embedded in the README", "app/docs/studio.png" in readme)
 
-    print("\nПроверка имён папок с песнями")
+    print("\nNames of the song folders")
     from kstudio.project import slugify
     for title, want in (("Мамины Усы — Я вынул из головы шар", "maminy-usy"),
                         ("Тестовая песня", "testovaya-pesnya"),
                         ("Ёжик & Ко", "ezhik-ko")):
         got = slugify(title)
-        check(f"«{title[:20]}» → латиницей", re.fullmatch(r"[a-z0-9-]+", got) and want in got,
+        check(f"“{title[:20]}” → in Latin letters", re.fullmatch(r"[a-z0-9-]+", got) and want in got,
               got)
-    check("пустое имя не ломает папку", slugify("日本語") == "song", slugify("日本語"))
+    check("an empty name does not break the folder", slugify("日本語") == "song", slugify("日本語"))
 
-    check("суффикс готового файла латиницей",
+    check("the finished file suffix is in Latin letters",
           all("_karaoke.html" in open(os.path.join(ROOT, f), encoding="utf-8").read()
               for f in ("karaoke.py", "tools/auto.py")))
-    check("кириллицы в именах внутри программы нет",
+    check("no Cyrillic in the names inside the program",
           not [n for _r, _d, fs in os.walk(ROOT) for n in fs
                if re.search("[А-Яа-яЁё]", n) and "node_modules" not in _r],
           "есть файлы с кириллицей")
 
-    print("\nПроверка старой раскладки (обновление поверх прежней версии)")
+    print("\nThe old layout (updating over an earlier version)")
     old = tempfile.mkdtemp(prefix="karaoke_old_")
     os.makedirs(os.path.join(old, "проекты", "песня"), exist_ok=True)
     from kstudio import project as P
     root = P.projects_root(base=None) if False else None
-    # projects_root смотрит на папку программы, поэтому проверяем саму логику
+    # projects_root looks at the program folder, so the logic itself is checked
     import kstudio.project as PJ
     real_dirname = os.path.dirname
-    check("папка projects используется по умолчанию",
+    check("the projects folder is used by default",
           os.path.basename(PJ.projects_root(base=os.path.join(old, "projects"))) == "projects")
-    check("явно указанная папка уважается",
+    check("an explicitly given folder is respected",
           PJ.projects_root(base=os.path.join(old, "проекты")).endswith("проекты"))
 
-    print("\nПроверка языка консоли")
+    print("\nThe language of the console")
     song = os.path.join(tmp, "song.wav")
     make_song(song)
     text = os.path.join(tmp, "lyrics.txt")
@@ -186,25 +186,25 @@ def main():
     out_en = os.path.join(tmp, "en.html")
     r = run([sys.executable, "karaoke.py", song, text, "-o", out_en,
              "--align", "energy", "--no-separate"], env={"KARAOKE_UI_LANG": "en"})
-    check("сборка по-английски прошла", r.returncode == 0, r.stderr.strip()[-200:])
-    check("в выводе нет кириллицы", not re.search("[А-Яа-яЁё]", r.stdout),
+    check("the English build went through", r.returncode == 0, r.stderr.strip()[-200:])
+    check("no Cyrillic in the output", not re.search("[А-Яа-яЁё]", r.stdout),
           " ".join(re.findall(r"[А-Яа-яЁё][^\s]*", r.stdout)[:5]))
-    check("отчёт перед сборкой на месте", "Before we start" in r.stdout)
-    check("сказано, что файл открывается двойным щелчком",
+    check("the report before building is there", "Before we start" in r.stdout)
+    check("it says the file opens with a double click",
           "double click" in r.stdout)
 
     out_ru = os.path.join(tmp, "ru.html")
     r = run([sys.executable, "karaoke.py", song, text, "-o", out_ru,
              "--align", "energy", "--no-separate"], env={"KARAOKE_UI_LANG": "ru"})
-    check("сборка по-русски прошла", r.returncode == 0, r.stderr.strip()[-200:])
-    check("русский вывод остался русским", "Отчёт перед сборкой" in r.stdout)
+    check("the Russian build went through", r.returncode == 0, r.stderr.strip()[-200:])
+    check("the Russian output stayed Russian", "Отчёт перед сборкой" in r.stdout)
 
-    print("\nПроверка ролика: оставленный оригинал попадает в звук")
+    print("\nThe video: the kept original reaches the audio")
     check_video(tmp)
 
     shutil.rmtree(tmp, ignore_errors=True)
     shutil.rmtree(old, ignore_errors=True)
-    print("\n" + ("ПРОВАЛЕНО: " + ", ".join(failures) if failures else "Все проверки пройдены"))
+    print("\n" + ("FAILED: " + ", ".join(failures) if failures else "All checks passed"))
     return 1 if failures else 0
 
 
@@ -227,7 +227,7 @@ def make_song(path, dur=12.0, sr=22050):
 
 
 def check_video(tmp):
-    """Кусок «поёт оригинал» должен звучать громче в готовом звуке ролика."""
+    """A stretch marked “original sings” must be louder in the video audio."""
     import importlib.util
     spec = importlib.util.spec_from_file_location("video", os.path.join(ROOT, "tools", "video.py"))
     video = importlib.util.module_from_spec(spec)
@@ -242,12 +242,12 @@ def check_video(tmp):
                    {"start": 1.0, "end": 3.0, "keep": False},
                    {"start": 5.0, "end": 8.0, "keep": True}]}}
     spans = video.keep_spans(payload)
-    check("кусок с оригиналом найден", spans == [(5.0, 8.0)], str(spans))
+    check("the stretch with the original was found", spans == [(5.0, 8.0)], str(spans))
     wav = video.extract_audio(payload, os.path.join(tmp, "page.html"), tmp, "minus")
     loud_in = rms(wav, 5.5, 7.5, 660.0)
     loud_out = rms(wav, 1.5, 2.5, 660.0)
-    check("на отмеченном куске голос слышен, а вне его — нет",
-          loud_in > loud_out * 4, f"внутри {loud_in:.4f}, снаружи {loud_out:.4f}")
+    check("the voice is heard on the marked stretch and nowhere else",
+          loud_in > loud_out * 4, f"inside {loud_in:.4f}, outside {loud_out:.4f}")
 
 
 def make_two_tone(path, freq, dur=10.0, sr=22050):
@@ -262,7 +262,7 @@ def make_two_tone(path, freq, dur=10.0, sr=22050):
 
 
 def rms(path, a, b, freq):
-    """Сколько в куске энергии на нужной частоте — грубый полосовой замер."""
+    """How much energy the stretch holds at that frequency — a crude band measure."""
     import math
     from kstudio import audio as AU
     sr = 22050

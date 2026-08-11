@@ -163,5 +163,5 @@ ok('Ctrl+Z убирает копию', (await srv()).length === before);
 await put(original);                       // стенд как был
 await sleep(300);
 ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
-console.log(fail ? '\nПРОВАЛЕНО: '+fail : '\nВсе проверки пройдены');
+console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

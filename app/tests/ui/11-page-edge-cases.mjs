@@ -112,5 +112,5 @@ console.log('\n--- старт с чистой минусовки ---');
   await sleep(200);
   ok('голос при открытии выключен', $('vVocal').textContent==='0%', $('vVocal').textContent);
 }
-console.log(fail?`\nПРОВАЛЕНО: ${fail}`:'\nВсе проверки пройдены');
+console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

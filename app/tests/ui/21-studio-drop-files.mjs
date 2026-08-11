@@ -64,5 +64,5 @@ fire('drop', [junk]);
 await sleep(400);
 ok('лишний файл не сломал окно', w.__errs.length===0, w.__errs.join(';'));
 ok('поля не затёрлись', /Перетащенная(-\d+)?\.wav/.test($('inAudio').value));
-console.log(fail?`\nПРОВАЛЕНО: ${fail}`:'\nВсе проверки пройдены');
+console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

@@ -1,24 +1,25 @@
 #!/usr/bin/env python3
-"""Прогнать все проверки разом.
+"""Run every check in one go.
 
-    python3 tests/run_all.py              всё, что доступно
-    KARAOKE_HEAVY=1  … run_all.py         плюс настоящие Whisper и Demucs
-    KARAOKE_DOCKER=1 … run_all.py         плюс сборка и запуск контейнера
-    python3 tests/run_all.py --quick      только Python, без браузерных
-    python3 tests/run_all.py --list       перечислить наборы и выйти
+    python3 tests/run_all.py              everything that is available
+    KARAOKE_HEAVY=1  … run_all.py         plus the real Whisper and Demucs
+    KARAOKE_DOCKER=1 … run_all.py         plus building and running the container
+    python3 tests/run_all.py --quick      Python only, no browser suites
+    python3 tests/run_all.py --list       list the suites and exit
 
-Что происходит:
-  1. Проверки самого конвейера (`test_pipeline.py`) — нужен только ffmpeg.
-  1б. Проверки доставки (`test_delivery.py`): чем запускают, как названы файлы,
-     читаются ли настройки, на каком языке говорит консоль, что со звуком ролика.
-  2. Собирается тестовая песня и две страницы: с одной дорожкой и с минусовкой.
-  3. Поднимается студия на свободном порту со свежим проектом.
-  4. Прогоняются наборы из tests/ui — окно и страница целиком, в jsdom.
-  5. Если стоит puppeteer с Chrome — ещё и tests/test_browser.mjs: настоящий
-     браузер смотрит на вёрстку, которую jsdom не рисует.
+What happens:
+  1. The pipeline checks (`test_pipeline.py`) — ffmpeg is all they need.
+  1b. The delivery checks (`test_delivery.py`): what launches the program, how
+     the files are named, whether the settings are read, which language the
+     console speaks, what the video sounds like.
+  2. A test song is built, and two pages: one track and one with an instrumental.
+  3. The studio is started on a free port with a fresh project.
+  4. The suites in tests/ui run — the window and the page, in jsdom.
+  5. If puppeteer with Chrome is installed, tests/test_browser.mjs too: a real
+     browser looks at the layout, which jsdom never draws.
 
-Для пунктов 4–5 нужен Node.js: `npm install jsdom` (и `puppeteer` для пятого).
-Без Node всё остальное всё равно отработает.
+Steps 4–5 need Node.js: `npm install jsdom` (and `puppeteer` for the fifth).
+Without Node everything else still runs.
 """
 
 from __future__ import annotations
@@ -37,8 +38,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI_DIR = os.path.join(ROOT, "tests", "ui")
 
 
-# Этим наборам нужен настоящий браузер: они проверяют попадание курсором,
-# а jsdom его не делает вовсе.
+# These suites need a real browser: they check what the cursor actually hits,
+# and jsdom does not do hit-testing at all.
 def NEEDS_BROWSER(name: str) -> bool:
     return any(k in name for k in ("real-mouse", "word-length", "replace-track", "scroll-and-end", "quiet-and-voice", "two-lanes", "requirements", "duo-layout", "multiselect"))
 sys.path.insert(0, ROOT)
@@ -60,7 +61,7 @@ def have_node() -> bool:
 
 
 def have_module(name: str) -> bool:
-    """Установлен ли пакет Node — проверяем его же средствами."""
+    """Is the Node package installed — asked through Node itself."""
     try:
         r = subprocess.run(["node", "-e", f"import('{name}').then(()=>0)"],
                            cwd=ROOT, capture_output=True, timeout=60)
@@ -87,37 +88,38 @@ def wait_for(url: str, seconds: float = 40) -> bool:
 
 
 def build_pages(tmp: str) -> tuple:
-    """Тестовая песня и две страницы: одна дорожка и минус + вокал."""
+    """The test song and two pages: a single track, and instrumental + vocal."""
     sys.path.insert(0, os.path.join(ROOT, "tests"))
     from test_pipeline import TEXT, make_song  # noqa: F401
 
-    song = os.path.join(tmp, "песня.wav")
-    text = os.path.join(tmp, "текст.txt")
+    song = os.path.join(tmp, "song.wav")
+    text = os.path.join(tmp, "lyrics.txt")
     make_song(song)
     with open(text, "w", encoding="utf-8") as f:
         f.write(TEXT)
 
-    mix = os.path.join(tmp, "одна_дорожка.html")
-    stems = os.path.join(tmp, "с_минусовкой.html")
+    mix = os.path.join(tmp, "one_track.html")
+    stems = os.path.join(tmp, "with_instrumental.html")
     kar = os.path.join(ROOT, "karaoke.py")
-    # Прежние наборы сверяются с русскими надписями — им и собираем русскую.
-    # Английскую проверяет отдельный набор.
+    # The older suites compare against Russian labels, so a Russian page is
+    # built for them. English has a suite of its own.
     base = [sys.executable, kar, song, text, "--align", "energy", "--ui-lang", "ru"]
     subprocess.run(base + ["-o", mix, "--no-separate"], cwd=ROOT,
                    capture_output=True, check=True)
 
-    # Страница с двумя дорожками. Demucs ради теста гонять незачем: собираем
-    # вторую страницу из другого звука и переставляем дорожки руками. Важно,
-    # чтобы минус и вокал ОТЛИЧАЛИСЬ — иначе проверка рассинхрона ничего не ловит.
-    other = os.path.join(tmp, "второй.wav")
+    # A page with two tracks. There is no need to run Demucs for a test: a
+    # second page is built from other audio and the tracks are swapped by hand.
+    # The instrumental and the vocal must DIFFER, or the drift check catches
+    # nothing.
+    other = os.path.join(tmp, "second.wav")
     make_song(other, dur=26.0)
     quieter(other)
-    alt = os.path.join(tmp, "второй.html")
+    alt = os.path.join(tmp, "second.html")
     subprocess.run([sys.executable, kar, other, text, "--align", "energy",
                     "--ui-lang", "ru", "-o", alt, "--no-separate"], cwd=ROOT,
                    capture_output=True, check=True)
 
-    # И английская страница — её проверяет набор про язык интерфейса.
+    # And an English page — the interface-language suite checks that one.
     eng = os.path.join(tmp, "english.html")
     subprocess.run([sys.executable, kar, song, text, "--align", "energy",
                     "--ui-lang", "en", "-o", eng, "--no-separate"],
@@ -127,7 +129,7 @@ def build_pages(tmp: str) -> tuple:
 
 
 def quieter(path: str) -> None:
-    """Тише вдвое — чтобы вторая дорожка отличалась от первой байтами."""
+    """Half as loud, so the second track differs from the first byte for byte."""
     import audioop
     import wave
     with wave.open(path, "rb") as r:
@@ -148,7 +150,7 @@ def payload(path: str):
 
 
 def two_tracks(dst: str, src_a: str, src_b: str) -> None:
-    """Собрать страницу с минусом и вокалом из двух разных записей."""
+    """Build a page with an instrumental and a vocal from two different takes."""
     import json
     import shutil as sh
     sh.copyfile(src_a, dst)
@@ -165,8 +167,8 @@ def two_tracks(dst: str, src_a: str, src_b: str) -> None:
 
 
 def start_studio(port: int, projects: str):
-    # Окно Студии теперь двуязычное; наборы писались по русским надписям,
-    # поэтому стенд поднимаем по-русски. Английский проверяет отдельный набор.
+    # The studio window is bilingual now; the suites were written against the
+    # Russian labels, so the stand runs in Russian. English has its own suite.
     env = dict(os.environ, KARAOKE_PROJECTS=projects, KARAOKE_UI_LANG="ru")
     return subprocess.Popen(
         [sys.executable, os.path.join(ROOT, "studio.py"),
@@ -195,10 +197,10 @@ def run_suite(path: str, env: dict) -> tuple:
         r = subprocess.run(["node", path], cwd=ROOT, env=env,
                            capture_output=True, text=True, timeout=600)
     except subprocess.TimeoutExpired:
-        return False, "не уложился в 10 минут"
+        return False, "did not finish within 10 minutes"
     out = (r.stdout or "") + (r.stderr or "")
     last = out.strip().splitlines()[-1] if out.strip() else ""
-    return last == "Все проверки пройдены", out
+    return last in ("All checks passed", "Все проверки пройдены"), out
 
 
 def main() -> int:
@@ -209,62 +211,62 @@ def main() -> int:
         return 0
     quick = "--quick" in args
 
-    head("1. Конвейер: текст, разметка, сборка страницы")
+    head("1. Pipeline: the text, the timing, building the page")
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_pipeline.py")],
                        cwd=ROOT)
     if r.returncode != 0:
-        say("\nПРОВАЛ на проверках конвейера — дальше идти незачем.")
+        say("\nFAILED on the pipeline checks — no point going further.")
         return 1
-    head("1б. Доставка: запуск, имена файлов, настройки, язык консоли, ролик")
+    head("1b. Delivery: launchers, file names, settings, console language, video")
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_delivery.py")],
                        cwd=ROOT)
     if r.returncode != 0:
-        say("\nПРОВАЛ на проверках доставки.")
+        say("\nFAILED on the delivery checks.")
         return 1
 
-    head("1в. Командная строка: ключи, ошибки, пакетный режим")
+    head("1c. Command line: options, errors, batch mode")
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_cli.py")], cwd=ROOT)
     if r.returncode != 0:
-        say("\nПРОВАЛ на проверках командной строки.")
+        say("\nFAILED on the command-line checks.")
         return 1
 
     if os.environ.get("KARAOKE_HEAVY"):
-        head("1в–. Настоящие нейросети: Whisper размечает, Demucs отделяет")
+        head("1c+. The real neural nets: Whisper times, Demucs separates")
         r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_heavy.py")],
                            cwd=ROOT)
         if r.returncode != 0:
-            say("\nПРОВАЛ на проверках с нейросетями.")
+            say("\nFAILED on the neural-net checks.")
             return 1
 
     if os.environ.get("KARAOKE_DOCKER"):
-        head("1в+. Контейнер: образ, окно и сборка песни внутри")
+        head("1c++. Container: the image, the window, a song built inside")
         r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_container.py")],
                            cwd=ROOT)
         if r.returncode != 0:
-            say("\nПРОВАЛ на проверках контейнера.")
+            say("\nFAILED on the container checks.")
             return 1
 
-    head("1г. Готовый ролик: цвета голосов и что тексты не наезжают")
+    head("1d. The finished video: voice colours and no overlapping text")
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_video_colors.py")],
                        cwd=ROOT)
     if r.returncode != 0:
-        say("\nПРОВАЛ на проверках ролика.")
+        say("\nFAILED on the video checks.")
         return 1
 
     if quick:
-        say("\n--quick: браузерные наборы пропущены.")
+        say("\n--quick: the browser suites were skipped.")
         return 0
 
     if not have_node():
-        say("\nNode.js не найден — наборы для окна и страницы пропущены.")
-        say("Поставьте Node и `npm install jsdom`, чтобы их прогонять.")
+        say("\nNode.js not found — the window and page suites were skipped.")
+        say("Install Node and `npm install jsdom` to run them.")
         if os.environ.get("KARAOKE_REQUIRE_BROWSER"):
-            say("KARAOKE_REQUIRE_BROWSER=1 — пропуск считается провалом.")
+            say("KARAOKE_REQUIRE_BROWSER=1 — a skip counts as a failure.")
             return 1
         return 0
     if not have_module("jsdom"):
-        say("\nНет пакета jsdom — наборы для окна и страницы пропущены.")
-        say("Лечится так:  npm install jsdom")
+        say("\nNo jsdom package — the window and page suites were skipped.")
+        say("Fix it with:  npm install jsdom")
         return 0
 
     tmp = tempfile.mkdtemp(prefix="karaoke_tests_")
@@ -273,56 +275,56 @@ def main() -> int:
     srv = None
     failed = []
     try:
-        head("2. Тестовая песня и страницы")
+        head("2. The test song and the pages")
         song, text, mix, stems, eng = build_pages(tmp)
-        say(f"  собрано: {os.path.basename(mix)}, {os.path.basename(stems)}")
+        say(f"  built: {os.path.basename(mix)}, {os.path.basename(stems)}")
 
-        head("3. Студия на свободном порту")
+        head("3. The studio on a free port")
         port = free_port()
         api = f"http://127.0.0.1:{port}"
         srv = start_studio(port, projects)
         if not wait_for(api + "/"):
-            say("  студия не поднялась — наборы для окна пропущены")
+            say("  the studio did not start — the window suites were skipped")
             return 1
-        say(f"  {api} — свежий проект…")
+        say(f"  {api} — a fresh project…")
         if not make_project(api, song, text):
-            say("  проект не собрался")
+            say("  the project was not built")
             return 1
-        say("  проект готов")
+        say("  the project is ready")
 
         env = dict(os.environ, KARAOKE_API=api, KARAOKE_ROOT=ROOT, KARAOKE_PAGE_MIX=mix,
                    KARAOKE_PAGE_STEMS=stems, KARAOKE_PAGE_EN=eng, PAGE=stems,
                    KARAOKE_SONG=song, KARAOKE_TEXT=text)
 
-        head("4. Окно и страница (jsdom)")
+        head("4. The window and the page (jsdom)")
         for name in sorted(os.listdir(UI_DIR)):
             if not name.endswith(".mjs") or NEEDS_BROWSER(name):
-                continue      # ему нужен настоящий браузер, он идёт следующим шагом
+                continue      # it needs a real browser, it goes in the next step
             ok, out = run_suite(os.path.join(UI_DIR, name), env)
-            say(f"  {'ok   ' if ok else 'ПРОВАЛ'}  {name}")
+            say(f"  {'ok   ' if ok else 'FAILED'}  {name}")
             if not ok:
                 failed.append(name)
-                for line in [l for l in out.strip().splitlines() if "✗" in l or "ПРОВАЛЕНО" in l][:12] or out.strip().splitlines()[-12:]:
+                for line in [l for l in out.strip().splitlines() if "✗" in l or "FAILED" in l][:12] or out.strip().splitlines()[-12:]:
                     say("        " + line)
 
-        head("5. Настоящий браузер")
+        head("5. A real browser")
         if have_module("puppeteer"):
             mouse = [os.path.join(UI_DIR, n) for n in sorted(os.listdir(UI_DIR))
                      if NEEDS_BROWSER(n)]
             for path in [os.path.join(ROOT, "tests", "test_browser.mjs")] + mouse:
                 ok, out = run_suite(path, env)
-                say(f"  {'ok   ' if ok else 'ПРОВАЛ'}  {os.path.basename(path)}")
+                say(f"  {'ok   ' if ok else 'FAILED'}  {os.path.basename(path)}")
                 if not ok:
                     failed.append(os.path.basename(path))
-                    for line in [l for l in out.strip().splitlines() if "✗" in l or "ПРОВАЛЕНО" in l][:12] or out.strip().splitlines()[-12:]:
+                    for line in [l for l in out.strip().splitlines() if "✗" in l or "FAILED" in l][:12] or out.strip().splitlines()[-12:]:
                         say("        " + line)
         else:
-            say("  puppeteer не установлен — пропускаю.")
+            say("  puppeteer is not installed — skipping.")
             say("  npm install puppeteer && npx puppeteer browsers install chrome")
-            # Молчаливый пропуск половины проверок выглядит как «всё зелёное».
-            # На сервере это недопустимо: там просят прогнать всё.
+            # A silent skip of half the checks looks exactly like “all green”.
+            # On a server that is not acceptable: there we are asked to run it all.
             if os.environ.get("KARAOKE_REQUIRE_BROWSER"):
-                failed.append("браузерные наборы пропущены")
+                failed.append("the browser suites were skipped")
     finally:
         if srv:
             srv.terminate()
@@ -332,11 +334,11 @@ def main() -> int:
                 srv.kill()
         shutil.rmtree(tmp, ignore_errors=True)
 
-    head("Итог")
+    head("Summary")
     if failed:
-        say("  провалено: " + ", ".join(failed))
+        say("  failed: " + ", ".join(failed))
         return 1
-    say("  всё зелёное")
+    say("  all green")
     return 0
 
 

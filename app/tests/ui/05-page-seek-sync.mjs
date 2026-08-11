@@ -123,5 +123,5 @@ ok('«строка начинается здесь» ставит её на те
 $('btnUndo').click(); await sleep(30);
 ok('отмена работает после правок', true);
 ok('ошибок JS нет', w.__errs.length===0, w.__errs.join(';'));
-console.log(fail?`\nПРОВАЛЕНО: ${fail}`:'\nВсе проверки пройдены');
+console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

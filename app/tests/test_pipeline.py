@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Самопроверка: генерирует тестовую «песню» и прогоняет через неё весь конвейер.
+"""Self-check: makes a test “song” and runs the whole pipeline over it.
 
     python tests/test_pipeline.py
 
@@ -21,7 +21,7 @@ from kstudio import audio as AU
 from kstudio import build as B
 from kstudio import lyrics as L
 
-# 6 фраз по 2,6 с с паузами между ними
+# 6 phrases of 2.6 s with pauses between them
 PHRASES = [(2.0, 4.6), (5.0, 7.6), (8.0, 10.6), (11.0, 13.6), (16.0, 18.6), (19.0, 21.6)]
 TEXT = """title: Тестовая песня
 artist: Проверка Связи
@@ -47,7 +47,7 @@ def check(name, cond, extra=""):
 
 
 def make_song(path, dur=26.0, sr=22050):
-    """Тон с вибрато на месте фраз + тихий «инструментал» фоном."""
+    """A vibrato tone where the phrases are, plus a quiet “instrumental”."""
     frames = bytearray()
     for i in range(int(sr * dur)):
         t = i / sr
@@ -70,7 +70,7 @@ def shutil_rm(p):
 
 
 def _voc_checks():
-    """Официальный инструментал почти всегда сведён иначе, чем песня.
+    """An official instrumental is almost never mixed like the song itself.
 
     Проверяем на собранной паре: одна и та же аранжировка, но у «официального»
     минуса другой уровень и другая эквализация. Одной громкостью такое не
@@ -84,7 +84,7 @@ def _voc_checks():
     try:
         import numpy as np
     except ImportError:
-        check("numpy есть (без него голос не выделить)", False)
+        check("numpy is here (no voice extraction without it)", False)
         return
 
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -143,45 +143,45 @@ def _voc_checks():
     silent = lambda m: None
 
     got = st.extract_vocals(p_mix, p_off, 0.0, quiet, tmp, silent)
-    check("голос выделен, хотя минус сведён иначе", bool(got))
+    check("the voice was extracted though the instrumental is mixed differently", bool(got))
     if got:
         v = rd(got)
         n = min(len(v), len(voice))
         drop = 20 * math.log10(rms((band + voice)[:n], spans) / max(rms(v[:n], spans), 1e-9))
-        check("аранжировка подавлена не меньше чем на 20 дБ", drop > 20, f"{drop:.1f} дБ")
+        check("the arrangement is suppressed by at least 20 dB", drop > 20, f"{drop:.1f} dB")
         sing = [(6.5, 10.5), (15.5, 19.5)]
         snr = 20 * math.log10(rms(voice[:n], sing) / max(rms(v[:n] - voice[:n], sing), 1e-9))
-        check("сам голос при этом цел", snr > 15, f"{snr:.1f} дБ")
+        check("and the voice itself is intact", snr > 15, f"{snr:.1f} dB")
 
-    check("чужая аранжировка отвергается",
+    check("a foreign arrangement is refused",
           st.extract_vocals(p_mix, p_alien, 0.0, quiet, tmp, silent) is None)
     shutil_rm(tmp)
 
 
 def main():
-    # Проверки написаны по русским сообщениям, а язык теперь выбирается по
-    # системе. Фиксируем русский, а отдельная проверка ниже смотрит английский.
+    # These checks are written against the Russian messages, and the language
+    # now follows the system. Pin Russian; a check below looks at English.
     from kstudio import i18n
     i18n.set_lang("ru")
 
-    print("Проверка разбора текста")
+    print("Parsing the lyrics")
     lyr = L.parse(TEXT)
-    check("6 строк", len(lyr.lines) == 6, f"получено {len(lyr.lines)}")
-    check("мета-поля", lyr.title == "Тестовая песня" and lyr.artist == "Проверка Связи")
-    check("секции", [l.section for l in lyr.lines].count(None) == 4)
-    check("секция у первой строки", lyr.lines[0].section == "Куплет")
-    # для русского счёт точный — по гласным
-    check("слоги: 'четыре' = 3", L.count_syllables("четыре") == 3)
-    check("слоги: 'ёж' = 1", L.count_syllables("ёж") == 1)
-    check("слоги: 'закружилась' = 4", L.count_syllables("Закружилась") == 4)
-    check("слоги: 'с' = 1", L.count_syllables("с") == 1)
-    # для английского — эвристика по группам гласных, на заимствованиях врёт
-    check("слоги: 'hello' = 2", L.count_syllables("hello") == 2)
-    check("слоги: 'beautiful' = 3", L.count_syllables("beautiful") == 3)
-    check("слоги: 'love' = 1 (немая -e)", L.count_syllables("love") == 1)
-    check("нормализация", L.normalize_token("«Всё!»") == "все")
+    check("6 lines", len(lyr.lines) == 6, f"got {len(lyr.lines)}")
+    check("the meta fields", lyr.title == "Тестовая песня" and lyr.artist == "Проверка Связи")
+    check("sections", [l.section for l in lyr.lines].count(None) == 4)
+    check("the first line carries its section", lyr.lines[0].section == "Куплет")
+    # for Russian the count is exact — by vowels
+    check("syllables: 'четыре' = 3", L.count_syllables("четыре") == 3)
+    check("syllables: 'ёж' = 1", L.count_syllables("ёж") == 1)
+    check("syllables: 'закружилась' = 4", L.count_syllables("Закружилась") == 4)
+    check("syllables: 'с' = 1", L.count_syllables("с") == 1)
+    # for English it is a vowel-group heuristic; it lies on loanwords
+    check("syllables: 'hello' = 2", L.count_syllables("hello") == 2)
+    check("syllables: 'beautiful' = 3", L.count_syllables("beautiful") == 3)
+    check("syllables: 'love' = 1 (silent -e)", L.count_syllables("love") == 1)
+    check("normalisation", L.normalize_token("«Всё!»") == "все")
 
-    print("\nПроверка строк в скобках — это подпевка, а не заголовок")
+    print("\nLines in brackets are backing vocals, not a heading")
     back = L.parse("""[Куплет]
 Обычная строка
 (а это бэк-вокал)
@@ -192,61 +192,61 @@ def main():
 (Chorus 2)
 Ещё одна""")
     texts = [ln.text for ln in back.lines]
-    check("строки в скобках не выброшены", "(а это бэк-вокал)" in texts, str(texts))
-    check("и звукоподражания тоже", "(ла-ла-ла)" in texts)
-    check("они помечены как подпевка",
+    check("lines in brackets were not dropped", "(а это бэк-вокал)" in texts, str(texts))
+    check("and neither were the sung syllables", "(ла-ла-ла)" in texts)
+    check("they are marked as backing vocals",
           [ln.backing for ln in back.lines if ln.text == "(ла-ла-ла)"] == [True])
-    check("обычная строка подпевкой не считается",
+    check("an ordinary line does not count as backing",
           [ln.backing for ln in back.lines if ln.text == "Обычная строка"] == [False])
-    check("скобки внутри строки ничего не ломают",
+    check("brackets inside a line break nothing",
           "Припев (эхо) поётся" in texts)
-    check("(Припев) остался заголовком раздела",
+    check("(Припев) stayed a section heading",
           any(ln.section == "Припев" for ln in back.lines),
           str([ln.section for ln in back.lines]))
-    check("(Chorus 2) тоже заголовок",
+    check("(Chorus 2) is a heading too",
           any(ln.section == "Chorus 2" for ln in back.lines))
-    check("[Куплет] по-прежнему заголовок", back.lines[0].section == "Куплет")
-    check("признак подпевки попадает в данные плеера",
+    check("[Куплет] is still a heading", back.lines[0].section == "Куплет")
+    check("the backing flag reaches the player data",
           back.lines[1].to_json().get("backing") is True)
-    check("подпевка сразу считается вторым голосом",
+    check("backing counts as the second voice at once",
           back.lines[1].to_json().get("voice") == 2)
-    check("обычная строка поётся основным голосом",
+    check("an ordinary line is sung by the main voice",
           [ln.voice for ln in back.lines if ln.text == "Обычная строка"] == [1])
 
-    print("\nПроверка языка сообщений программы")
+    print("\nThe language of the program's messages")
     from kstudio import i18n as _i18n, models as _M, sysinfo as _SI, build as _B
     _i18n.set_lang("en")
-    check("подпись движка по-английски", _B.ENGINE_LABEL.get("energy", "?") ==
+    check("the engine label is in English", _B.ENGINE_LABEL.get("energy", "?") ==
           "timing by loudness", _B.ENGINE_LABEL.get("energy", "?"))
-    check("размер модели в MB", _M.size_label("small") == "480 MB", _M.size_label("small"))
-    check("совет про память по-английски",
+    check("the model size in MB", _M.size_label("small") == "480 MB", _M.size_label("small"))
+    check("the memory advice is in English",
           "Not enough memory" in _SI.memory_advice(6.0, 2.0),
           _SI.memory_advice(6.0, 2.0)[:40])
-    check("в английском выводе нет кириллицы",
+    check("no Cyrillic in the English output",
           not re.search("[А-Яа-яЁё]", _SI.memory_advice(6.0, 2.0) + _M.load_note("small")),
           _M.load_note("small"))
     _i18n.set_lang("ru")
-    check("по-русски всё возвращается", _B.ENGINE_LABEL.get("energy", "?") ==
+    check("in Russian everything comes back", _B.ENGINE_LABEL.get("energy", "?") ==
           "разметка по энергии", _B.ENGINE_LABEL.get("energy", "?"))
-    check("и размер модели снова в МБ", _M.size_label("small") == "480 МБ",
+    check("and the model size is in МБ again", _M.size_label("small") == "480 МБ",
           _M.size_label("small"))
 
-    print("\nПроверка читаемости выбранных цветов")
+    print("\nReadability of the chosen colours")
     from kstudio import build as _B
-    check("чёрное на белом — предел различимости",
+    check("black on white is the limit of contrast",
           round(_B.contrast("#000000", "#ffffff"), 1) == 21.0)
     _t, _fixed = _B.readable("#0a0b14", "#e8ebf5")
-    check("хорошую пару не трогаем", _t == "#e8ebf5" and not _fixed, _t)
+    check("a good pair is left alone", _t == "#e8ebf5" and not _fixed, _t)
     _t, _fixed = _B.readable("#fdf6e3", "#f5efdc")
-    check("сливающиеся буквы правим", _fixed and _B.contrast("#fdf6e3", _t) >= 4.5,
+    check("blending letters are corrected", _fixed and _B.contrast("#fdf6e3", _t) >= 4.5,
           f"{_t} → {_B.contrast('#fdf6e3', _t):.1f}")
     _t, _ = _B.readable("#101010", "#202020")
-    check("на тёмном фоне буквы светлеют", _B.contrast("#101010", _t) >= 4.5,
+    check("on a dark background the letters lighten", _B.contrast("#101010", _t) >= 4.5,
           f"{_t} → {_B.contrast('#101010', _t):.1f}")
-    check("мусор вместо цвета ничего не ломает",
+    check("garbage instead of a colour breaks nothing",
           _B.theme_colors(["не цвет", None])[0]["bg"] == "не цвет")
 
-    print("\nПроверка пометок в тексте: голос и повторы")
+    print("\nMarks in the text: voice and repeats")
     from kstudio.lyrics import parse as _parse
     marked = _parse(
         "title: Проба\n\n[Куплет]\nОбычная строка\n2: Эту поёт второй\n"
@@ -254,31 +254,31 @@ def main():
         "[голос 1]\nИ снова первым\nДва слова х2\nСтрока про x-files\n")
     texts = [l.text for l in marked.lines]
     voices = [l.voice for l in marked.lines]
-    check("«2:» задаёт голос строке", voices[1] == 2 and texts[1] == "Эту поёт второй",
+    check("“2:” sets the voice of a line", voices[1] == 2 and texts[1] == "Эту поёт второй",
           f"{voices[1]} «{texts[1]}»")
-    check("сама пометка в текст не попала", not any(t.startswith("2:") for t in texts),
+    check("the mark itself did not reach the text", not any(t.startswith("2:") for t in texts),
           " | ".join(texts))
-    check("подпевка по-прежнему второй голос", voices[2] == 2)
-    check("«x3» разложилось в три строки",
+    check("backing is still the second voice", voices[2] == 2)
+    check("“x3” expanded into three lines",
           texts.count("Припев") == 3, " | ".join(texts))
-    check("у повторов голос от переключателя", set(voices[3:6]) == {1}, str(voices[3:6]))
-    check("[голос 2] переключает следующие", voices[6] == 2, str(voices[6]))
-    check("[голос 1] возвращает обратно", voices[7] == 1, str(voices[7]))
-    check("раздел не размножается вместе с повторами",
+    check("the repeats take the voice from the switch", set(voices[3:6]) == {1}, str(voices[3:6]))
+    check("[голос 2] switches the lines that follow", voices[6] == 2, str(voices[6]))
+    check("[голос 1] switches back", voices[7] == 1, str(voices[7]))
+    check("the section is not repeated along with the line",
           [l.section for l in marked.lines].count("Куплет") == 1,
           str([l.section for l in marked.lines]))
-    check("русская «х2» тоже понимается", texts.count("Два слова") == 2, " | ".join(texts))
-    check("«x-files» повтором не считается", "Строка про x-files" in texts,
+    check("the Russian “х2” is understood too", texts.count("Два слова") == 2, " | ".join(texts))
+    check("“x-files” does not count as a repeat", "Строка про x-files" in texts,
           " | ".join(texts))
     lrc = _parse("[00:10.00] Строка x2\n[00:20.00] Другая\n")
-    check("при ручных таймингах повторы не раскрываются",
+    check("with manual timings repeats are left alone",
           [l.text for l in lrc.lines] == ["Строка x2", "Другая"],
           str([l.text for l in lrc.lines]))
 
-    print("\nПроверка выделения голоса под чужой мастеринг")
+    print("\nExtracting the voice against a foreign master")
     _voc_checks()
 
-    print("\nПроверка кусков, которые поёт оригинал")
+    print("\nStretches the original sings")
     import importlib.util as _iu0
     _here0 = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     _sp0 = _iu0.spec_from_file_location("video", os.path.join(_here0, "tools", "video.py"))
@@ -291,13 +291,13 @@ def main():
         {"start": 9.0, "end": 9.0, "keep": True},   # пустая — не кусок
     ]}}
     spans = _vid.keep_spans(pay)
-    check("соседние отмеченные строки склеены в один кусок",
+    check("adjacent marked lines are glued into one stretch",
           spans == [(3.0, 7.0), (20.0, 22.0)], str(spans))
-    check("строка без длины куском не считается",
+    check("a line with no length is not a stretch",
           all(b > a for a, b in spans), str(spans))
-    check("без пометок кусков нет", _vid.keep_spans({"data": {"lines": [{"start": 0, "end": 2}]}}) == [])
+    check("without marks there are no stretches", _vid.keep_spans({"data": {"lines": [{"start": 0, "end": 2}]}}) == [])
 
-    print("\nПроверка настроек: цвет — не примечание")
+    print("\nSettings: a colour is not a comment")
     import importlib.util as _iu
     import tempfile as _tf
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -310,14 +310,14 @@ def main():
         "кодек = mp3   # а это уже примечание\n")
     _auto.SETTINGS = ini
     got = _auto.read_settings()
-    check("цвета прочитаны целиком", got[got.index("--colors") + 1] == "#4de1ff,#ff8ad1",
+    check("the colours were read whole", got[got.index("--colors") + 1] == "#4de1ff,#ff8ad1",
           " ".join(got))
-    check("примечание после значения отрезано",
+    check("a comment after the value is cut off",
           got[got.index("--codec") + 1] == "mp3", " ".join(got))
 
-    print("\nПроверка кодировок файла с текстом")
-    # Блокнот на русской Windows умеет сохранять в ANSI и UTF-16 — без этого
-    # программа падала с невразумительной ошибкой на ровном месте
+    print("\nEncodings of the lyrics file")
+    # Notepad on a Russian Windows saves in ANSI and UTF-16 — without this the
+    # program used to die with a baffling error for no visible reason
     sample = "Раз два\nтри четыре"
     for name, raw in (("UTF-8", sample.encode("utf-8")),
                       ("UTF-8 с BOM", sample.encode("utf-8-sig")),
@@ -325,49 +325,49 @@ def main():
                       ("UTF-16", sample.encode("utf-16")),
                       ("UTF-16 BE", b"\xfe\xff" + sample.encode("utf-16-be"))):
         got = L.parse(L.decode_text(raw))
-        check(f"читается {name}",
+        check(f"{name} is read",
               len(got.lines) == 2 and got.lines[0].text == "Раз два",
               got.lines[0].text if got.lines else "пусто")
 
-    print("\nПроверка сопоставления с распознанным текстом")
-    # Whisper отдаёт слова с ведущим пробелом. Если его не срезать, не совпадёт
-    # ни один токен, и разметка молча выродится в равномерную раскладку.
-    check("ведущий пробел срезается", L.normalize_token(" Раз") == "раз",
+    print("\nMatching against the recognised text")
+    # Whisper returns words with a leading space. Without trimming it not a
+    # single token matches and the timing silently becomes an even blanket.
+    check("a leading space is trimmed", L.normalize_token(" Раз") == "раз",
           repr(L.normalize_token(" Раз")))
-    check("неразрывный пробел тоже", L.normalize_token(" два ") == "два")
+    check("a non-breaking space too", L.normalize_token(" два ") == "два")
 
     src = L.parse("Раз два три\nчетыре пять")
     rec = [(" раз", 0.0, 0.4), (" два", 0.4, 0.8), (" три", 0.8, 1.4),
            (" четыре", 2.0, 2.6), (" пять", 2.6, 3.0)]
     rec = [(L.normalize_token(t), a, b) for t, a, b in rec]
     ratio = A._apply_recognized(src.words, rec)
-    check("совпало 100 % слов", ratio == 1.0, f"{ratio:.0%}")
-    check("время взято из распознанного",
+    check("100 % of the words matched", ratio == 1.0, f"{ratio:.0%}")
+    check("the times came from what was recognised",
           src.words[3].start == 2.0 and src.words[3].end == 2.6,
           f"{src.words[3].start}–{src.words[3].end}")
 
     other = L.parse("Совершенно другой текст песни")
     bad = A._apply_recognized(other.words, rec)
-    check("чужой текст даёт низкую долю совпадений", bad < 0.4, f"{bad:.0%}")
+    check("a foreign text gives a low match rate", bad < 0.4, f"{bad:.0%}")
 
-    # Whisper приклеивает паузу перед фразой к её первому слову
+    # Whisper glues the pause before a phrase onto its first word
     long_first = L.parse("Раз два три")
     long_first.words[0].start, long_first.words[0].end = 0.0, 2.2
     for w, (a, b) in zip(long_first.words[1:], [(2.2, 2.5), (2.5, 2.8)]):
         w.start, w.end = a, b
     A._trim_leading_silence(long_first)
-    check("тишина перед первым словом подрезана",
-          1.5 < long_first.words[0].start < 1.9, f"{long_first.words[0].start:.2f}с")
+    check("the silence before the first word is trimmed",
+          1.5 < long_first.words[0].start < 1.9, f"{long_first.words[0].start:.2f}s")
 
     held = L.parse("Раз два")
     held.words[0].start, held.words[0].end = 5.0, 5.9   # обычное слово, не трогаем
     held.words[1].start, held.words[1].end = 5.9, 6.2
     A._trim_leading_silence(held)
-    check("нормальное первое слово не трогаем", held.words[0].start == 5.0)
+    check("a normal first word is left alone", held.words[0].start == 5.0)
 
-    print("\nПроверка сборки разъехавшихся строк")
-    # Whisper иногда роняет одно слово далеко от остальных слов своей строки.
-    # Внутри спетой строки многосекундных провалов быть не может.
+    print("\nPutting drifted lines back together")
+    # Whisper sometimes drops one word far from the rest of its line.
+    # Inside a sung line there can be no multi-second gaps.
     broken = L.parse("Первая строка тут одна\nВторая строка потом")
     for w, (t, d) in zip(broken.lines[0].words,
                          [(150.2, 0.12), (165.8, 0.8), (166.6, 0.4), (167.0, 0.6)]):
@@ -383,17 +383,17 @@ def main():
     ws = [w for ln in broken.lines for w in ln.words]
     gaps = [b.start - a.end for ln in broken.lines
             for a, b in zip(ln.words, ln.words[1:])]
-    check("провалы внутри строк убраны", max(gaps) < 1.2, f"макс {max(gaps):.2f}с")
-    check("выбрано скопление, подходящее по соседям",
+    check("the gaps inside lines are gone", max(gaps) < 1.2, f"max {max(gaps):.2f}s")
+    check("the cluster that fits the neighbours was chosen",
           abs(broken.lines[0].start - 150.2) < 0.01, f"{broken.lines[0].start:.2f}")
-    check("строки не налезают друг на друга",
+    check("the lines do not overlap",
           all(a.end <= b.start + 1e-9
               for a, b in zip(broken.lines, broken.lines[1:])))
-    check("слова остались по порядку",
+    check("the words stayed in order",
           all(a.start <= b.start + 1e-9 for a, b in zip(ws, ws[1:])))
-    check("длительности положительные", all(w.end > w.start for w in ws))
+    check("the durations are positive", all(w.end > w.start for w in ws))
 
-    # здоровую разметку чинилка трогать не должна
+    # the repair must not touch sound timing
     healthy = L.parse("Раз два три\nчетыре пять")
     for w, (t, d) in zip(healthy.lines[0].words, [(1.0, .4), (1.4, .4), (1.8, .4)]):
         w.start, w.end = t, t + d
@@ -404,49 +404,49 @@ def main():
     before = [(w.start, w.end) for w in healthy.words]
     A.repair_lines(healthy)
     A.repair_order(healthy)
-    check("здоровая разметка не тронута",
+    check("sound timing is left untouched",
           before == [(w.start, w.end) for w in healthy.words])
 
-    print("\nПроверка LRC на входе")
+    print("\nLRC on the input")
     m = L.parse("[00:12.30]первая\n[01:05.50]вторая")
-    check("тайминги распознаны", m.has_manual_times)
-    check("время строк", abs(m.lines[0].start - 12.3) < 1e-6 and abs(m.lines[1].start - 65.5) < 1e-6,
+    check("the timings were recognised", m.has_manual_times)
+    check("the line times", abs(m.lines[0].start - 12.3) < 1e-6 and abs(m.lines[1].start - 65.5) < 1e-6,
           f"{m.lines[0].start}, {m.lines[1].start}")
 
     tmp = tempfile.mkdtemp(prefix="karaoke_test_")
     song = os.path.join(tmp, "song.wav")
-    print("\nГенерирую тестовый звук…")
+    print("\nGenerating the test audio…")
     make_song(song)
 
     try:
         AU.ffmpeg()
     except AU.AudioError as e:
-        print(f"\nПропускаю проверки звука: {e}")
+        print(f"\nSkipping the audio checks: {e}")
         return 1 if failures else 0
 
-    print("\nПроверка выравнивания по энергии")
+    print("\nAlignment by loudness")
     dur = AU.duration(song)
-    check("длительность 26 с", abs(dur - 26.0) < 0.2, f"{dur:.2f}")
+    check("the length is 26 s", abs(dur - 26.0) < 0.2, f"{dur:.2f}")
 
     lyr = L.parse(TEXT)
     lyr, engine = A.align(lyr, song, dur, engine="energy")
-    check("движок energy", engine == "energy")
+    check("the energy engine", engine == "energy")
 
     worst = 0.0
     for ln, (want, _) in zip(lyr.lines, PHRASES):
         worst = max(worst, abs(ln.start - want))
-        print(f"    «{ln.text[:26]:26}» {ln.start:6.2f}с  (ожидалось {want:5.2f}с)")
-    check("все строки точнее 0,4 с", worst < 0.4, f"худшее отклонение {worst:.2f}с")
+        print(f"    “{ln.text[:26]:26}” {ln.start:6.2f}s  (expected {want:5.2f}s)")
+    check("every line is within 0.4 s", worst < 0.4, f"worst deviation {worst:.2f}s")
 
-    check("слова идут по порядку",
+    check("the words are in order",
           all(a.start <= b.start for a, b in zip(lyr.words, lyr.words[1:])))
-    check("ни одно слово не нулевой длины", all(w.end > w.start for w in lyr.words))
-    check("всё внутри трека", all(0 <= w.start and w.end <= dur + 1e-6 for w in lyr.words))
+    check("no word has zero length", all(w.end > w.start for w in lyr.words))
+    check("everything is inside the track", all(0 <= w.start and w.end <= dur + 1e-6 for w in lyr.words))
 
-    # Путь Whisper отличается от энергетического порядком шагов: границы строк
-    # там появляются только из слов. Проверяем без самой модели — подсовываем
-    # готовые времена слов, как их отдал бы Whisper.
-    print("\nПроверка порядка шагов на пути Whisper")
+    # The Whisper path differs from the loudness one in the order of steps: the
+    # line bounds appear only from the words. Checked without the model itself —
+    # ready word times are fed in, as Whisper would have returned them.
+    print("\nThe order of steps on the Whisper path")
     wl = L.parse(TEXT)
     t = 2.0
     for line in wl.lines:
@@ -454,38 +454,38 @@ def main():
             w.start, w.end = t, t + 0.3
             t += 0.35
         t += 0.6
-    # именно здесь раньше падало: у строк ещё не было start/end
+    # this is exactly where it used to fail: the lines had no start/end yet
     A._trim_leading_silence(wl)
     A._fill_lines(wl, dur)
     A.repair_lines(wl)
     A.repair_order(wl)
     A._fill_lines(wl, dur)
-    check("границы строк заполнены из слов",
+    check("the line bounds were filled from the words",
           all(l.start is not None and l.end is not None for l in wl.lines))
-    check("строки по порядку",
+    check("the lines are in order",
           all(a.start <= b.start for a, b in zip(wl.lines, wl.lines[1:])))
-    check("слова по порядку",
+    check("the words are in order",
           all(a.start <= b.start + 1e-9 for a, b in zip(wl.words, wl.words[1:])))
 
     env, hop_env = AU.rms_envelope(song)
 
-    print("\nПроверка сборки HTML")
+    print("\nBuilding the HTML")
     track = AU.encode(song, os.path.join(tmp, "a"), "mp3")
     html = os.path.join(tmp, "out.html")
     B.build_html(html, lyr, dur, {"mix": track}, engine, embed=True)
     body = open(html, encoding="utf-8").read()
-    check("файл собран", os.path.getsize(html) > 50_000)
-    check("звук встроен", "data:audio/mpeg;base64," in body)
-    check("нет внешних ссылок", "http://" not in body and "https://" not in body)
-    check("шаблон заполнен", "__PAYLOAD__" not in body and "__TITLE__" not in body)
-    check("текст на месте", "Закружилась" in body)
-    check("слоги переданы в плеер", '"s":' in body)
+    check("the file was built", os.path.getsize(html) > 50_000)
+    check("the audio is embedded", "data:audio/mpeg;base64," in body)
+    check("no external links", "http://" not in body and "https://" not in body)
+    check("the template is filled in", "__PAYLOAD__" not in body and "__TITLE__" not in body)
+    check("the lyrics are there", "Закружилась" in body)
+    check("the syllables reached the player", '"s":' in body)
 
     lrc = os.path.join(tmp, "out.lrc")
     B.write_lrc(lrc, lyr)
-    check("LRC записан", open(lrc, encoding="utf-8").read().count("\n") >= 8)
+    check("the LRC was written", open(lrc, encoding="utf-8").read().count("\n") >= 8)
 
-    print("\nПроверка обратной подстановки таймингов")
+    print("\nFeeding the timings back in")
     lyr2 = L.parse(TEXT)
     import json
     tj = os.path.join(tmp, "t.json")
@@ -494,11 +494,12 @@ def main():
                                     for w in l.words]} for l in lyr.lines]},
               open(tj, "w"), ensure_ascii=False)
     B.apply_timings(lyr2, tj)
-    check("сдвиг применился", abs(lyr2.lines[0].start - (lyr.lines[0].start + 1.5)) < 1e-6)
+    check("the shift was applied", abs(lyr2.lines[0].start - (lyr.lines[0].start + 1.5)) < 1e-6)
 
-    print("\nПроверка точности сдвига при подмене минусовки")
-    # Разметку двигают вслед за новой дорожкой, поэтому ошибка в поиске сдвига
-    # сразу слышна. Шаг огибающей 10 мс, вершину уточняем параболой.
+    print("\nHow precise the shift is when the instrumental is swapped")
+    # The timing is moved along with the new track, so an error in finding the
+    # shift is heard at once. The envelope step is 10 ms, the peak is refined
+    # with a parabola.
     import importlib
     import subprocess as _sp
     _studio = importlib.import_module("studio")
@@ -511,22 +512,22 @@ def main():
         eb, _hb = AU.rms_envelope(moved, hop_ms=10)
         got = _studio.offset_between(ea, eb, ha) * 1000
         worst = max(worst, abs(got - ms))
-        check(f"сдвиг {ms} мс найден", abs(got - ms) < 8, f"получилось {got:.1f} мс")
-    check("худшая ошибка меньше 8 мс", worst < 8, f"{worst:.1f} мс")
-    check("на пустых данных сдвиг нулевой", _studio.offset_between([], [], 0.01) == 0.0)
+        check(f"a shift of {ms} ms was found", abs(got - ms) < 8, f"got {got:.1f} ms")
+    check("the worst error is under 8 ms", worst < 8, f"{worst:.1f} ms")
+    check("on empty data the shift is zero", _studio.offset_between([], [], 0.01) == 0.0)
 
-    print("\nПроверка панели «Проверить»: только поломки, не вкусовщина")
+    print("\nThe “Check” panel: only real breakage, no matters of taste")
     from kstudio import project as PRJ
     long_note = {"lines": [{"text": "а-а-а", "start": 0.0, "end": 9.0,
                             "words": [{"w": "а-а-а", "t": 0.0, "d": 9.0, "s": 3}]}],
                  "envelope": {}}
-    check("долгая нота не считается ошибкой", PRJ.problems(long_note) == [],
+    check("a long note does not count as an error", PRJ.problems(long_note) == [],
           str(PRJ.problems(long_note)))
     tail = {"lines": [{"text": "конец строки", "start": 0.0, "end": 6.0,
                        "words": [{"w": "конец", "t": 0.0, "d": 0.5, "s": 2},
                                  {"w": "строки", "t": 0.5, "d": 5.5, "s": 2}]}],
             "envelope": {}}
-    check("хвост в конце строки — тоже не ошибка", PRJ.problems(tail) == [],
+    check("a tail at the end of a line is not an error either", PRJ.problems(tail) == [],
           str(PRJ.problems(tail)))
 
     impossible = {"lines": [{"text": "очень много слогов подряд",
@@ -536,7 +537,7 @@ def main():
                                        {"w": "слогов", "t": 0.2, "d": .1, "s": 2},
                                        {"w": "подряд", "t": 0.3, "d": .1, "s": 2}]}],
                   "envelope": {}}
-    check("а физически неспетое — ошибка", len(PRJ.problems(impossible)) == 1,
+    check("but the physically unsingable is", len(PRJ.problems(impossible)) == 1,
           str(PRJ.problems(impossible)))
 
     overlap = {"lines": [{"text": "первая", "start": 0.0, "end": 5.0,
@@ -544,7 +545,7 @@ def main():
                          {"text": "вторая", "start": 3.0, "end": 6.0,
                           "words": [{"w": "вторая", "t": 3.0, "d": 3.0, "s": 3}]}],
                "envelope": {}}
-    check("налезающие строки по-прежнему видны",
+    check("overlapping lines are still reported",
           any("налезает" in w for p2 in PRJ.problems(overlap) for w in p2["why"]),
           str(PRJ.problems(overlap)))
 
@@ -552,15 +553,15 @@ def main():
                        "words": [{"w": "слова", "t": 0.0, "d": 0.4, "s": 2},
                                  {"w": "врозь", "t": 5.0, "d": 1.0, "s": 1}]}],
             "envelope": {}}
-    check("разъехавшиеся слова внутри строки видны",
+    check("words drifted apart inside a line are reported",
           any("разъехались" in w for p2 in PRJ.problems(torn) for w in p2["why"]),
           str(PRJ.problems(torn)))
 
-    print("\nПроверка отчёта перед сборкой")
+    print("\nThe report before building")
     from kstudio import report as REP
 
     def click_track(path, tempo, dur=24.0, sr=22050):
-        """Ровные удары с известным темпом."""
+        """Even beats at a known tempo."""
         period, frames = 60.0 / tempo, bytearray()
         for i in range(int(sr * dur)):
             t = i / sr
@@ -573,22 +574,22 @@ def main():
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
         w.writeframes(bytes(frames)); w.close()
 
-    # Автокорреляция сама по себе уверенно выдаёт вдвое медленнее — проверяем
-    # именно быстрые темпы, на них это и вылезало.
+    # Plain autocorrelation confidently reports half the tempo — the fast
+    # tempos are checked here, because that is where it showed.
     for tempo in (90, 120, 140, 175):
         p2 = os.path.join(tmp, f"click{tempo}.wav")
         click_track(p2, tempo)
         env2, hop2 = AU.rms_envelope(p2)
         got, conf = REP.bpm(env2, hop2)
-        check(f"темп {tempo} уд/мин найден",
+        check(f"the tempo {tempo} bpm was found",
               got is not None and abs(got - tempo) < 3.5,
-              f"получилось {got}")
-        check(f"и уверенность у {tempo} высокая", conf > 0.5, f"{conf}")
+              f"got {got}")
+        check(f"and the confidence at {tempo} is high", conf > 0.5, f"{conf}")
 
-    check("на тишине темп не выдумывается", REP.bpm([0.0] * 400, 0.02)[0] is None)
+    check("no tempo is invented out of silence", REP.bpm([0.0] * 400, 0.02)[0] is None)
 
-    # Где долго не поют — вступление, проигрыш, соло. Для караоке это важнее
-    # темпа: туда строки попадать не должны.
+    # Where nobody sings for a while — intro, interlude, solo. For karaoke that
+    # matters more than tempo: no line belongs there.
     gap_song = os.path.join(tmp, "с_проигрышем.wav")
     old_phrases = list(A.__dict__.get("_", []))    # ничего не трогаем, просто пишем свой файл
     import wave as _w
@@ -605,49 +606,49 @@ def main():
         f.writeframes(bytes(buf))
     genv, ghop = AU.rms_envelope(gap_song)
     quiet = REP.quiet_stretches(genv, ghop)
-    check("длинный проигрыш найден", len(quiet) == 1, str(quiet))
+    check("the long interlude was found", len(quiet) == 1, str(quiet))
     if quiet:
-        check("и найден там, где он есть",
+        check("and found where it actually is",
               abs(quiet[0]["start"] - 8) < 1.0 and abs(quiet[0]["end"] - 20) < 1.0,
               f"{quiet[0]['start']}–{quiet[0]['end']} вместо 8–20")
-    check("короткие паузы между строками проигрышем не считаются",
+    check("short gaps between lines are not interludes",
           REP.quiet_stretches(env, hop_env) == [] or
           all(q["end"] - q["start"] >= 5 for q in REP.quiet_stretches(env, hop_env)),
           str(REP.quiet_stretches(env, hop_env)))
-    check("на пустой огибающей не падает", REP.quiet_stretches([], 0.02) == [])
+    check("an empty envelope does not crash it", REP.quiet_stretches([], 0.02) == [])
 
     grep = REP.build(gap_song, lyr, 30.0, genv, ghop, separate=False)
-    check("проигрыш попал в отчёт", len(grep["audio"]["quiet"]) == 1,
+    check("the interlude reached the report", len(grep["audio"]["quiet"]) == 1,
           str(grep["audio"]["quiet"]))
-    check("и о нём сказано словами",
+    check("and it is spelled out in words",
           any("без пения" in n.lower() for n in grep["notes"]), str(grep["notes"]))
-    check("в текстовом отчёте он тоже есть",
+    check("the text report has it too",
           "Без пения" in REP.as_text(grep))
-    check("на пустой огибающей не падает", REP.bpm([], 0.02) == (None, 0.0))
+    check("an empty envelope does not crash it", REP.bpm([], 0.02) == (None, 0.0))
 
     rep = REP.build("песня.mp3", lyr, 26.0, env, hop_env,
                     model="small", separate=False, whisper=True, language="auto")
-    check("в отчёте есть длина", rep["audio"]["duration"] == 26.0)
-    check("в отчёте есть текст", rep["text"]["lines"] == 6 and rep["text"]["words"] == 21,
+    check("the report has the length", rep["audio"]["duration"] == 26.0)
+    check("the report has the text", rep["text"]["lines"] == 6 and rep["text"]["words"] == 21,
           str(rep["text"]))
-    check("разделы перечислены", rep["text"]["sections"] == ["Куплет", "Припев"],
+    check("the sections are listed", rep["text"]["sections"] == ["Куплет", "Припев"],
           str(rep["text"]["sections"]))
-    check("язык определён и назван", rep["language"]["code"] == "ru" and
+    check("the language was detected and named", rep["language"]["code"] == "ru" and
           rep["language"]["auto"] is True)
-    check("оценка времени положительная", rep["plan"]["seconds"] > 0)
-    check("оценка честно помечена грубой", rep["plan"]["rough"] is True)
-    check("текстовый вид собирается", "Отчёт перед сборкой" in REP.as_text(rep))
+    check("the time estimate is positive", rep["plan"]["seconds"] > 0)
+    check("the estimate is honestly marked as rough", rep["plan"]["rough"] is True)
+    check("the text form assembles", "Отчёт перед сборкой" in REP.as_text(rep))
 
-    # Текст не от этой песни: строк мало на длинную запись — это надо сказать
+    # The text belongs to another song: too few lines for a long recording
     short = L.parse("Одна одинокая строка")
     rep2 = REP.build("длинная.mp3", short, 300.0, env, hop_env, separate=False)
-    check("мало строк на долгую песню — предупреждение есть",
+    check("few lines for a long song — the warning is there",
           any("повтор" in n or "много" in n for n in rep2["notes"]),
           str(rep2["notes"]))
-    check("время на большую песню считается больше",
+    check("a bigger song is estimated to take longer",
           rep2["plan"]["seconds"] > rep["plan"]["seconds"])
 
-    print("\nПроверка определения языка по тексту")
+    print("\nDetecting the language from the text")
     from kstudio import lang as LG
     songs = {
         "ru": "Раз два три четыре пять\nНачинаем проверять",
@@ -664,17 +665,17 @@ def main():
     }
     for want, text in songs.items():
         got = LG.detect(text)
-        check(f"{LG.label(want)} узнаётся", got == want, f"определилось как {got}")
-    check("пустой текст не роняет", LG.detect("") == "en")
-    check("только знаки препинания не роняют", LG.detect("... !!! ???") in LG.NAMES)
-    check("«auto» превращается в язык текста",
+        check(f"{LG.label(want)} is recognised", got == want, f"detected as {got}")
+    check("an empty text does not crash it", LG.detect("") == "en")
+    check("punctuation only does not crash it", LG.detect("... !!! ???") in LG.NAMES)
+    check("“auto” becomes the language of the text",
           LG.resolve("auto", songs["uk"]) == "uk")
-    check("заданный руками язык не подменяется",
+    check("a language set by hand is not replaced",
           LG.resolve("en", songs["ru"]) == "en")
-    check("у каждого языка есть человеческое название",
+    check("every language has a human-readable name",
           all(LG.label(c) and LG.label(c) != c for c in LG.NAMES))
 
-    print("\nПроверка: окно и лог одинаково знают про модели")
+    print("\nThe window and the log agree about the models")
     import tempfile as _tf
 
     from kstudio import models as MM
@@ -684,26 +685,26 @@ def main():
     try:
         wd = MM.whisper_dir()
         os.makedirs(wd, exist_ok=True)
-        check("модели ещё нет", MM.whisper_ready("medium") is False)
-        check("про отсутствующую сказано «скачиваю»",
+        check("the model is not there yet", MM.whisper_ready("medium") is False)
+        check("a missing one is announced as “downloading”",
               MM.load_note("medium").startswith("Скачиваю") and
               "1,5 ГБ" in MM.load_note("medium"))
-        check("и шаг называется скачиванием", "скачивание" in MM.step_label("medium"))
+        check("and the step is called downloading", "скачивание" in MM.step_label("medium"))
 
         with open(os.path.join(wd, "medium.pt"), "wb") as f:
             f.write(b"0" * 2_000_000)
-        check("модель на диске найдена", MM.whisper_ready("medium") is True)
-        check("про скачанную не обещают качать",
+        check("the model on disk was found", MM.whisper_ready("medium") is True)
+        check("a downloaded one is not promised as a download",
               "уже на диске" in MM.load_note("medium") and
               "Скачиваю" not in MM.load_note("medium"))
-        check("и шаг называется загрузкой", "загрузка" in MM.step_label("medium"))
+        check("and the step is called loading", "загрузка" in MM.step_label("medium"))
 
-        # огрызок недокачанного файла моделью считаться не должен
+        # a half-downloaded stub must not count as a model
         with open(os.path.join(wd, "small.pt"), "wb") as f:
             f.write(b"0" * 1000)
-        check("недокачанный файл за модель не считается",
+        check("a half-downloaded file does not count as a model",
               MM.whisper_ready("small") is False)
-        check("список для окна совпадает с тем, что скажет лог",
+        check("the list for the window matches what the log says",
               MM.whisper_all()["medium"] is True and
               MM.whisper_all()["small"] is False)
     finally:
@@ -713,43 +714,43 @@ def main():
             os.environ["XDG_CACHE_HOME"] = old_xdg
         shutil_rm(fake)
 
-    print("\nПроверка признаков жизни на долгих шагах")
+    print("\nSigns of life during long steps")
     import time
 
     from kstudio.progress import Heartbeat, mmss
-    check("время читается", (mmss(0), mmss(75)) == ("0:00", "1:15"))
+    check("the time reads correctly", (mmss(0), mmss(75)) == ("0:00", "1:15"))
     beats = []
     with Heartbeat(beats.append, "проверка", every=0.2) as hb:
         time.sleep(0.3)
         hb.progress(3, 10)
         hb.note("Demucs: 40%")
         time.sleep(0.3)
-    check("шаг подаёт признаки жизни", len(beats) >= 2)
-    check("доля сделанного видна", any("30%" in b for b in beats))
-    check("приписка шага видна", any("Demucs: 40%" in b for b in beats))
+    check("the step shows signs of life", len(beats) >= 2)
+    check("the fraction done is visible", any("30%" in b for b in beats))
+    check("the step's note is visible", any("Demucs: 40%" in b for b in beats))
     before = len(beats)
     time.sleep(0.4)
-    check("после выхода молчит", len(beats) == before)
+    check("it goes quiet after leaving", len(beats) == before)
 
-    # Признак жизни не имеет права уронить сам шаг: если лог падает — молчим.
+    # A sign of life must never bring the step down: if the log throws, stay quiet.
     def bad_log(_):
         raise RuntimeError("лог сломан")
 
     with Heartbeat(bad_log, "стойкость", every=0.1):
         time.sleep(0.3)
-    check("сломанный лог не роняет шаг", True)
+    check("a broken log does not bring the step down", True)
 
-    # Нулевой и полный счётчик не сообщают ничего — долю тогда не показываем.
+    # A counter at zero or at the very end says nothing — the fraction is hidden.
     beats2 = []
     with Heartbeat(beats2.append, "без счёта", every=0.15) as hb2:
         hb2.progress(0, 26)
         time.sleep(0.2)
-    check("пустой счётчик не показывается", beats2 and "%" not in beats2[0])
+    check("an empty counter is not shown", beats2 and "%" not in beats2[0])
 
     import shutil
     shutil.rmtree(tmp, ignore_errors=True)
 
-    print("\n" + ("ПРОВАЛЕНО: " + ", ".join(failures) if failures else "Все проверки пройдены"))
+    print("\n" + ("FAILED: " + ", ".join(failures) if failures else "All checks passed"))
     return 1 if failures else 0
 
 

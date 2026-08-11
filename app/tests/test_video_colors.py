@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Готовый ролик: цвета голосов и то, что тексты не наезжают друг на друга.
+"""The finished video: the voice colours, and that the texts do not overlap.
 
 Проверять только исходники мало: в MP4 всё рисуется своим кодом, и цвета там
 однажды оказались одинаковыми, хотя в редакторе были разные.
@@ -24,7 +24,7 @@ failures = []
 
 
 def check(name, cond, extra=""):
-    print(("  OK   " if cond else "  ПРОВАЛ ") + name + (" — " + str(extra) if extra else ""))
+    print(("  OK     " if cond else "  FAILED ") + name + (" — " + str(extra) if extra else ""))
     if not cond:
         failures.append(name)
 
@@ -44,7 +44,7 @@ def main():
     try:
         from PIL import Image  # noqa: F401
     except ImportError:
-        print("  пропуск: нет Pillow, ролик не нарисовать")
+        print("  skipped: no Pillow, the video cannot be drawn")
         return 0
 
     spec = importlib.util.spec_from_file_location("video", os.path.join(ROOT, "tools", "video.py"))
@@ -53,7 +53,7 @@ def main():
 
     tmp = tempfile.mkdtemp(prefix="karaoke_vid_")
     wav = tone(os.path.join(tmp, "a.wav"))
-    # Две строки звучат одновременно: первый голос и второй.
+    # Two lines sound at once: the first voice and the second.
     payload = {
         "colors": ["#00ff00", "#ff00ff"],
         "theme": {"bg": "#000000", "text": "#ffffff"},
@@ -72,7 +72,7 @@ def main():
 
     args = Args()
     video.render(payload, wav, args.output, args)
-    check("ролик собрался", os.path.isfile(args.output) and os.path.getsize(args.output) > 1000,
+    check("the video was built", os.path.isfile(args.output) and os.path.getsize(args.output) > 1000,
           str(os.path.getsize(args.output)) if os.path.isfile(args.output) else "нет файла")
 
     from kstudio import audio as AU
@@ -90,17 +90,17 @@ def main():
                 rows.setdefault("v1", set()).add(y)
             elif r > 150 and b > 150 and g < 90:
                 rows.setdefault("v2", set()).add(y)
-    check("первый голос нарисован своим цветом", "v1" in rows, sorted(rows))
-    check("второй голос — своим", "v2" in rows, sorted(rows))
+    check("the first voice is drawn in its own colour", "v1" in rows, sorted(rows))
+    check("the second in its own", "v2" in rows, sorted(rows))
     if "v1" in rows and "v2" in rows:
         a, b = rows["v1"], rows["v2"]
-        check("цвета разные, а не один на двоих", a != b)
-        check("строки не налезают друг на друга", not (a & b),
-              f"общих строк пикселей: {len(a & b)}")
-        check("вторая строка ниже первой", min(b) > min(a),
-              f"первый y={min(a)}, второй y={min(b)}")
+        check("the colours differ, not one for both", a != b)
+        check("the lines do not overlap", not (a & b),
+              f"shared pixel rows: {len(a & b)}")
+        check("the second line is below the first", min(b) > min(a),
+              f"first y={min(a)}, second y={min(b)}")
 
-    print("\nОтсчёт вступления в ролике")
+    print("\nThe intro countdown in the video")
     intro = {"colors": ["#00ff00", "#ff00ff"], "theme": {"bg": "#000000", "text": "#ffffff"},
              "data": {"title": "T", "duration": 20.0, "lines": [
                  {"text": "aaa", "start": 6.0, "end": 9.5, "voice": 1,
@@ -120,19 +120,19 @@ def main():
     top = [im2.getpixel((x, y)) for y in range(int(H2 * 0.06), int(H2 * 0.20))
            for x in range(0, W2, 3)]
     lit = [c for c in top if sum(c) > 90]
-    check("во вступлении сверху что-то нарисовано", len(lit) > 40, f"ярких точек: {len(lit)}")
+    check("something is drawn at the top during the intro", len(lit) > 40, f"bright pixels: {len(lit)}")
     green = [c for c in top if c[1] > 120 and c[0] < 90 and c[2] < 90]
-    check("полоска отсчёта своим цветом", len(green) > 5, f"зелёных точек: {len(green)}")
-    # когда поют — плашки быть не должно
+    check("the countdown bar has its own colour", len(green) > 5, f"green pixels: {len(green)}")
+    # while singing there must be no pill
     png3 = os.path.join(tmp, "sing.png")
     subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "7.5", "-i", A3.output,
                     "-frames:v", "1", png3], check=True)
     im3 = Image.open(png3).convert("RGB")
     top3 = [im3.getpixel((x, y)) for y in range(int(H2 * 0.06), int(H2 * 0.20))
             for x in range(0, W2, 3)]
-    # Текст должен стоять по центру плашки, а не липнуть к краю.
-    # Берём только полосу самой плашки: выше неё слева стоит название песни,
-    # и вместе с ним центр «рисунка» уехал бы влево.
+    # The text must sit in the centre of the pill, not cling to an edge.
+    # Only the pill's own band is measured: above it, on the left, sits the song
+    # title, and with it the centre of the “ink” would drift left.
     y0, y1 = int(H2 * 0.075), int(H2 * 0.155)
     rows = [y for y in range(y0, y1)
             for x in range(0, W2, 2) if sum(im2.getpixel((x, y))) > 90]
@@ -140,55 +140,55 @@ def main():
             for x in range(0, W2, 2) if sum(im2.getpixel((x, y))) > 90]
     if rows and cols:
         cx_ink = (min(cols) + max(cols)) / 2
-        check("плашка стоит по центру кадра", abs(cx_ink - W2 / 2) <= W2 * 0.03,
-              f"центр рисунка {cx_ink:.0f}, центр кадра {W2/2:.0f}")
-        # ищем края самой плашки по её рамке в той же полосе
+        check("the pill is centred in the frame", abs(cx_ink - W2 / 2) <= W2 * 0.03,
+              f"ink centre {cx_ink:.0f}, frame centre {W2/2:.0f}")
+        # find the pill's own edges by its outline in the same band
         band = int((min(rows) + max(rows)) / 2)
         lit_x = [x for x in range(W2) if sum(im2.getpixel((x, band))) > 60]
         if lit_x:
             left_gap = min(lit_x)
             right_gap = W2 - max(lit_x)
-            check("плашка симметрична по краям", abs(left_gap - right_gap) <= W2 * 0.02,
-                  f"слева {left_gap}, справа {right_gap}")
+            check("the pill has equal margins", abs(left_gap - right_gap) <= W2 * 0.02,
+                  f"left {left_gap}, right {right_gap}")
 
-    check("на пении плашка исчезает", len([c for c in top3 if sum(c) > 90]) < len(lit) / 3,
-          f"было {len(lit)}, стало {len([c for c in top3 if sum(c) > 90])}")
+    check("the pill disappears once singing starts", len([c for c in top3 if sum(c) > 90]) < len(lit) / 3,
+          f"was {len(lit)}, now {len([c for c in top3 if sum(c) > 90])}")
 
-    print("\nЦвета не схлопываются в пустой кадр")
+    print("\nColours do not collapse into an empty frame")
     dark = {"colors": ["#050505", "#0a0a0a"], "theme": {"bg": "#000000", "text": "#050505"},
             "data": payload["data"]}
     video.apply_colors(dark)
     def contrast(c):
         return video._contrast(c, video.BG_TOP)
-    check("подсветка первого голоса видна на фоне", contrast(video.COL_HOT) >= 2.4,
-          f"{video.COL_HOT} на {video.BG_TOP}: {contrast(video.COL_HOT):.1f}")
-    check("подсветка второго тоже", contrast(video.COL_HOT2) >= 2.4,
+    check("the first voice is visible against the background", contrast(video.COL_HOT) >= 2.4,
+          f"{video.COL_HOT} on {video.BG_TOP}: {contrast(video.COL_HOT):.1f}")
+    check("so is the second one", contrast(video.COL_HOT2) >= 2.4,
           f"{video.COL_HOT2}: {contrast(video.COL_HOT2):.1f}")
-    check("неспетые строки различимы", contrast(video.COL_DIM) >= 2.0,
+    check("unsung lines are distinguishable", contrast(video.COL_DIM) >= 2.0,
           f"{video.COL_DIM}: {contrast(video.COL_DIM):.1f}")
     video.apply_colors(payload)          # возвращаем цвета проверки
 
-    print("\nОтчёт перед роликом")
+    print("\nThe report before the video")
     class A2:
         width, height, fps, audio = 1920, 1080, 30, "minus"
     rep = video.video_report(payload, A2(), 8.0, 8.0)
     for what in ("Song", "Lines", "Together", "Original sings", "Colours", "Audio", "Frames"):
-        check(f"в отчёте есть «{what}»", what in rep, rep.replace("\n", " | ")[:100])
-    check("сказано про второй голос", "second voice: 1" in rep, rep)
-    check("сказано, что голоса пересекаются", "1 place where" in rep, rep)
-    check("цвета названы", "#00ff00" in rep and "#ff00ff" in rep, rep)
+        check(f"the report has “{what}”", what in rep, rep.replace("\n", " | ")[:100])
+    check("the second voice is mentioned", "second voice: 1" in rep, rep)
+    check("it says the voices overlap", "1 place where" in rep, rep)
+    check("the colours are named", "#00ff00" in rep and "#ff00ff" in rep, rep)
     from kstudio import i18n
     i18n.set_lang("ru")
     rep_ru = video.video_report(payload, A2(), 8.0, 8.0)
-    check("по-русски тоже", "Отчёт перед роликом" in rep_ru and "Одновременно" in rep_ru,
+    check("in Russian as well", "Отчёт перед роликом" in rep_ru and "Одновременно" in rep_ru,
           rep_ru.replace("\n", " | ")[:80])
     i18n.set_lang("en")
     plain = {"data": {"lines": [{"text": "a", "start": 0, "end": 1, "words": []}]}}
     warn = video.video_report(plain, A2(), 8.0, 8.0)
-    check("без своих цветов отчёт предупреждает", "!" in warn, warn.replace("\n", " | ")[:90])
+    check("without its own colours the report warns", "!" in warn, warn.replace("\n", " | ")[:90])
 
     shutil.rmtree(tmp, ignore_errors=True)
-    print("\n" + ("ПРОВАЛЕНО: " + ", ".join(failures) if failures else "Все проверки пройдены"))
+    print("\n" + ("FAILED: " + ", ".join(failures) if failures else "All checks passed"))
     return 1 if failures else 0
 
 

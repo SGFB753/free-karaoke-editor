@@ -86,5 +86,5 @@ ok('позиции совпали по абсолютной шкале',
    Math.abs(master.currentTime - voice.currentTime) < 0.06,
    `master=${master.currentTime.toFixed(2)} voice=${voice.currentTime.toFixed(2)}`);
 ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(';'));
-console.log(fail?`\nПРОВАЛЕНО: ${fail}`:'\nВсе проверки пройдены');
+console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

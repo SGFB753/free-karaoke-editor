@@ -93,5 +93,5 @@ const last = w.__started.slice(-2);
 ok('обе дорожки живут от одного момента старта', last[0].at===last[1].at);
 ok('и от одного смещения', last[0].off===last[1].off);
 ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(';'));
-console.log(fail?`\nПРОВАЛЕНО: ${fail}`:'\nВсе проверки пройдены');
+console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

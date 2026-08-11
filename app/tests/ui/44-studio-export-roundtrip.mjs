@@ -135,5 +135,5 @@ await sleep(900);
 try { fs.unlinkSync(out.path); } catch(e){}
 
 ok('ошибок JS в окне нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
-console.log(fail ? '\nПРОВАЛЕНО: '+fail : '\nВсе проверки пройдены');
+console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

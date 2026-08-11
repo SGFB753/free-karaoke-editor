@@ -99,5 +99,5 @@ ok('M глушит вокал', voice.volume===0, 'volume='+voice.volume);
 doc.dispatchEvent(new w.KeyboardEvent('keydown',{key:'m',bubbles:true})); await run(0.5);
 ok('M возвращает вокал', voice.volume===1, 'volume='+voice.volume);
 ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(';'));
-console.log(fail?`\nПРОВАЛЕНО: ${fail}`:'\nВсе проверки пройдены');
+console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

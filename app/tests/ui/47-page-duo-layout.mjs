@@ -92,5 +92,5 @@ if (state.n >= 2){
 ok('ошибок JS нет', errs.length === 0, errs.slice(0,2).join(' | '));
 await br.close();
 fs.rmSync(tmp, {recursive:true, force:true});
-console.log(fail ? '\nПРОВАЛЕНО: '+fail : '\nВсе проверки пройдены');
+console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

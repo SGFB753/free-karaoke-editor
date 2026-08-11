@@ -81,5 +81,5 @@ console.log('\n--- точки отсчёта на новой схеме ---');
   ok('в обычном месте точек нет', lit()===0);
   ok('ошибок JS нет', w.__errs.length===0, w.__errs.join(';'));
 }
-console.log(fail?`\nПРОВАЛЕНО: ${fail}`:'\nВсе проверки пройдены');
+console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

@@ -53,5 +53,5 @@ $('btnReset').click(); $('btnSaveJson').click();
 ok('сброс вернул исходную разметку', Math.abs(JSON.parse(saved).lines[0].start-2.02)<0.1,
    'start='+JSON.parse(saved).lines[0].start);
 ok('ошибок JS нет', w.__errs.length===0, w.__errs.join(';'));
-console.log(fail?`\nПРОВАЛЕНО: ${fail}`:'\nВсе проверки пройдены');
+console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

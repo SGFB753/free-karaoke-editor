@@ -73,5 +73,5 @@ ok('отмеченные строки получили мои времена',
    Math.abs(j.lines[0].start-3.0)<0.01 && Math.abs(j.lines[1].start-7.0)<0.01,
    `${j.lines[0].start}, ${j.lines[1].start}`);
 ok('ошибок JS нет', w.__errs.length===0, w.__errs.join(';'));
-console.log(fail?`\nПРОВАЛЕНО: ${fail}`:'\nВсе проверки пройдены');
+console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

@@ -52,5 +52,5 @@ ok('страница живая: строки отрисовались', doc2.qu
    'строк '+doc2.querySelectorAll('.ln').length);
 ok('ошибок JS нет', w2.__errs.length===0 && w1.__errs.length===0,
    [...w1.__errs,...w2.__errs].join(';'));
-console.log(fail?`\nПРОВАЛЕНО: ${fail}`:'\nВсе проверки пройдены');
+console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

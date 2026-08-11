@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Караоке в контейнере: собирается, поднимается и делает песню.
+"""Karaoke in a container: it builds, it starts, and it makes a song.
 
 Долгая проверка (сборка образа), поэтому по умолчанию она пропускается.
 Включить:  KARAOKE_DOCKER=1 python3 tests/test_container.py
@@ -27,7 +27,7 @@ IMAGE = "karaoke-studio:test"
 
 
 def check(name, cond, extra=""):
-    print(("  OK   " if cond else "  ПРОВАЛ ") + name + (" — " + str(extra) if extra else ""))
+    print(("  OK     " if cond else "  FAILED ") + name + (" — " + str(extra) if extra else ""))
     if not cond:
         failures.append(name)
 
@@ -50,15 +50,15 @@ def free_port(start=8901):
 
 def main():
     if not os.environ.get("KARAOKE_DOCKER"):
-        print("  пропуск: KARAOKE_DOCKER не задан (проверка долгая)")
+        print("  skipped: KARAOKE_DOCKER is not set (this check is slow)")
         return 0
     if shutil.which("docker") is None:
-        print("  пропуск: docker не установлен")
+        print("  skipped: docker is not installed")
         return 0
 
-    print("Сборка образа")
+    print("Building the image")
     r = docker("build", "-t", IMAGE, ROOT)
-    check("образ собрался", r.returncode == 0, (r.stderr or r.stdout).strip()[-300:])
+    check("the image was built", r.returncode == 0, (r.stderr or r.stdout).strip()[-300:])
     if r.returncode != 0:
         return 1
 
@@ -77,7 +77,7 @@ def main():
     r = docker("run", "-d", "--name", name,
                "-p", f"127.0.0.1:{port}:8770",
                "-v", f"{songs}:/songs", "-v", f"{music}:/music:ro", IMAGE)
-    check("контейнер запустился", r.returncode == 0, (r.stderr or "").strip()[-200:])
+    check("the container started", r.returncode == 0, (r.stderr or "").strip()[-200:])
     if r.returncode != 0:
         return 1
 
@@ -90,16 +90,16 @@ def main():
             break
         except Exception:
             time.sleep(0.5)
-    check("окно отвечает снаружи контейнера", up)
+    check("the window answers from outside the container", up)
 
     try:
         if up:
             page = urllib.request.urlopen(api + "/").read().decode()
-            check("это и правда студия", "Karaoke Studio" in page or "Караоке-студия" in page)
+            check("it really is the studio", "Karaoke Studio" in page or "Караоке-студия" in page)
             caps = json.load(urllib.request.urlopen(api + "/api/state"))["caps"]
-            check("ffmpeg внутри есть", caps["ffmpeg"])
-            check("stable-ts внутри есть", caps["whisper"])
-            check("demucs внутри есть", caps["demucs"])
+            check("ffmpeg is inside", caps["ffmpeg"])
+            check("stable-ts is inside", caps["whisper"])
+            check("demucs is inside", caps["demucs"])
 
             body = json.dumps({"audio": "/music/test.wav", "lyrics": "/music/test.txt",
                                "align": "energy", "separate": False}).encode()
@@ -111,17 +111,17 @@ def main():
                 if st["done"]:
                     break
                 time.sleep(0.5)
-            check("песня собралась внутри контейнера", st.get("ok"), st.get("error"))
+            check("a song was built inside the container", st.get("ok"), st.get("error"))
             made = os.listdir(songs)
-            check("проект лёг в примонтированную папку, а не в образ", bool(made),
+            check("the project landed in the mounted folder, not in the image", bool(made),
                   ", ".join(made))
-            check("имя папки латиницей",
+            check("the folder name is in Latin letters",
                   all(all(ord(c) < 128 for c in n) for n in made), ", ".join(made))
     finally:
         docker("rm", "-f", name)
         shutil.rmtree(tmp, ignore_errors=True)
 
-    print("\n" + ("ПРОВАЛЕНО: " + ", ".join(failures) if failures else "Все проверки пройдены"))
+    print("\n" + ("FAILED: " + ", ".join(failures) if failures else "All checks passed"))
     return 1 if failures else 0
 
 

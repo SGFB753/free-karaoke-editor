@@ -166,5 +166,5 @@ ok('проект вернулся к прежнему тексту',
 
 ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 fs.rmSync(tmp, {recursive:true, force:true});
-console.log(fail ? '\nПРОВАЛЕНО: '+fail : '\nВсе проверки пройдены');
+console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);
