@@ -1,5 +1,7 @@
 # Karaoke Studio
 
+[![tests](https://github.com/frdm666/free-karaoke-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/frdm666/free-karaoke-editor/actions/workflows/tests.yml)
+
 **A song + its lyrics → one offline HTML page.** The lyrics scroll, every word
 lights up as it is sung, a slider brings the original voice back, and the whole
 thing is a single file you can open by double-clicking — no internet, no
@@ -241,7 +243,7 @@ output
   --ui-lang auto|en|ru                 language of the labels on the page
 ```
 
-`settings.ini` holds the same options for the launcher scripts, with English
+`app/settings.ini` holds the same options for the launcher scripts, with English
 key names (the Russian ones still work).
 
 ## Language
@@ -318,6 +320,15 @@ run is the fast one.
 
 ```bash
 python3 app/tests/run_all.py
+```
+
+The same checks run on GitHub on every push — the badge at the top of this page
+is their result, and the “Actions” tab shows what exactly ran. Nothing has to be
+installed to look. To run the container check as well (it builds the image and
+makes a song inside it):
+
+```bash
+KARAOKE_DOCKER=1 python3 app/tests/run_all.py
 ```
 
 Runs the pipeline checks, the delivery checks (launchers, file names, settings,

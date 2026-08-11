@@ -42,13 +42,24 @@ def main():
                  "README.md", "README.ru.md"):
         check(f"есть {name}", os.path.isfile(os.path.join(HOME, name)))
     # На GitHub первым читают README.md — он должен быть английским.
-    head = open(os.path.join(HOME, "README.md"), encoding="utf-8").read()[:400]
+    head = open(os.path.join(HOME, "README.md"), encoding="utf-8").read()[:900]
     check("главный README английский", "Karaoke Studio" in head and
           not re.search("[А-Яа-яЁё]", head.split("\n")[0]), head.split("\n")[0])
     check("из него есть ссылка на русский", "README.ru.md" in head)
-    ru_head = open(os.path.join(HOME, "README.ru.md"), encoding="utf-8").read()[:300]
-    check("и обратная ссылка работает", "README.md" in ru_head and
-          "app/README" not in ru_head, ru_head.split("\n")[2] if "\n" in ru_head else "")
+    ru_head = open(os.path.join(HOME, "README.ru.md"), encoding="utf-8").read()[:900]
+    check("и обратная ссылка работает", "(README.md)" in ru_head and
+          "app/README" not in ru_head, ru_head.split("\n")[4] if "\n" in ru_head else "")
+    # На GitHub проверки видно по значку — он должен вести на этот же репозиторий.
+    check("значок проверок стоит в обоих README",
+          "actions/workflows/tests.yml/badge.svg" in head and
+          "actions/workflows/tests.yml/badge.svg" in ru_head)
+    wf = os.path.join(HOME, ".github", "workflows", "tests.yml")
+    check("сам рабочий процесс на месте", os.path.isfile(wf))
+    if os.path.isfile(wf):
+        body = open(wf, encoding="utf-8").read()
+        check("он гоняет полный набор", "tests/run_all.py" in body)
+        check("и отдельно контейнер", "test_container.py" in body and "KARAOKE_DOCKER" in body)
+        check("запускается и руками", "workflow_dispatch" in body)
     # Всё остальное — внутри app/.
     for name in ("Make-karaoke.bat", "Make-video.bat", "make-karaoke.command",
                  "settings.ini", "START-HERE.txt", "SERVER.md", "Dockerfile",

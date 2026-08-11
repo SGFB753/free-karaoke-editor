@@ -220,7 +220,21 @@ def main() -> int:
         say("\nПРОВАЛ на проверках доставки.")
         return 1
 
-    head("1в. Готовый ролик: цвета голосов и что тексты не наезжают")
+    head("1в. Командная строка: ключи, ошибки, пакетный режим")
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_cli.py")], cwd=ROOT)
+    if r.returncode != 0:
+        say("\nПРОВАЛ на проверках командной строки.")
+        return 1
+
+    if os.environ.get("KARAOKE_DOCKER"):
+        head("1в+. Контейнер: образ, окно и сборка песни внутри")
+        r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_container.py")],
+                           cwd=ROOT)
+        if r.returncode != 0:
+            say("\nПРОВАЛ на проверках контейнера.")
+            return 1
+
+    head("1г. Готовый ролик: цвета голосов и что тексты не наезжают")
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_video_colors.py")],
                        cwd=ROOT)
     if r.returncode != 0:

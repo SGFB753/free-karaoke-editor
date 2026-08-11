@@ -30,7 +30,7 @@ TEXT_EXT = {".txt", ".lrc"}
 # arrive as mojibake. The old name is still read if it survived from before.
 HOME = os.path.dirname(ROOT)
 # Settings live next to the program; earlier locations are read as a fallback.
-SETTINGS = os.path.join(ROOT, "settings.ini")
+SETTINGS = os.environ.get("KARAOKE_SETTINGS") or os.path.join(ROOT, "settings.ini")
 for _other in (os.path.join(HOME, "settings.ini"), os.path.join(HOME, "настройки.ini")):
     if not os.path.isfile(SETTINGS) and os.path.isfile(_other):
         SETTINGS = _other
@@ -169,9 +169,21 @@ def process(pairs, extra, force=False) -> int:
 def main(argv) -> int:
     force = "--force" in argv
     watch = "--watch" in argv
-    paths = [a for a in argv if not a.startswith("-")]
-    extra = read_settings() + [a for a in argv
-                               if a.startswith("-") and a not in ("--force", "--watch")]
+    # Anything that looks like an option is passed straight to karaoke.py,
+    # together with its value. Without this, `--align energy` turned “energy”
+    # into a path and the run died on “file not found”.
+    paths, extra = [], []
+    rest = [a for a in argv if a not in ("--force", "--watch")]
+    while rest:
+        a = rest.pop(0)
+        if a.startswith("-"):
+            extra.append(a)
+            if "=" not in a and rest and not rest[0].startswith("-") \
+                    and not os.path.exists(rest[0]):
+                extra.append(rest.pop(0))
+        else:
+            paths.append(a)
+    extra = read_settings() + extra
 
     if not paths:
         print(__doc__)
@@ -200,8 +212,10 @@ def main(argv) -> int:
 
     pairs, missing = find_pairs(paths)
     for a in missing:
-        print(f"  ! нет текста для {os.path.basename(a)} — положите рядом "
-              f"{os.path.splitext(os.path.basename(a))[0]}.txt")
+            print(tr(f"  ! no lyrics for {os.path.basename(a)} — put "
+             f"{os.path.splitext(os.path.basename(a))[0]}.txt next to it",
+             f"  ! нет текста для {os.path.basename(a)} — положите рядом "
+             f"{os.path.splitext(os.path.basename(a))[0]}.txt"))
     if not pairs:
         print(tr("\nNo “audio + lyrics” pair was found.",
                   "\nНе нашёл ни одной пары «аудио + текст»."))

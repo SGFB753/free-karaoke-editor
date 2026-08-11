@@ -56,7 +56,7 @@ def human_size(n: float) -> str:
 def parse_args(argv=None):
     p = argparse.ArgumentParser(
         prog="karaoke.py",
-        description="Собирает автономную караоке-страницу из аудио и текста песни.",
+        description="Builds a standalone karaoke page from a song and its lyrics.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""примеры:
   python karaoke.py song.mp3 lyrics.txt
@@ -64,41 +64,41 @@ def parse_args(argv=None):
   python karaoke.py song.mp3 lyrics.txt --no-separate          # fast, no instrumental
   python karaoke.py song.mp3 lyrics.txt --timings timings.json # apply hand edits
 """)
-    p.add_argument("audio", help="аудиофайл песни (mp3, wav, flac, m4a, ogg…)")
-    p.add_argument("lyrics", help="текстовый файл с текстом песни (UTF-8)")
-    p.add_argument("-o", "--output", help="куда сохранить HTML (по умолчанию рядом с аудио)")
+    p.add_argument("audio", help="the song file (mp3, wav, flac, m4a, ogg…)")
+    p.add_argument("lyrics", help="the lyrics as a text file (UTF-8)")
+    p.add_argument("-o", "--output", help="where to save the HTML (next to the audio by default)")
 
     g = p.add_argument_group("разметка")
     g.add_argument("--align", choices=["auto", "whisper", "energy", "none"], default="auto",
-                   help="движок выравнивания текста по звуку (по умолчанию auto)")
+                   help="alignment engine (auto by default)")
     g.add_argument("--whisper-model", default="medium",
-                   help="модель Whisper: tiny/base/small/medium/large-v3 (по умолчанию medium)")
+                   help="Whisper model: tiny/base/small/medium/large-v3")
     g.add_argument("--colors", default="#4de1ff,#ff8ad1",
-                   help="цвета подсветки: основной голос и второй, через запятую")
+                   help="highlight colours: main voice and second voice, comma separated")
     g.add_argument("--theme", default="",
-                   help="цвета оформления: фон и текст через запятую, "
-                        "например \"#0a0b14,#e8ebf5\"")
+                   help="page look: background and text, comma separated, "
+                        "for example \"#0a0b14,#e8ebf5\"")
     g.add_argument("--ui-lang", default="auto", choices=["auto", "en", "ru"],
-                   help="язык надписей готовой страницы (auto — по языку браузера)")
+                   help="language of the labels on the page (auto — the browser's)")
     g.add_argument("--lang", default="auto",
-                   help="язык текста: auto (по тексту), ru, uk, en, de, fr, es, it, pl…")
-    g.add_argument("--device", default=None, help="cuda | cpu (по умолчанию автоопределение)")
-    g.add_argument("--timings", help="взять готовые тайминги из JSON (экспорт из плеера)")
+                   help="language of the lyrics: auto (from the text), ru, uk, en, de, fr…")
+    g.add_argument("--device", default=None, help="cuda | cpu (detected automatically)")
+    g.add_argument("--timings", help="take ready timings from a JSON exported by the player")
 
     g = p.add_argument_group("звук")
     g.add_argument("--no-separate", action="store_true",
-                   help="не отделять вокал (быстрее, но без минусовки)")
-    g.add_argument("--demucs-model", default="htdemucs", help="модель Demucs")
+                   help="do not separate the vocal (faster, but no instrumental)")
+    g.add_argument("--demucs-model", default="htdemucs", help="Demucs model")
     g.add_argument("--codec", choices=list(AU.CODECS), default="mp3",
-                   help="кодек для встроенного звука (mp3 — максимальная совместимость)")
+                   help="codec for the embedded audio (mp3 — widest compatibility)")
 
     g = p.add_argument_group("вывод")
     g.add_argument("--no-embed", action="store_true",
-                   help="не встраивать звук в HTML, положить файлы рядом")
-    g.add_argument("--lrc", action="store_true", help="дополнительно сохранить .lrc")
-    g.add_argument("--title", help="название песни в шапке страницы")
-    g.add_argument("--artist", help="исполнитель в шапке страницы")
-    g.add_argument("--keep-temp", action="store_true", help="не удалять рабочую папку")
+                   help="do not embed the audio, put the files next to the page")
+    g.add_argument("--lrc", action="store_true", help="also save an .lrc")
+    g.add_argument("--title", help="song title in the page header")
+    g.add_argument("--artist", help="artist in the page header")
+    g.add_argument("--keep-temp", action="store_true", help="keep the working folder")
     return p.parse_args(argv)
 
 
@@ -188,11 +188,14 @@ def main(argv=None) -> int:
         enc_dir = out_dir if args.no_embed else tmp
         base = os.path.splitext(os.path.basename(out_html))[0]
         tracks = {}
+        # Latin suffixes: with --no-embed these files travel next to the page.
         if instrumental and vocals:
-            tracks["instrumental"] = AU.encode(instrumental, os.path.join(enc_dir, base + "_минус"), args.codec)
-            tracks["vocals"] = AU.encode(vocals, os.path.join(enc_dir, base + "_вокал"), args.codec)
+            tracks["instrumental"] = AU.encode(
+                instrumental, os.path.join(enc_dir, base + "_instrumental"), args.codec)
+            tracks["vocals"] = AU.encode(
+                vocals, os.path.join(enc_dir, base + "_vocals"), args.codec)
         else:
-            tracks["mix"] = AU.encode(work, os.path.join(enc_dir, base + "_аудио"), args.codec)
+            tracks["mix"] = AU.encode(work, os.path.join(enc_dir, base + "_audio"), args.codec)
 
         log(tr("Building the HTML…", "Собираю HTML…"))
         B.build_html(out_html, lyr, dur, tracks, engine, embed=not args.no_embed,
