@@ -51,7 +51,8 @@ def main():
           "app/README" not in ru_head, ru_head.split("\n")[2] if "\n" in ru_head else "")
     # Всё остальное — внутри app/.
     for name in ("Make-karaoke.bat", "Make-video.bat", "make-karaoke.command",
-                 "settings.ini", "START-HERE.txt", "SERVER.md"):
+                 "settings.ini", "START-HERE.txt", "SERVER.md", "Dockerfile",
+                 "docker-compose.yml"):
         check(f"{name} убран в app/", os.path.isfile(os.path.join(ROOT, name)))
     cyr = [n for n in os.listdir(HOME)
            if re.search("[А-Яа-яЁё]", n) and not n.startswith(".")]
@@ -101,6 +102,36 @@ def main():
     check("английские ключи тоже понимаются",
           args[args.index("--align") + 1] == "energy" and
           args[args.index("--ui-lang") + 1] == "ru", " ".join(args))
+
+    print("\nПроверка контейнера")
+    docker = os.path.join(ROOT, "Dockerfile")
+    compose = os.path.join(ROOT, "docker-compose.yml")
+    check("есть Dockerfile", os.path.isfile(docker))
+    check("есть docker-compose.yml", os.path.isfile(compose))
+    d = open(docker, encoding="utf-8").read()
+    c = open(compose, encoding="utf-8").read()
+    check("образ ставит ffmpeg", "ffmpeg" in d)
+    check("зависимости ставятся до копирования кода",
+          d.index("requirements.txt") < d.index("COPY . /app"), "порядок слоёв")
+    check("песни лежат в томе, а не внутри образа",
+          "KARAOKE_PROJECTS=/songs" in d and "/songs" in c)
+    check("студия слушает наружу контейнера", "--host" in d and "0.0.0.0" in d)
+    check("порт наружу открыт только на localhost", "127.0.0.1:8770:8770" in c)
+    check("модели переживают пересборку", "/cache" in d and "/cache" in c)
+    check("про видеокарту в compose сказано", "nvidia" in c.lower())
+    check("в Dockerfile нет кириллицы", not re.search("[А-Яа-яЁё]", d))
+    # ключ --host обязан существовать на самом деле, а не только в Dockerfile
+    import studio as _ST
+    check("--host разбирается программой",
+          _ST.parse_args(["--host", "0.0.0.0", "--port", "8770"])[2] == "0.0.0.0")
+    check("по умолчанию слушаем только себя", _ST.parse_args([])[2] == "127.0.0.1")
+
+    print("\nПроверка снимков для README")
+    for shot in ("docs/studio.png", "docs/video.png"):
+        p_shot = os.path.join(ROOT, shot)
+        check(f"есть {shot}", os.path.isfile(p_shot) and os.path.getsize(p_shot) > 10000)
+    readme = open(os.path.join(HOME, "README.md"), encoding="utf-8").read()
+    check("снимок вставлен в README", "app/docs/studio.png" in readme)
 
     print("\nПроверка имён папок с песнями")
     from kstudio.project import slugify

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Автоматический режим: перетащите файлы на .bat или укажите папку.
+"""Automatic mode: drop files onto the .bat, or point at a folder.
 
     python tools/auto.py песня.mp3 текст.txt     # одна песня
     python tools/auto.py D:\\Музыка              # вся папка парами имён
@@ -26,16 +26,16 @@ import karaoke  # noqa: E402
 AUDIO_EXT = {".mp3", ".wav", ".flac", ".m4a", ".ogg", ".opus", ".aac",
              ".wma", ".mp4", ".webm", ".aiff", ".alac"}
 TEXT_EXT = {".txt", ".lrc"}
-# Имя латиницей: на нерусской Windows кириллические имена из архива часто
-# приезжают крякозябрами. Старое имя читаем, если оно осталось с прошлых версий.
+# A Latin name: on a non-Russian Windows, Cyrillic names from an archive often
+# arrive as mojibake. The old name is still read if it survived from before.
 HOME = os.path.dirname(ROOT)
-# Настройки лежат рядом с программой; прежние места читаем, если файл там.
+# Settings live next to the program; earlier locations are read as a fallback.
 SETTINGS = os.path.join(ROOT, "settings.ini")
 for _other in (os.path.join(HOME, "settings.ini"), os.path.join(HOME, "настройки.ini")):
     if not os.path.isfile(SETTINGS) and os.path.isfile(_other):
         SETTINGS = _other
 
-# ключ в настройках → ключ командной строки
+# settings key → command-line option
 KEYS = {
     "align": "--align", "движок": "--align",
     "whisper-model": "--whisper-model", "model": "--whisper-model",
@@ -57,14 +57,14 @@ NO = {"нет", "no", "n", "0", "false", "выкл", "off"}
 
 
 def read_settings() -> list:
-    """settings.ini → список аргументов командной строки."""
+    """settings.ini → a list of command-line arguments."""
     args: list = []
     if not os.path.isfile(SETTINGS):
         return args
     with open(SETTINGS, encoding="utf-8-sig") as f:
         for raw in f:
-            # «#» — начало примечания, но цвет тоже пишется через «#»,
-            # и «цвета = #4de1ff,#ff8ad1» примечанием быть не должно.
+            # “#” starts a comment, but a colour is written with “#” too, and
+            # “colors = #4de1ff,#ff8ad1” must not be read as a comment.
             line = raw.strip()
             if line.startswith("#"):
                 continue
@@ -76,7 +76,7 @@ def read_settings() -> list:
             if not val:
                 continue
             if key in KEYS:
-                # «авто» в настройках пишется по-русски, движку нужен код
+                # “авто” is how “auto” is written in Russian settings files
                 if KEYS[key] in ("--lang", "--ui-lang") and \
                         val.lower() in ("авто", "auto", "сам"):
                     val = "auto"
@@ -89,7 +89,7 @@ def read_settings() -> list:
 
 
 def find_pairs(paths):
-    """Разложить входные пути на пары (аудио, текст)."""
+    """Sort the input paths into (audio, lyrics) pairs."""
     audio, texts, missing = [], {}, []
 
     def take(p):

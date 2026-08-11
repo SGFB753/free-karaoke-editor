@@ -263,7 +263,7 @@ def main() -> int:
             return 1
         say("  проект готов")
 
-        env = dict(os.environ, KARAOKE_API=api, KARAOKE_PAGE_MIX=mix,
+        env = dict(os.environ, KARAOKE_API=api, KARAOKE_ROOT=ROOT, KARAOKE_PAGE_MIX=mix,
                    KARAOKE_PAGE_STEMS=stems, KARAOKE_PAGE_EN=eng, PAGE=stems,
                    KARAOKE_SONG=song, KARAOKE_TEXT=text)
 

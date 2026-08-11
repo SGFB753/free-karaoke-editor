@@ -1,4 +1,4 @@
-"""Сборка автономной HTML-страницы: текст + тайминги + звук в одном файле."""
+"""Building the standalone HTML page: text + timings + audio in one file."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def ENGINE_NAME(engine: str) -> str:
 
 
 class _EngineLabel(dict):
-    """ENGINE_LABEL.get(x, x) — привычный вид, но перевод берётся на месте."""
+    """ENGINE_LABEL.get(x, x) — the familiar shape, translated on the spot."""
 
     def get(self, key, default=None):
         return ENGINE_NAME(key) if key in ("whisper", "energy", "manual",
@@ -44,16 +44,16 @@ def _data_uri(path: str, mime: str) -> str:
 
 def _rel(path: str, html_path: str) -> str:
     rel = os.path.relpath(path, os.path.dirname(os.path.abspath(html_path)) or ".")
-    # имена файлов бывают кириллические и с пробелами — в src их надо экранировать
+    # file names can be non-Latin and contain spaces — escape them for src
     return quote(rel.replace(os.sep, "/"))
 
 
 
 # --------------------------------------------------------------------------- #
-# Цвета оформления
+# Colours of the page
 
 def _rgb(color: str):
-    """«#rgb» или «#rrggbb» → (r, g, b) в 0..255. Непонятное — None."""
+    """“#rgb” or “#rrggbb” → (r, g, b) in 0..255. Anything else — None."""
     c = (color or "").strip().lstrip("#")
     if len(c) == 3:
         c = "".join(ch * 2 for ch in c)
@@ -66,7 +66,7 @@ def _rgb(color: str):
 
 
 def _lum(rgb) -> float:
-    """Яркость по мерке WCAG — та, по которой считают читаемость."""
+    """Luminance the WCAG way — the measure readability is judged by."""
     def ch(v):
         v /= 255.0
         return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
@@ -75,7 +75,7 @@ def _lum(rgb) -> float:
 
 
 def contrast(a: str, b: str) -> float:
-    """Во сколько раз одно светлее другого: 1 — неразличимо, 21 — предел."""
+    """How many times lighter one is than the other: 1 — identical, 21 — the limit."""
     ra, rb = _rgb(a), _rgb(b)
     if not ra or not rb:
         return 21.0
@@ -85,7 +85,7 @@ def contrast(a: str, b: str) -> float:
 
 
 def readable(bg: str, text: str, need: float = 4.5):
-    """Подправить цвет текста, чтобы он не сливался с фоном.
+    """Nudge the text colour so it does not blend into the background.
 
     Менять цвет человеку никто не запрещает, но буквы, которые не читаются на
     своём фоне, — это не оформление, а испорченная страница. Поэтому оттенок
@@ -97,7 +97,7 @@ def readable(bg: str, text: str, need: float = 4.5):
         return text, False
     if contrast(bg, text) >= need:
         return text, False
-    up = _lum(rgb_b) < 0.5                     # фон тёмный — текст осветляем
+    up = _lum(rgb_b) < 0.5                     # dark background — lighten the text
     r, g, b = rgb_t
     for _ in range(64):
         r, g, b = ((min(255, int(v + (255 - v) * 0.08 + 2)) if up
@@ -109,7 +109,7 @@ def readable(bg: str, text: str, need: float = 4.5):
 
 
 def theme_colors(theme):
-    """Пара «фон, текст» из настроек — с проверкой на читаемость."""
+    """The “background, text” pair from settings — checked for readability."""
     bg, text = (list(theme or []) + [None, None])[:2]
     bg = bg or "#0a0b14"
     text = text or "#e8ebf5"
@@ -122,7 +122,7 @@ def build_html(out_path: str, lyrics: Lyrics, duration: float,
                embed: bool = True, title: Optional[str] = None,
                artist: Optional[str] = None, ui_lang: str = "auto",
                colors=None, theme=None) -> str:
-    """tracks: {'mix'|'instrumental'|'vocals': (путь, mime)} → путь к готовому HTML."""
+    """tracks: {\'mix\'|\'instrumental\'|\'vocals\': (path, mime)} → path to the HTML."""
     with open(TEMPLATE, "r", encoding="utf-8") as f:
         tpl = f.read()
 
@@ -134,22 +134,22 @@ def build_html(out_path: str, lyrics: Lyrics, duration: float,
 
     title = title or lyrics.title or os.path.splitext(os.path.basename(out_path))[0]
 
-    # Ключ хранения правок в браузере. В нём обязаны участвовать сами тайминги:
-    # иначе пересобранная страница с новой разметкой получит прежний ключ и молча
-    # подтянет старые правки поверх свежего выравнивания.
+    # Key under which edits are kept in the browser. The timings must take part
+    # in it: otherwise a rebuilt page with new timing would get the old key and
+    # silently pull the old edits over the fresh alignment.
     sig = "|".join([title, str(round(duration, 1))] +
                    [f"{ln.start or 0:.2f}" for ln in lyrics.lines])
     payload = {
-        # плеер лежит внутри страницы, поэтому обновление программы не меняет уже
-        # собранные файлы — по этой метке видно, какой код внутри
+        # the player lives inside the page, so updating the program does not
+        # change already built files — this mark says which code is inside
         "player": __version__,
-        # Язык надписей страницы: «auto» — по языку браузера того, кто откроет.
-        # Страница уходит к людям, у которых родной язык может быть любым.
+        # Language of the page labels: “auto” follows the browser of whoever
+        # opens it. The page travels to people with any native language.
         "uiLang": ui_lang,
-        # Два цвета подсветки: основной голос и второй (подпевка, иная манера).
+        # Two highlight colours: the main voice and the second one.
         "colors": list(colors or ("#4de1ff", "#ff8ad1")),
-        # Фон и текст. Нечитаемую пару поправляем: буквы, слившиеся с фоном, —
-        # это не оформление, а испорченная страница.
+        # Background and text. An unreadable pair is corrected: letters that
+        # blend into the background are not a style, they are a broken page.
         "theme": theme_colors(theme)[0],
         "id": hashlib.sha1(sig.encode("utf-8")).hexdigest()[:12],
         "engineLabel": ENGINE_LABEL.get(engine, engine),
@@ -163,12 +163,12 @@ def build_html(out_path: str, lyrics: Lyrics, duration: float,
     }
 
     blob = json.dumps(payload, ensure_ascii=False)
-    # чтобы содержимое не сломало <script>…</script>
+    # so the content cannot break out of <script>…</script>
     blob = blob.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
     html = tpl.replace("__TITLE__", _esc(title + (" — " + artist if artist else "")))
-    # lang в <html> ставим сразу: до запуска скрипта его читают переводчики
-    # и программы чтения с экрана.
+    # lang on <html> is set right away: translators and screen readers read it
+    # before any script runs.
     html = html.replace("__LANG__", ui_lang if ui_lang in ("ru", "en") else "en")
     html = html.replace("__PAYLOAD__", blob)
 
@@ -181,7 +181,7 @@ _PAYLOAD_RE = re.compile(r'<script id="payload" type="application/json">(.*?)</s
 
 
 def read_payload(html_path: str) -> dict:
-    """Достать текст, тайминги и звук из собранной страницы."""
+    """Pull the text, the timings and the audio out of a built page."""
     with open(html_path, encoding="utf-8") as f:
         m = _PAYLOAD_RE.search(f.read())
     if not m:
@@ -197,7 +197,7 @@ def _esc(s: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
-#  Тайминги из внешнего JSON (экспорт из редактора в плеере)
+#  Timings from an external JSON (exported from the player's editor)
 # --------------------------------------------------------------------------- #
 
 def apply_timings(lyrics: Lyrics, path: str, verbose: bool = True) -> Lyrics:
@@ -216,8 +216,8 @@ def apply_timings(lyrics: Lyrics, path: str, verbose: bool = True) -> Lyrics:
             w.start = float(sw.get("t", ln.start))
             w.end = w.start + float(sw.get("d", 0.3))
 
-    # Готовый JSON тоже чиним: в нём могли остаться разъехавшиеся строки из
-    # прошлой разметки — иначе они молча переедут в новую страницу.
+    # A ready JSON is repaired too: it may still hold lines that drifted apart
+    # in an earlier pass, and they would silently move into the new page.
     from .align import repair_lines, repair_order
     log = print if verbose else (lambda m: None)
     repair_lines(lyrics, log=log)

@@ -1,12 +1,12 @@
-/* Караоке-студия — окно приложения.
-   Данные живут на сервере, правки уходят на диск сразу после изменения. */
+/* Karaoke Studio — the application window.
+   The data lives on the server; every edit goes to disk right away. */
 (function(){
 "use strict";
 const $ = id => document.getElementById(id);
 
-/* ================= надписи =================
-   Разметка написана по-английски, здесь лежит русский перевод и всё, что
-   собирается на ходу. Ключ один и тот же в обоих словарях. */
+/* ================= labels =================
+   The markup is written in English; here live the Russian translation and
+   everything assembled on the fly. The key is the same in both dictionaries. */
 const STR = {
   en: {
     appTitle: "Karaoke Studio", addSong: "＋ Add a song",
@@ -64,6 +64,7 @@ const STR = {
     voice: "Voice", cancel: "Cancel", dropBig: "Drop the files here",
     dropSub: "the song and the lyrics — or one at a time",
     langUi: "Interface language",
+    langMissing: code => `No translation file for “${code}” yet`,
     pasteHint: "Paste the copied rhythm into the selected line (Ctrl+V). With " +
       "“and all after it” — into every later line with the same text.",
     linesPicked: n => `${n} lines picked`,
@@ -286,6 +287,7 @@ const STR = {
     voice: "Голос", cancel: "Отмена", dropBig: "Отпустите файлы здесь",
     dropSub: "песня и текст — или каждый по отдельности",
     langUi: "Язык надписей",
+    langMissing: code => `Для «${code}» перевода пока нет`,
     pasteHint: "Вставить скопированный ритм в выбранную строку (Ctrl+V). " +
       "С галочкой «и все следующие» — во все последующие строки с тем же текстом.",
     linesPicked: n => `выделено строк: ${n}`,
@@ -451,7 +453,22 @@ const STR = {
     lineNo: (n, t) => "строка " + n + ": " + t,
   },
 };
+/* Any language beyond these two is a JSON file in kstudio/messages: the server
+   lists what it has, the window loads the file and falls back to English for
+   whatever is missing. A half-finished translation is still useful. */
 const LANG_UI_KEY = "karaoke-studio-lang";
+let extraLangs = [];
+async function loadLang(code){
+  if (STR[code]) return true;
+  try {
+    const msgs = await api("/api/messages?lang=" + encodeURIComponent(code));
+    if (!msgs || !Object.keys(msgs).length) return false;
+    const filled = {};
+    for (const [k, v] of Object.entries(msgs)) if (v) filled[k] = v;
+    STR[code] = {...STR.en, ...filled};
+    return true;
+  } catch (e) { return false; }
+}
 let LANG = (() => {
   try { const v = localStorage.getItem(LANG_UI_KEY); if (STR[v]) return v; } catch(e){}
   const want = (window.KARAOKE_UI_LANG || "auto");
@@ -485,8 +502,8 @@ function toast(msg){ const e=$("toast"); e.textContent=msg; e.classList.add("sho
   clearTimeout(toastT); toastT=setTimeout(()=>e.classList.remove("show"),2300); }
 
 async function api(path, body){
-  // Сообщения сервера — панель «Проверить», лог сборки — должны быть на языке
-  // окна, а выбор языка живёт здесь. Значит, о нём надо сказать.
+  // Server messages — the “Check” panel, the build log — must follow the window
+  // language, and that choice lives here. So the server has to be told.
   const head = {"X-Karaoke-Lang": LANG};
   const r = await fetch(path, body
     ? {method:"POST", headers:{...head, "Content-Type":"application/json"},
@@ -496,18 +513,25 @@ async function api(path, body){
   if (j && j.error) throw new Error(j.error);
   return j;
 }
-// Надписи расставляем сразу, до первой отрисовки списка.
+// Labels are put in place before the list is drawn for the first time.
 applyLang();
-function labelLang(){ $("btnLang").textContent = LANG === "ru" ? "EN" : "RU"; }
+function labelLang(){
+  // The button shows the language it switches TO — clearer than the current one.
+  const ring = ["en", "ru", ...extraLangs];
+  const next = ring[(ring.indexOf(LANG) + 1) % ring.length];
+  $("btnLang").textContent = next.toUpperCase();
+}
 labelLang();
-$("btnLang").addEventListener("click", () => {
-  LANG = LANG === "ru" ? "en" : "ru";
-  T = STR[LANG];
+$("btnLang").addEventListener("click", async () => {
+  const ring = ["en", "ru", ...extraLangs];
+  const next = ring[(ring.indexOf(LANG) + 1) % ring.length];
+  if (!(await loadLang(next))) return toast(T.langMissing(next));
+  LANG = next; T = STR[LANG];
   try { localStorage.setItem(LANG_UI_KEY, LANG); } catch(e){}
   applyLang(); labelLang(); relabel();
-  toast(T.langSwitched);
+  toast(T.langSwitched || next.toUpperCase());
 });
-// Часть надписей собрана на ходу — их перерисовываем отдельно.
+// Some labels are assembled on the fly — those are redrawn separately.
 function relabel(){
   if (!$("scrEdit").classList.contains("hide")){
     $("hint").textContent = T.hotkeys;
@@ -515,7 +539,7 @@ function relabel(){
     else $("selNote").textContent = T.noLine;
     refreshVoice(); refreshKeep(); refreshRhythm(); drawSummary(lastData);
     $("zoomNote").textContent = Math.round(zoom) + T.sec;
-    // Причины в панели «Проверить» пишет сервер — просим их заново на новом языке.
+    // The reasons in “Check” come from the server — ask again in the new language.
     api(`/api/project/${encodeURIComponent(pid)}`)
       .then(d => showProblems(d.problems)).catch(() => {});
     buildLines(); makeBlocks(); curLine = -2;
@@ -530,11 +554,13 @@ function screen(name){
     $(id).classList.toggle("hide", id !== name));
 }
 
-/* ================= список песен ================= */
+/* ================= song list ================= */
 let caps = {}, lastData = null;
 async function loadList(){
   const st = await api("/api/state");
   caps = st.caps;
+  extraLangs = st.uiLangs || [];
+  labelLang();
   const notes = [];
   if (!caps.ffmpeg) notes.push(T.noFfmpeg);
   if (!caps.whisper) notes.push(T.noStable);
@@ -564,11 +590,11 @@ async function loadList(){
   });
   screen("scrList");
 }
-// Пометить, какие модели уже на диске: разница между «уже есть» и «сейчас
-// скачается» — это минуты ожидания перед первой разметкой, и по одному размеру
-// в мегабайтах её не видно.
+// Mark which models are already on disk: the difference between “here” and
+// “will download now” is minutes of waiting before the first alignment, and the
+// size in megabytes alone does not show it.
 function heavy(model){
-  // Тяжёлая для этой машины: не запрещаем, но врать, что всё одинаково, нельзя.
+  // Heavy for this machine: not forbidden, but pretending all are equal is a lie.
   const need = (caps.needGb || {})[model], free = caps.freeGb;
   return (need && free && free < need) ? need : 0;
 }
@@ -598,17 +624,17 @@ function modelNote(){
   $("modelNote").textContent = s;
   $("modelNote").classList.toggle("warnish", !!need && slow);
 }
-// Язык нужен разметке Whisper: с чужим языком она расползается. Раньше окно
-// всегда молча отправляло русский, и выбрать было негде.
+// Whisper needs the language: with the wrong one the timing falls apart. The
+// window used to send Russian silently, with nowhere to choose.
 const LANG_KEY = "karaoke.lang";
 function fillLangs(){
   const sel = $("selLang"), names = caps.langs || {auto: T.detectByText};
-  // Названия языков написаны на них самих — их не переводят. А «определить по
-  // тексту» — это надпись окна, и она должна быть на языке окна.
+  // Language names are written in the languages themselves and are not
+  // translated. “Detect from the text”, though, is a window label.
   if (sel.options.length){
     const a = [...sel.options].find(o => o.value === "auto");
     if (a) a.textContent = T.detectByText;
-    return;                                    // список языков не меняется
+    return;                                    // the list of languages never changes
   }
   for (const [code, name] of Object.entries(names)){
     const o = document.createElement("option");
@@ -619,9 +645,10 @@ function fillLangs(){
   try { saved = localStorage.getItem(LANG_KEY); } catch(e){}
   sel.value = (saved && names[saved]) ? saved : "auto";
 }
-/* ---------- отчёт перед сборкой ----------
-   Сборка идёт минутами, а половина промахов видна заранее: текст не от этой
-   песни, язык определился не тот, памяти не хватит. Показываем это до кнопки. */
+/* ---------- the report before building ----------
+   Building takes minutes, and half the mistakes are visible beforehand: the
+   wrong text, the wrong language, not enough memory. Show that before the
+   button is pressed. */
 let reportT = 0, reportKey = "";
 function askReport(){
   const audio = $("inAudio").value.trim(), lyrics = $("inLyrics").value.trim();
@@ -629,7 +656,7 @@ function askReport(){
   if (!audio || !lyrics){ box.classList.add("hide"); reportKey = ""; return; }
   const key = [audio, lyrics, $("selAlign").value, $("selModel").value,
                $("selLang").value, $("chkSep").checked].join("|");
-  if (key === reportKey) return;                 // ничего не изменилось
+  if (key === reportKey) return;                 // nothing has changed
   reportKey = key;
   box.classList.remove("hide");
   box.innerHTML = '<div class="busy">' + esc(T.lookingAt) + '</div>';
@@ -654,8 +681,8 @@ function drawReport(r){
   const q = a.quiet || [];
   const cells = [
     [T.rLength, fmt(a.duration)],
-    // Для караоке важно не «сколько ударов в минуту», а где текст молчит:
-    // вступление, проигрыш, соло. Туда строки попадать не должны.
+    // What matters for karaoke is not the tempo but where the text is silent:
+    // intro, interlude, solo. No line should end up in there.
     [T.rQuiet, q.length ? T.rQuietN(q.length, Math.round(a.quietTotal))
                         : T.rQuietNone],
     [T.rLines, String(t.lines)],
@@ -707,31 +734,31 @@ $("btnAdd").addEventListener("click", () => {
 });
 $("btnBackNew").addEventListener("click", loadList);
 
-/* ================= обзор файлов ================= */
+/* ================= file browser ================= */
 let pickTarget = null;
 document.querySelectorAll("[data-pick]").forEach(b =>
   b.addEventListener("click", () => openBrowser(b.dataset.pick)));
 $("brCancel").addEventListener("click", () => $("browser").classList.add("hide"));
 $("brUp").addEventListener("click", () => showDir($("brBody").dataset.parent));
 
-// Обзор открывается там, где были в прошлый раз, а не с нуля: искать один и
-// тот же файл по всему диску каждый раз — мучение. Для звука и для текста
-// папки помнятся отдельно: они и правда обычно разные.
+// The browser opens where it was left, not at the top: hunting for the same
+// file across the whole drive every time is a chore. Audio and lyrics folders
+// are remembered separately — they really do tend to differ.
 const DIR_KEY = "karaoke.dir.";
 function dirKind(kind){ return (kind === "lyrics" || kind === "lyrics2") ? "text" : "audio"; }
 function rememberDir(kind, path){
   try { localStorage.setItem(DIR_KEY + dirKind(kind), path || ""); } catch(e){}
 }
 function startDir(kind){
-  // 1) где были в прошлый раз с файлом такого же рода
+  // 1) where we were last time with a file of this kind
   try {
     const saved = localStorage.getItem(DIR_KEY + dirKind(kind));
     if (saved) return saved;
   } catch(e){}
-  // 2) рядом с тем, что уже выбрано в этом же окне
+  // 2) next to whatever is already chosen in this window
   const field = kind === "lyrics" ? $("inLyrics").value : $("inAudio").value;
   if (field) return field;
-  // 3) рядом с исходниками открытой песни — в редакторе это самое разумное
+  // 3) next to the sources of the open song — the sensible one in the editor
   if (data){
     const src = dirKind(kind) === "text" ? data.source_lyrics : data.source_audio;
     if (src) return src;
@@ -746,11 +773,11 @@ async function openBrowser(kind){
   await showDir(startDir(kind));
 }
 async function showDir(path){
-  // «track» — это звук, «lyrics2» — текст
+  // “track” means audio, “lyrics2” means text
   const kind = (pickTarget === "lyrics" || pickTarget === "lyrics2") ? "text" : "audio";
   const d = await api("/api/browse?kind="+kind+"&path="+encodeURIComponent(path||""));
   $("brPath").value = d.path;
-  rememberDir(pickTarget, d.path);       // сюда и вернёмся в следующий раз
+  rememberDir(pickTarget, d.path);       // this is where we come back next time
   const body = $("brBody");
   body.dataset.parent = d.parent;
   body.innerHTML = "";
@@ -776,7 +803,7 @@ function row(ic, name, fn, size){
   return e;
 }
 
-/* ================= перетаскивание файлов в окно ================= */
+/* ================= dropping files into the window ================= */
 const AUDIO_RE = /\.(mp3|wav|flac|m4a|ogg|opus|aac|wma|mp4)$/i;
 const TEXT_RE  = /\.(txt|lrc)$/i;
 let dragDepth = 0;
@@ -806,8 +833,8 @@ window.addEventListener("drop", async e => {
   if (!audio && !text)
     return toast(T.dropUnknown);
 
-  // Браузер не сообщает путь к брошенному файлу — только содержимое.
-  // Поэтому отправляем байты в студию, она кладёт их рядом с проектами.
+  // The browser never gives the path of a dropped file, only its contents.
+  // So the bytes are sent to the studio, which puts them next to the projects.
   screen("scrNew");
   try{
     if (audio){ toast(T.taking(audio.name));
@@ -827,7 +854,7 @@ async function upload(file){
   return j;
 }
 
-/* ================= сборка песни ================= */
+/* ================= building a song ================= */
 $("btnBuild").addEventListener("click", async () => {
   const audio = $("inAudio").value.trim(), lyrics = $("inLyrics").value.trim();
   if (!audio || !lyrics) return toast(T.pickBoth);
@@ -860,10 +887,10 @@ function watchJob(jid, title, onDone){
 }
 $("btnJobBack").addEventListener("click", loadList);
 $("btnBack").addEventListener("click", async () => {
-  stop(); await flush();            // уходим только с записанной правкой
+  stop(); await flush();            // leave only once the edit is written
   loadList();
 });
-// Закрыли вкладку сразу после правки — успеваем дописать на диск.
+// The tab was closed right after an edit — get it onto disk in time.
 window.addEventListener("beforeunload", () => {
   if (!dirty) return;
   clearTimeout(saveT);
@@ -871,7 +898,7 @@ window.addEventListener("beforeunload", () => {
     new Blob([JSON.stringify({lines, colors, theme})], {type:"application/json"}));
 });
 
-/* ================= звук ================= */
+/* ================= audio ================= */
 let ctx=null, bufs=null, gains=null, srcs=null;
 let waStart=0, waOffset=0, playing=false, dur=0, voiceLevel=0, hasStems=false;
 
@@ -910,8 +937,8 @@ function stop(){ if(!playing) return; waOffset = mediaTime(); playing=false; sto
   $("btnPlay").textContent="▶"; }
 function seek(t){ waOffset = clamp(t,0,dur); curLine=-2;
   if (playing) playFrom(waOffset); else stopSrcs(); }
-// На отмеченных строках голос звучит всегда: это слышно уже здесь, а не
-// только в готовом караоке.
+// On marked lines the voice always plays: that is audible here, not only in
+// the finished karaoke.
 let keepOn = false;
 function inKeep(t){
   for (let i=0;i<lines.length;i++)
@@ -934,7 +961,7 @@ function setVoice(v){ voiceLevel = clamp(v,0,1);
 $("btnPlay").addEventListener("click", () => playing ? stop() : play());
 $("rVoice").addEventListener("input", e => setVoice(e.target.value/100));
 
-/* ================= проект и разметка ================= */
+/* ================= the project and its timing ================= */
 let pid=null, data=null, lines=[], envelope=[], envHop=0.02, onsets=[];
 let sel=-1, curLine=-1, loopSel=false, saveT=0;
 
@@ -958,12 +985,12 @@ async function openProject(id){
   screen("scrEdit");
   buildLines();
   makeBlocks();
-  centerLine(0);                    // текст сразу на виду, а не у нижнего края
+  centerLine(0);                    // text in sight at once, not at the bottom edge
   showProblems(data.problems);
   await loadAudio(id, data.tracks);
   lastData = data;
   $("zoomNote").textContent = Math.round(zoom) + T.sec;
-  drawSummary(data);            // длина известна только после загрузки звука
+  drawSummary(data);            // the length is known only after the audio loads
   $("tDur").textContent = fmt(dur);
   drawWave();
   requestAnimationFrame(tick);
@@ -993,8 +1020,8 @@ function findOnsets(){
   return res;
 }
 
-/* ---------- текст ---------- */
-let quiet = [];                 // места, где долго не поют
+/* ---------- the lyrics ---------- */
+let quiet = [];                 // stretches where nobody sings for a while
 const lineEls=[];
 function buildLines(){
   const box=$("scroll"); box.innerHTML=""; lineEls.length=0;
@@ -1010,24 +1037,24 @@ function buildLines(){
       el.appendChild(sp);
     });
     el.addEventListener("click", e => {
-      if (skipClick){ skipClick = false; return; }   // это был конец протяжки
+      if (skipClick){ skipClick = false; return; }   // that was the end of a drag
       selectLine(i, !e.shiftKey && !e.ctrlKey && !e.metaKey,
         e.shiftKey ? "range" : (e.ctrlKey || e.metaKey) ? "add" : "");
     });
     el.addEventListener("dblclick", () => editText(i));
     box.appendChild(el);
-    // метка «поёт оригинал» — не слово, подсвечивать её нечем
+    // the “original sings” tag is not a word, there is nothing to highlight
     lineEls.push({el, hls:[...el.children].filter(e=>e.className==="w")
                                           .map(s=>s.firstChild)});
     if (ln.keep) markKeep(i);
   });
 }
-/* Выделено может быть несколько строк: перевести кусок на второй голос или
-   удалить лишний повтор пачкой — обычное дело, а по одной это долго.
-   marked пуст — работаем с одной строкой sel. */
+/* Several lines can be selected: moving a chunk to the second voice or deleting
+   a stray repeat as a batch is ordinary work, and doing it one by one is slow.
+   When `marked` is empty we work with the single line `sel`. */
 const marked = new Set();
-// Опора выделения: от неё Shift набирает диапазон. Без неё Shift+стрелка
-// начинала выделение заново от текущей строки, и пачка не росла.
+// The selection anchor: Shift extends the range from it. Without one,
+// Shift+arrow restarted the selection at the current line and it never grew.
 let anchor = -1;
 function targets(){
   return marked.size ? [...marked].sort((a, b) => a - b) : (sel >= 0 ? [sel] : []);
@@ -1036,9 +1063,9 @@ function paintMarks(){
   lineEls.forEach((L, k) => L.el.classList.toggle("mark", marked.has(k)));
   blockEls.forEach((e, k) => e.classList.toggle("mark", marked.has(k)));
 }
-/* Выделение протягиванием: нажал на строку, провёл по соседним — они выделились.
-   Так это делают везде, где есть списки, и именно этого не хватало: Shift и
-   Ctrl знать надо, а зажать и провести — не надо. */
+/* Drag selection: press on a line, drag across its neighbours, they get picked.
+   That is how lists work everywhere, and it is exactly what was missing: Shift
+   and Ctrl have to be known, while press-and-drag does not. */
 let picking = null, skipClick = false;
 function lineIndexFromEvent(e){
   const el = e.target && e.target.closest ? e.target.closest(".ln") : null;
@@ -1058,20 +1085,21 @@ function pickRange(a, b){
   refreshVoice(); refreshKeep(); refreshRhythm();
 }
 $("scroll").addEventListener("pointerdown", e => {
-  // Флаг «щелчок после протяжки» живёт ровно до следующего нажатия: иначе,
-  // если после протяжки щелчка не было вовсе, он съел бы следующий настоящий.
+  // The “click after a drag” flag lives exactly until the next press: otherwise,
+  // if no click followed the drag, it would swallow the next real one.
   skipClick = false;
   if (editingText >= 0 || e.button !== 0) return;
   const i = lineIndexFromEvent(e);
   if (i < 0) return;
-  // Захват указателя ставим не сразу: пока это обычный щелчок, он не должен
-  // перенаправлять click со строки на сцену — иначе одиночный выбор ломается.
+  // Pointer capture is not taken immediately: while this is still an ordinary
+  // click it must not retarget the click from the line to the stage, which
+  // would break selecting a single line.
   picking = {from: i, last: i, moved: false, id: e.pointerId};
 });
 $("stage").addEventListener("pointermove", e => {
   if (!picking) return;
-  // Пока тянем, ищем строку под курсором — цель события остаётся прежней,
-  // если указатель захвачен сценой.
+  // While dragging, look up the line under the cursor: the event target stays
+  // the same once the stage has captured the pointer.
   const el = document.elementFromPoint(e.clientX, e.clientY);
   const ln = el && el.closest ? el.closest(".ln") : null;
   const i = ln ? lineEls.findIndex(L => L.el === ln) : -1;
@@ -1091,17 +1119,17 @@ window.addEventListener("pointerup", e => {
   picking = null;
   document.body.classList.remove("picking");
   if (was.moved){ try { $("stage").releasePointerCapture(was.id); } catch (err) {} }
-  if (was.moved) skipClick = true;      // щелчок после протяжки ничего не сбрасывает
+  if (was.moved) skipClick = true;      // a click after a drag resets nothing
 });
 
 function selectLine(i, jump, mode){
   const prev = sel, was = sel;
   sel = clamp(i, 0, lines.length-1);
-  if (mode === "add"){                       // Ctrl — добавить или снять одну
+  if (mode === "add"){                       // Ctrl — add or remove one
     if (!marked.size && was >= 0) marked.add(was);
     if (marked.has(sel) && marked.size > 1) marked.delete(sel); else marked.add(sel);
     anchor = sel;
-  } else if (mode === "range"){              // Shift — весь кусок от опоры
+  } else if (mode === "range"){              // Shift — the whole run from the anchor
     const from = anchor >= 0 ? anchor : (was < 0 ? sel : was);
     marked.clear();
     for (let k = Math.min(from, sel); k <= Math.max(from, sel); k++) marked.add(k);
@@ -1119,11 +1147,11 @@ function selectLine(i, jump, mode){
   if (jump) seek(Math.max(0, lines[sel].start - 0.7));
   if (prev >= 0) layoutBlock(prev);
   layoutBlock(sel);
-  makeWords();                       // ряд слов всегда от выбранной строки
+  makeWords();                       // the word row always belongs to the selected line
   refreshVoice(); refreshKeep(); refreshRhythm();
 }
-// Листать текст руками. Раньше единственным способом были ↑ ↓ по одной
-// строке — до начала длинной песни так не доберёшься.
+// Scrolling the lyrics by hand. The only way used to be ↑ ↓ one line at a
+// time — you never get back to the start of a long song like that.
 let freeScroll = 0, scrollY = 0;
 function stageScroll(dy){
   const box = $("scroll"), stage = $("stage");
@@ -1131,7 +1159,7 @@ function stageScroll(dy){
   scrollY = clamp(scrollY + dy, 0, max);
   box.style.transition = "none";
   box.style.transform = `translateY(${-scrollY}px)`;
-  freeScroll = Date.now();            // на время отпускаем автоцентровку
+  freeScroll = Date.now();            // let go of auto-centring for a while
 }
 $("stage").addEventListener("wheel", e => {
   e.preventDefault();
@@ -1139,11 +1167,12 @@ $("stage").addEventListener("wheel", e => {
 }, {passive:false});
 
 function centerLine(i){
-  // Пока человек листает сам, не выдёргиваем текст из-под него.
+  // While a person scrolls, do not yank the text out from under them.
   if (Date.now() - freeScroll < 2500) return;
   $("scroll").style.transition = "";
-  // До выбора строки показываем первую: отступ у текста задан в долях ОКНА, а
-  // сцена ниже окна, и без центровки текст оказывается у нижнего края или за ним.
+  // Before a line is chosen, show the first one: the text padding is set in
+  // fractions of the WINDOW while the stage is shorter, so without centring the
+  // text ends up at the bottom edge or past it.
   if (i < 0) i = 0;
   if (!lineEls[i]) return;
   const el=lineEls[i].el;
@@ -1151,17 +1180,17 @@ function centerLine(i){
   $("scroll").style.transform = `translateY(${-scrollY}px)`;
 }
 
-/* ---------- сохранение ---------- */
-/* ---------- отмена ----------
-   Правки уходят на диск сами, поэтому «закрыть без сохранения» тут нет — и
-   единственная защита от неверного движения это отмена. Храним снимки строк:
-   их немного, и так не приходится расписывать обратное действие для каждой
-   правки по отдельности. */
+/* ---------- saving ---------- */
+/* ---------- undo ----------
+   Edits go to disk by themselves, so there is no “close without saving” here,
+   and undo is the only protection from a wrong move. We keep snapshots of the
+   lines: there are few of them, and this way no inverse action has to be
+   written for every kind of edit. */
 const past = [];
 let lastSnap = {what: "", at: 0};
 function snap(what){
-  // Подряд идущие однотипные мелочи (удержание [ или ]) — один шаг отмены,
-  // иначе на возврат к нормальному виду уйдёт полсотни нажатий.
+  // A run of identical small steps (holding [ or ]) is one undo step, or it
+  // would take fifty presses to get back to where things were.
   const now = Date.now();
   if (what && what === lastSnap.what && now - lastSnap.at < 900){
     lastSnap.at = now;
@@ -1184,9 +1213,9 @@ function undo(){
 }
 function refreshUndo(){ $("btnUndo").disabled = past.length === 0; }
 
-/* ---------- отсчёт до пения ---------- */
-// Пока не поют, сцена пуста, и по ней не понять, идёт песня или встала.
-// Отсчёт до ближайшей строки движется — значит, движется и всё остальное.
+/* ---------- countdown to the singing ---------- */
+// While nobody sings the stage is empty and it is impossible to tell whether
+// the song is running. A moving countdown means everything else moves too.
 function idxAt(t){
   let idx = -1;
   for (let i=0;i<lines.length;i++){ if (lines[i].start <= t) idx = i; else break; }
@@ -1195,14 +1224,14 @@ function idxAt(t){
 let waitFrom = 0;
 function showWait(t, cur){
   const box = $("wait");
-  // Короткий перерыв между строками отсчитывать незачем: он и так на виду,
-  // а надпись, мигающая на полсекунды, только мешает.
+  // A short gap between lines needs no countdown: it is obvious anyway, and a
+  // label flashing for half a second only gets in the way.
   const MIN_GAP = 5.0;
   if (cur >= 0){ box.classList.add("hide"); return; }
-  // Секунды, а не миллисекунды: это не разметка, а «сколько ещё ждать».
+  // Seconds, not milliseconds: this is “how long to wait”, not timing.
   const left = s => s >= 60 ? fmt(s) : Math.ceil(s) + T.sec;
   const next = lines.find(l => l.start > t);
-  if (!next){                              // песня допета
+  if (!next){                              // the song is over
     if (dur - t < 3){ box.classList.add("hide"); return; }
     box.classList.remove("hide");
     $("waitTtl").textContent = T.theEnd;
@@ -1223,15 +1252,16 @@ function showWait(t, cur){
   waitFrom = from;
 }
 
-/* ---------- два голоса и их цвета ---------- */
-// Вокалы иногда идут внахлёст: основной и подпевка, чистый голос и экстрим.
-// Строке можно назначить второй голос — он красится вторым цветом и здесь,
-// и на готовой странице.
+/* ---------- two voices and their colours ---------- */
+// Vocals sometimes overlap: a lead and a backing part, a clean voice and a
+// scream. A line can be given the second voice — it is painted in the second
+// colour both here and on the finished page.
 let colors = ["#4de1ff", "#ff8ad1"];
-let theme = ["#0a0b14", "#e8ebf5"];      // фон и цвет букв
+let theme = ["#0a0b14", "#e8ebf5"];      // background and text colour
 
-/* Читаемость. Цвета выбирает человек, но буквы, слившиеся с фоном, — это не
-   оформление, а испорченная страница. Оттенок оставляем, светлоту двигаем. */
+/* Readability. A person picks the colours, but letters that blend into the
+   background are not a style, they are a broken page. The hue is kept, the
+   lightness is moved. */
 function rgbOf(c){
   c = String(c || "").trim().replace("#", "");
   if (c.length === 3) c = c.split("").map(x => x + x).join("");
@@ -1312,8 +1342,9 @@ function toggleVoice(){
 }
 $("btnVoice").addEventListener("click", toggleVoice);
 
-// Иногда кусок песни петь не надо: подпевка, речь, важный для сюжета момент.
-// Такую строку помечаем — и в готовом караоке на ней снова слышен оригинал.
+// Sometimes a piece is not meant to be sung: backing vocals, speech, a moment
+// that matters to the story. Such a line is marked, and in the finished karaoke
+// the original is heard there again.
 function refreshKeep(){
   const on = sel >= 0 && !!lines[sel].keep;
   $("btnKeep").classList.toggle("on", on);
@@ -1334,7 +1365,7 @@ function toggleKeep(){
   toast(idx.length > 1 ? T.keepManyMsg(to, idx.length)
                        : (to ? T.keepOnMsg : T.keepOffMsg));
 }
-// Метка прямо в тексте: понятно с одного взгляда, что петь эту строку не надо.
+// A tag right in the text: one glance says this line is not yours to sing.
 function markKeep(i){
   const el = lineEls[i] && lineEls[i].el;
   if (!el) return;
@@ -1347,10 +1378,10 @@ function markKeep(i){
 }
 $("btnKeep").addEventListener("click", toggleKeep);
 
-/* ---------- копия строки и её ритма ----------
-   Припев поют одинаково, а размечать его заново каждый раз — работа впустую.
-   Выверенную строку можно скопировать целиком (Ctrl+D) или взять только её
-   раскладку слов и наложить на такую же строку в другом месте. */
+/* ---------- copying a line and its rhythm ----------
+   A chorus is sung the same way every time, and timing it again from scratch is
+   wasted work. A line that is already right can be copied whole (Ctrl+D), or
+   only its word layout can be taken and applied to the same line elsewhere. */
 let clip = null;                  // {text, words:[{w, dt, d}]}
 function sameText(i){
   return !!(clip && lines[i] &&
@@ -1359,9 +1390,9 @@ function sameText(i){
 function copyRhythm(){
   const idx = targets();
   if (!idx.length) return toast(T.pickLineFirst);
-  // Копируем всё выделенное: слова, раскладку, голос, пометки и расстояния
-  // между строками. Дальше можно взять только ритм, а можно поставить сами
-  // строки — хоть одну, хоть пачку.
+  // Copy everything selected: the words, the layout, the voice, the marks and
+  // the gaps between lines. Later either the rhythm alone or the lines
+  // themselves can be pasted — one of them or the whole batch.
   const base = lines[idx[0]].start;
   clip = {
     span: lines[idx[idx.length - 1]].end - base,
@@ -1376,7 +1407,7 @@ function copyRhythm(){
   toast(idx.length > 1 ? T.copiedLines(idx.length)
                        : T.copiedLine(lines[idx[0]].text.slice(0, 30)));
 }
-// Положить копию в строку: текст, слова и пометки — от копии, место — от цели.
+// Put a copy into a line: text, words and marks from the copy, place from the target.
 function putLine(ln, item, start){
   ln.text = item.text;
   ln.voice = item.voice;
@@ -1393,8 +1424,8 @@ function pasteLine(){
   if (!clip) return toast(T.rhythmNone);
   const idx = targets();
   if (!idx.length) return toast(T.pickLineFirst);
-  // «Вставить» значит «добавить», а не «затереть»: копии встают следом за
-  // выделенным, ничего из существующего не пропадает.
+  // “Paste” means “add”, not “overwrite”: the copies go in after the selection
+  // and nothing that already exists disappears.
   const after = idx[idx.length - 1];
   const cur = lines[after], next = lines[after + 1];
   const start = cur.end;
@@ -1427,7 +1458,7 @@ function applyRhythm(i, item){
 function pasteRhythm(){
   if (!clip) return toast(T.rhythmNone);
   if (sel < 0) return toast(T.pickLineFirst);
-  // Одна строка — или все последующие с тем же текстом, если стоит галочка.
+  // One line — or every later line with the same text, if the box is ticked.
   const idx = marked.size ? targets()
             : restToo() ? lines.map((l, i) => i).filter(i => i >= sel && sameText(i))
             : [sel];
@@ -1443,14 +1474,16 @@ function pasteRhythm(){
   layoutBlocks(); makeWords(); curLine = -2; touched();
   toast(done > 1 ? T.rhythmPastedN(done) : T.rhythmPasted);
 }
-// Целая копия строки — когда в тексте забыли повтор, а размечен он уже хорошо.
+// A whole copy of a line — when a repeat is missing from the text and the
+// timing of the original is already good.
 function duplicateLine(){
   if (sel < 0) return toast(T.pickLineFirst);
   const cur = lines[sel], next = lines[sel + 1];
   const span = Math.max(cur.end - cur.start, MIN_W * cur.words.length, 0.4);
   const start = cur.end;
-  // Копия встаёт сразу после оригинала. Если до следующей строки места меньше,
-  // чем занимает строка, копия ужимается — иначе она сразу наедет на соседа.
+  // The copy goes right after the original. If there is less room before the
+  // next line than the line takes, the copy is squeezed — otherwise it would
+  // run into its neighbour at once.
   const room = next ? Math.max(next.start - start, MIN_W * cur.words.length) : Infinity;
   const k = Math.min(1, room / span);
   const copy = {
@@ -1479,8 +1512,8 @@ $("btnPaste").addEventListener("click", pasteRhythm);
 $("btnPasteLine").addEventListener("click", pasteLine);
 $("btnUndo").addEventListener("click", undo);
 
-// Состояние сохранения видно всегда, а не мигает на секунду: человек должен
-// понимать, лежит ли его правка на диске, не гадая.
+// The save state is always visible instead of flashing for a second: one has
+// to know whether an edit is on disk without guessing.
 let dirty = false, saving = null;
 function saveState(kind, text){
   const n = $("savedNote");
@@ -1496,7 +1529,7 @@ async function saveNow(){
     showProblems(r.problems);
     saveState("ok", T.savedOk);
   }catch(e){
-    dirty = true;                       // не сохранилось — правка всё ещё наша
+    dirty = true;                       // not saved — the edit is still ours
     saveState("bad", T.saveBad);
     toast(T.saveErr(e.message));
     clearTimeout(saveT); saveT = setTimeout(() => { saving = saveNow(); }, 3000);
@@ -1508,17 +1541,17 @@ function touched(){
   clearTimeout(saveT);
   saveT = setTimeout(() => { saving = saveNow(); }, 350);
 }
-// Перед выгрузкой ждём, пока правка ляжет на диск: сервер собирает файл из
-// того, что у него, и без этого можно получить страницу с прошлой разметкой.
+// Before exporting, wait for the edit to reach the disk: the server builds the
+// file from what it has, and without this the page could carry the old timing.
 async function flush(){
   clearTimeout(saveT);
   if (dirty) saving = saveNow();
   await saving;
 }
 
-/* ---------- проблемные строки ---------- */
-// Сводка по песне. До сборки такой отчёт уже был; после долгой части он нужен
-// не меньше — что за песня получилась и куда смотреть в первую очередь.
+/* ---------- suspicious lines ---------- */
+// The summary of the song. Such a report already existed before building; after
+// the long part it is needed just as much — what came out and where to look.
 function drawSummary(data){
   const box = $("sum");
   const words = lines.reduce((n, l) => n + (l.words ? l.words.length : 0), 0);
@@ -1575,9 +1608,9 @@ function showProblems(list){
   layoutBlocks();
 }
 
-/* ================= дорожка времени ================= */
-let zoom = 15;                  // сколько секунд видно
-function pps(){ return $("tlwrap").clientWidth / zoom; }   // пикселей в секунде
+/* ================= the timeline ================= */
+let zoom = 15;                  // how many seconds are visible
+function pps(){ return $("tlwrap").clientWidth / zoom; }   // pixels per second
 function viewStart(){ return clamp(mediaTime() - zoom*0.35, 0, Math.max(dur-zoom,0)); }
 function xOf(t){ return (t - viewStart()) * pps(); }
 function tOf(x){ return viewStart() + x / pps(); }
@@ -1588,8 +1621,8 @@ function drawWave(){
   const g=c.getContext("2d"); g.scale(devicePixelRatio, devicePixelRatio);
   g.clearRect(0,0,w,h);
 
-  // Места без пения — вступление, проигрыш, соло. Затеняем их: строки туда
-  // попадать не должны, и на глаз это видно сразу.
+  // Stretches without singing — intro, interlude, solo. They are shaded: no
+  // line belongs there, and the eye catches it at once.
   const kq = pps(), vq = viewStart();
   quiet.forEach(q => {
     const x = (q.start - vq) * kq, wd = (q.end - q.start) * kq;
@@ -1614,9 +1647,9 @@ function drawWave(){
   onsets.forEach(t => { const x=xOf(t); if (x>=0&&x<=w){
     g.beginPath(); g.moveTo(x+.5,4); g.lineTo(x+.5,76); g.stroke(); } });
 }
-/* Блоки создаются один раз и живут в контейнере, который просто сдвигается.
-   Пересоздавать их каждый кадр — 60 перестроек DOM в секунду, окно от этого
-   ощутимо тормозит на песне в шесть десятков строк. */
+/* The blocks are created once and live in a container that is simply shifted.
+   Rebuilding them every frame means 60 DOM rebuilds a second, which visibly
+   slows the window down on a song of sixty lines. */
 const blockEls = [];
 function makeBlocks(){
   const box = $("blocks");
@@ -1626,8 +1659,9 @@ function makeBlocks(){
     e.className = "blk" + (ln.voice === 2 ? " v2" : "") + (ln.keep ? " keep" : "");
     e.dataset.i = i;
     e.appendChild(document.createTextNode((i+1) + ". " + ln.text));
-    // Ручки с обеих сторон: правая двигает конец строки, левая — начало.
-    // Раньше левой не было, и подвинуть начало, не сдвинув всю строку, было нельзя.
+    // Grips on both sides: the right one moves the end of the line, the left
+    // one the start. There used to be no left grip, so the start could not be
+    // moved without moving the whole line.
     for (const side of ["left", "right"]){
       const grip = document.createElement("div");
       grip.className = "grip " + side;
@@ -1640,16 +1674,16 @@ function makeBlocks(){
   });
   updateLanes();
   layoutBlocks();
-  paintMarks();          // блоки создаются заново — метки надо вернуть
+  paintMarks();          // the blocks are rebuilt — the marks have to come back
 }
-// Вторая полоса нужна, только если второй голос в песне есть: иначе дорожка
-// зря станет вдвое выше.
+// The second lane is only needed when the song has a second voice: otherwise
+// the timeline would be twice as tall for nothing.
 function updateLanes(){
   const two = lines.some(l => l.voice === 2);
   const wrap = $("tlwrap");
   if (wrap.classList.contains("twolane") === two) return;
   wrap.classList.toggle("twolane", two);
-  drawWave();                       // холст под дорожкой поменял высоту
+  drawWave();                       // the canvas under the timeline changed height
 }
 function layoutBlock(i){
   const e = blockEls[i], ln = lines[i];
@@ -1665,8 +1699,8 @@ function layoutBlocks(){
   makeWords();
   showNextHint();
 }
-// Пустое окно дорожки выглядит сломанным: не видно ни одной строки и непонятно,
-// что впереди. Подсказка у края говорит, куда всё идёт и сколько ждать.
+// An empty timeline window looks broken: not a single line in sight and no clue
+// what is ahead. A hint at the edge says where things are going and how long.
 function showNextHint(){
   const box = $("tlnext");
   if (!box) return;
@@ -1687,9 +1721,9 @@ function showNextHint(){
     + (back ? T.ago : "");
 }
 
-/* ---------- слова выбранной строки ----------
-   Внутри строки поют неровно: пауза, растянутое слово, скороговорка. Раскладка
-   по слогам этого не знает, поэтому каждое слово можно подвинуть отдельно. */
+/* ---------- the words of the selected line ----------
+   Singing inside a line is uneven: a pause, a stretched word, a patter. The
+   syllable layout knows nothing of that, so every word can be moved on its own. */
 const wordEls = [];
 function makeWords(){
   const box = $("words");
@@ -1706,8 +1740,9 @@ function makeWords(){
       const t = document.createElement("span");
       t.className = "wtx"; t.textContent = w.w;
       e.appendChild(t);
-      // Края слова — как у строки: слева начало, справа конец. Без них длину
-      // слова было не задать вовсе, оно тянулось до соседа и всё.
+      // A word has edges like a line: start on the left, end on the right.
+      // Without them a word's length could not be set at all — it simply ran
+      // to its neighbour.
       for (const side of ["left", "right"]){
         const g = document.createElement("div");
         g.className = "wgrip " + side;
@@ -1730,36 +1765,36 @@ function layoutWords(){
     const width = Math.max(w.d * k, 10);
     e.style.left = (w.t * k) + "px";
     e.style.width = width + "px";
-    // на узком слове подпись всё равно не читается — не показываем огрызок
+    // on a narrow word the label is unreadable anyway — show no stub
     e.classList.toggle("tiny", width < 26);
   });
 }
-// Ни одно слово не схлопывается в ноль: подсветка проскочила бы его мгновенно.
+// No word collapses to zero: the highlight would flash past it instantly.
 const MIN_W = 0.06;
 
-// Слова больше не склеены встык. Раньше длина слова была не сама по себе, а
-// «до следующего», и задать, где слово КОНЧАЕТСЯ, было нельзя в принципе —
-// приходилось двигать соседа. Теперь у каждого своё начало и своя длина,
-// между словами разрешён промежуток: в песне паузы внутри строки — норма.
+// Words are no longer glued end to end. A word's length used to mean “up to
+// the next one”, so where a word ENDS could not be set at all — the neighbour
+// had to be moved. Now each has its own start and length, and a gap between
+// words is allowed: pauses inside a line are normal in a song.
 function editWord(j, mode, t0, d0, dt){
   const ln = lines[sel], w = ln.words[j];
   const prev = ln.words[j-1], next = ln.words[j+1];
 
-  // Соседи УСТУПАЮТ дорогу, а не держат стену. Слова в строке стоят встык, и
-  // если запретить залезать на соседа, каждое оказывается заперто между своими
-  // же соседями и не двигается вообще никуда — ровно так и было.
-  // Границей служит не край соседа, а край СЛЕДУЮЩЕГО ЗА НИМ: сосед вправе
-  // ужаться, но не исчезнуть совсем.
-  // Крайние слова ограничены только песней. Упирать их в края собственной
-  // строки нельзя: строки идут встык, и последнее слово тогда не сдвинуть ни
-  // на миллисекунду. Строка растянется следом, а если налезет на соседнюю —
-  // это увидит панель «Проверить», для того она и есть.
+  // Neighbours GIVE WAY instead of holding a wall. Words in a line sit end to
+  // end, and forbidding overlap locks every word between its own neighbours so
+  // it cannot move at all — which is exactly what used to happen.
+  // The bound is not the neighbour's edge but the edge of THE ONE AFTER IT: a
+  // neighbour may shrink, but not vanish.
+  // The outer words are bounded only by the song. Pinning them to the edges of
+  // their own line is wrong: lines sit end to end, and the last word could not
+  // be moved by even a millisecond. The line stretches after it, and if it runs
+  // into the next one the “Check” panel says so — that is what it is for.
   const floor = prev ? prev.t + MIN_W : 0;
   const ceil  = next ? next.t + next.d - MIN_W
                      : Math.max(ln.end, dur || t0 + d0 + 10);
 
   if (mode === "left"){
-    // двигаем начало, конец остаётся на месте — так задаётся длина
+    // move the start, the end stays put — that is how length is set
     const end = t0 + d0;
     w.t = clamp(t0 + dt, floor, end - MIN_W);
     w.d = end - w.t;
@@ -1771,46 +1806,46 @@ function editWord(j, mode, t0, d0, dt){
     w.d = d0;
   }
 
-  // Подвинули — поджимаем соседей ровно настолько, насколько наехали.
+  // Once moved, push the neighbours back exactly as far as we ran into them.
   if (prev && prev.t + prev.d > w.t) prev.d = Math.max(MIN_W, w.t - prev.t);
   if (next && w.t + w.d > next.t){
     const nEnd = next.t + next.d;
     next.t = w.t + w.d;
     next.d = Math.max(MIN_W, nEnd - next.t);
   }
-  // Слово вправе выйти за прежние края строки — строка растянется за ним,
-  // иначе последнее слово упиралось бы в невидимую стену.
+  // A word may go past the old bounds of its line — the line stretches after
+  // it, or the last word would hit an invisible wall.
   ln.start = Math.min(ln.start, ln.words[0].t);
   const last = ln.words[ln.words.length - 1];
   ln.end = Math.max(ln.end, last.t + last.d);
   layoutWords(); layoutBlock(sel);
 }
-function drawBlocks(){                       // раз в кадр — один сдвиг контейнера
+function drawBlocks(){                       // once a frame — one container shift
   $("tlscroll").style.transform = "translateX(" + (-viewStart() * pps()) + "px)";
   $("phead").style.left = xOf(mediaTime()) + "px";
   showNextHint();
 }
 
-/* ---------- перетаскивание блоков ---------- */
+/* ---------- dragging the blocks ---------- */
 let drag=null, wdrag=null;
 $("blocks").addEventListener("dblclick", e => {
   const blk = e.target.closest(".blk"); if (!blk) return;
-  editText(+blk.dataset.i);          // правим текст там же, где видим строку
+  editText(+blk.dataset.i);          // edit the text where the line is seen
 });
 $("blocks").addEventListener("pointerdown", e => {
   const blk = e.target.closest(".blk"); if (!blk) return;
   const i = +blk.dataset.i;
   selectLine(i, false, e.shiftKey ? "range" : (e.ctrlKey || e.metaKey) ? "add" : "");
-  if (marked.size > 1) return;               // пачку не тащим, только выделяем
-  snap("");                       // снимок до правки, пока данные ещё целы
+  if (marked.size > 1) return;               // a batch is selected, not dragged
+  snap("");                       // a snapshot before the edit, while data is whole
   drag = {i, x0:e.clientX, start:lines[i].start, end:lines[i].end,
           words: lines[i].words.map(w=>w.t),
-          durs: lines[i].words.map(w=>w.d),      // чтобы не потерять ручную правку слов
+          durs: lines[i].words.map(w=>w.d),      // keep hand-tuned word lengths
           grip: e.target.dataset.grip || ""};
   $("tlwrap").classList.add("drag");
   e.preventDefault();
 });
-// Слово тянут тем же движением, что и строку, но правится только оно одно.
+// A word is dragged the same way as a line, but only it is changed.
 $("words").addEventListener("pointerdown", e => {
   const el = e.target.closest(".wrd"); if (!el || sel < 0) return;
   const j = +el.dataset.j, w = lines[sel].words[j];
@@ -1835,15 +1870,15 @@ window.addEventListener("pointermove", e => {
   const dt = (e.clientX - drag.x0) / $("tlwrap").clientWidth * zoom;
   const ln = lines[drag.i];
   if (drag.grip === "right"){
-    // Тянем правый край — растягивается ПОСЛЕДНЕЕ слово, остальные стоят
-    // как стояли. Раньше здесь пересчитывалась вся строка, и выверенная
-    // разметка внутри неё менялась без всякой на то нужды.
+    // Dragging the right edge stretches the LAST word; the rest stay exactly
+    // where they were. This used to recompute the whole line, changing timing
+    // that had been tuned by hand for no reason at all.
     const last = ln.words.length - 1;
     const floor = last >= 0 ? drag.words[last] + MIN_W : drag.start + 0.2;
     ln.end = Math.max(floor, drag.end + dt);
     if (last >= 0) ln.words[last].d = ln.end - ln.words[last].t;
   } else if (drag.grip === "left"){
-    // Левый край — то же самое с ПЕРВЫМ словом: конец строки не трогаем.
+    // The left edge does the same to the FIRST word: the line end is untouched.
     const w0 = ln.words[0];
     const ceil = w0 ? (drag.words[0] + drag.durs[0]) - MIN_W : drag.end - 0.2;
     let ns = clamp(drag.start + dt, 0, ceil);
@@ -1853,7 +1888,7 @@ window.addEventListener("pointermove", e => {
     if (w0){ w0.t = ns; w0.d = (drag.words[0] + drag.durs[0]) - ns; }
   } else {
     let ns = Math.max(0, drag.start + dt);
-    const snap = nearestOnset(ns);            // прилипаем к началу фразы
+    const snap = nearestOnset(ns);            // snap to the start of a phrase
     if (snap !== null && Math.abs(snap-ns) < zoom*0.012) ns = snap;
     const d = ns - drag.start;
     ln.start = ns; ln.end = drag.end + d;
@@ -1880,40 +1915,40 @@ function nearestOnset(t){
   for (const o of onsets){ const d=Math.abs(o-t); if (d<bd){ bd=d; best=o; } }
   return best;
 }
-/* ---------- правка самого текста ---------- */
-// Опечатку в исходном txt раньше можно было исправить только пересборкой — а
-// вместе с ней терялась вся ручная разметка. Здесь строка правится на месте:
-// время строки остаётся, слова раскладываются внутри него заново.
+/* ---------- editing the text itself ---------- */
+// A typo in the source txt used to need a full rebuild — which threw away all
+// the hand tuning. Here a line is fixed in place: its time stays, and the words
+// are laid out inside it again.
 function syllables(word){
   const m = word.toLowerCase().match(/[аеёиоуыэюяaeiouy]/g);
-  return Math.max(1, m ? m.length : 1);        // на слоги делим по гласным
+  return Math.max(1, m ? m.length : 1);        // syllables are counted by vowels
 }
 function retext(i, text){
   const parts = text.trim().split(/\s+/).filter(Boolean);
   const ln = lines[i];
   if (!parts.length || parts.join(" ") === ln.text) return false;
   ln.text = parts.join(" ");
-  // Правка текста может сделать строку подпевкой и наоборот.
+  // Editing the text can turn a line into backing vocals and back.
   ln.backing = /^\(.*\)$/.test(ln.text.trim());
   ln.words = parts.map(w => ({w, t: ln.start, d: 0, s: syllables(w)}));
   spread(ln);
   return true;
 }
-// Забытая или лишняя строка — такая же ошибка в тексте, как опечатка, и
-// пересобирать ради неё всю песню тоже незачем.
+// A missing or a stray line is as much a mistake in the text as a typo, and
+// rebuilding the whole song over it makes no more sense.
 function addLine(){
   if (sel < 0) return toast(T.addAfter);
   const cur = lines[sel];
   const next = lines[sel + 1];
-  // Новая строка занимает промежуток до следующей, но не больше двух секунд:
-  // длинную паузу после соло заполнять целиком незачем. Промежуток бывает и
-  // отрицательным — соседние строки могут уже налезать друг на друга, — тогда
-  // берём короткий кусок, а разъезд и без того покажет панель «Проверить».
+  // A new line takes the gap up to the next one, but no more than two seconds:
+  // there is no point filling a long pause after a solo. The gap can even be
+  // negative — neighbouring lines may already overlap — and then a short piece
+  // is taken; the “Check” panel will point at the overlap anyway.
   const start = cur.end;
   const room = next ? next.start - start : Infinity;
   const end = start + Math.max(0.4, Math.min(2, room));
-  // section — это заголовок, который НАЧИНАЕТСЯ с этой строки. У вставленной
-  // его быть не должно, иначе «[Припев]» появится в песне второй раз.
+  // `section` is a heading that STARTS at this line. An inserted line must not
+  // carry one, or “[Chorus]” would appear in the song twice.
   const ln = {text: T.newLineText, start, end: Math.max(end, start + 0.4),
               section: null, backing: false, words: []};
   ln.words = ln.text.split(" ").map(w => ({w, t: start, d: 0, s: syllables(w)}));
@@ -1921,7 +1956,7 @@ function addLine(){
   snap("");
   lines.splice(sel + 1, 0, ln);
   buildLines(); makeBlocks(); selectLine(sel + 1, false); touched();
-  editText(sel);                       // сразу даём вписать настоящий текст
+  editText(sel);                       // let the real text be typed straight away
 }
 function delLine(){
   const idx = targets();
@@ -1936,8 +1971,8 @@ function delLine(){
   buildLines(); makeBlocks(); selectLine(keep, false); touched();
   toast(idx.length > 1 ? T.linesDeleted(idx.length) : T.lineDeleted);
 }
-// Правку текста надо было угадать: двойной щелчок по строке — не то действие,
-// о котором думают, глядя на дорожку. Кнопка делает то же самое явно.
+// Editing the text had to be guessed: a double click on a line is not what
+// comes to mind while looking at the timeline. The button says it out loud.
 $("btnText").addEventListener("click", () => {
   if (sel < 0) return toast(T.pickLineFirst);
   editText(sel);
@@ -1950,7 +1985,7 @@ function editText(i){
   if (editingText >= 0) return;
   if (i < 0 || !lines[i]) return;
   selectLine(i, false);
-  centerLine(i);                   // строка может быть за краем сцены — покажем её
+  centerLine(i);                   // the line may be off-stage — bring it into view
   editingText = i;
   const el = lineEls[i].el, ln = lines[i];
   const inp = document.createElement("input");
@@ -1964,16 +1999,16 @@ function editText(i){
     editingText = -1;
     if (save) snap("");
     const changed = save && retext(i, inp.value);
-    // ничего не изменилось — и шага отмены быть не должно, иначе кнопка
-    // останется зажжённой над пустой историей и будет жать вхолостую
+    // nothing changed, so there must be no undo step, or the button would stay
+    // lit over an empty history and do nothing when pressed
     if (save && !changed){ past.pop(); refreshUndo(); }
-    buildLines();                       // сцену перестраиваем: слов стало другое число
-    makeBlocks();                       // и подпись на дорожке тоже
+    buildLines();                       // rebuild the stage: the word count changed
+    makeBlocks();                       // and the label on the timeline too
     selectLine(i, false);
     if (changed){ touched(); toast(T.lineTextFixed); }
   };
   inp.addEventListener("keydown", e => {
-    e.stopPropagation();                // иначе Enter и пробел уедут в горячие клавиши
+    e.stopPropagation();                // or Enter and Space would hit the hotkeys
     if (e.key === "Enter"){ e.preventDefault(); finish(true); }
     if (e.key === "Escape"){ e.preventDefault(); finish(false); }
   });
@@ -1984,9 +2019,9 @@ function editText(i){
 
 function spread(ln){
   const total = ln.words.reduce((s,w)=>s+(w.s||1),0)||1;
-  // Раньше здесь span насильно поднимался до 0,15 с — и на узкой строке слова
-  // раскладывались ШИРЕ неё самой, вылезая за блок. Не выдумываем длину:
-  // если строке не хватает места на слова, растягиваем саму строку.
+  // The span used to be forced up to 0.15 s here — and on a narrow line the
+  // words were laid out WIDER than the line itself, spilling out of the block.
+  // No invented lengths: if a line is too short for its words, the line grows.
   const need = ln.words.length * MIN_W;
   if (ln.end - ln.start < need) ln.end = ln.start + need;
   const span = ln.end - ln.start;
@@ -1995,12 +2030,11 @@ function spread(ln){
     w.d = ln.start + span*acc/total - w.t; });
 }
 
-/* ---------- перемотка по дорожке ---------- */
+/* ---------- seeking along the timeline ---------- */
 $("tlwrap").addEventListener("pointerdown", e => {
-  // По пустому месту дорожки — перемотка. Но не по тому, что на ней лежит:
-  // блок строки и кусочек слова тянут, а не перематывают. Без этой оговорки
-  // попытка взять слово сначала перематывала песню, и сцена уезжала на
-  // другую строку прямо из-под руки.
+  // Empty timeline space means seeking. What lies on it does not: a line block
+  // and a word chip are dragged, not seeked. Without this rule, grabbing a word
+  // first seeked the song and the stage jumped to another line under your hand.
   if (e.target.closest(".blk") || e.target.closest(".wrd")) return;
   seek(tOf(e.offsetX));
 });
@@ -2009,7 +2043,7 @@ function setZoom(z){ zoom=clamp(z,4,120);
 $("btnZoomIn").addEventListener("click", ()=>setZoom(zoom/1.6));
 $("btnZoomOut").addEventListener("click", ()=>setZoom(zoom*1.6));
 
-/* ---------- причесать всё ---------- */
+/* ---------- tidy everything up ---------- */
 $("btnSnap").addEventListener("click", () => {
   if (!onsets.length) return toast(T.noVocalWave);
   let n=0;
@@ -2021,12 +2055,12 @@ $("btnSnap").addEventListener("click", () => {
     if (Math.abs(d) < 0.01) return;
     ln.start += d; ln.end += d; ln.words.forEach(w=>w.t += d); n++;
   });
-  if (!n) past.pop();               // ничего не сдвинулось — отменять нечего
+  if (!n) past.pop();               // nothing moved — nothing to undo
   curLine=-2; layoutBlocks(); touched(); refreshUndo();
   toast(n ? T.movedN(n) : T.allInPlace);
 });
 
-/* ---------- повтор строки ---------- */
+/* ---------- looping a line ---------- */
 function restToo(){ return $("chkRest").checked; }
 function putHere(){
   if (sel < 0) return toast(T.pickLineFirst);
@@ -2050,7 +2084,7 @@ $("btnLoop").addEventListener("click", () => {
   if (loopSel){ seek(Math.max(0, lines[sel].start-0.6)); play(); }
 });
 
-/* ================= цикл отрисовки ================= */
+/* ================= the drawing loop ================= */
 function tick(){
   if (!$("scrEdit").classList.contains("hide")){
     const t = mediaTime();
@@ -2063,8 +2097,8 @@ function tick(){
     if (kp !== keepOn){ keepOn = kp; applyVoice(); }
     let idx=-1;
     for (let i=0;i<lines.length;i++){ if (lines[i].start <= t) idx=i; else break; }
-    // Песня допета — гасим подсветку. Иначе последняя строка висит зажжённой
-    // до самого конца записи, и это выглядит забытым.
+    // The song is over — turn the highlight off. Otherwise the last line hangs
+    // lit until the end of the recording and looks forgotten.
     if (idx === lines.length - 1 && idx >= 0 && t > lines[idx].end + 0.25) idx = -1;
     if (idx !== curLine){
       lineEls.forEach((L,i)=>{
@@ -2086,19 +2120,19 @@ function tick(){
       }
     }
     $("tCur").textContent = fmtMs(t);
-    // Во время перетаскивания вид не пересчитываем: иначе дорожка едет
-    // под курсором и попасть в нужное место невозможно.
+    // The view is not recomputed while dragging: otherwise the timeline slides
+    // under the cursor and hitting the right spot is impossible.
     if (!drag && !wdrag){ drawWave(); drawBlocks(); }
   }
   requestAnimationFrame(tick);
 }
 
-/* ================= клавиатура ================= */
+/* ================= keyboard ================= */
 document.addEventListener("keydown", e => {
   if ($("scrEdit").classList.contains("hide")) return;
   if (e.target.tagName === "INPUT") return;
   const nudge = (d) => { if (sel<0) return;
-    snap("nudge");                  // удержание клавиши — один шаг отмены
+    snap("nudge");                  // holding a key is one undo step
     const last = restToo() ? lines.length-1 : sel;
     for (let k=sel; k<=last; k++){
       lines[k].start+=d; lines[k].end+=d; lines[k].words.forEach(w=>w.t+=d); }
@@ -2119,14 +2153,14 @@ document.addEventListener("keydown", e => {
     case " ": e.preventDefault(); playing?stop():play(); break;
     case "ArrowLeft": e.preventDefault(); seek(mediaTime()-5); break;
     case "ArrowRight": e.preventDefault(); seek(mediaTime()+5); break;
-    // Shift+стрелки набирают пачку строк, обычные — просто ходят по одной.
+    // Shift+arrows pick a batch of lines; plain arrows just walk one by one.
     case "ArrowUp": e.preventDefault();
       selectLine(sel-1, !e.shiftKey, e.shiftKey ? "range" : ""); break;
     case "ArrowDown": e.preventDefault();
       selectLine(sel+1, !e.shiftKey, e.shiftKey ? "range" : ""); break;
     case "Escape": if (marked.size){ e.preventDefault(); selectLine(sel, false); } break;
     case "Delete": case "Backspace":
-      // Выделил строку и нажал Delete — очевидное действие, которого не было.
+      // Select a line, press Delete — the obvious action that was missing.
       e.preventDefault(); delLine(); break;
     case "Home": e.preventDefault(); freeScroll = 0; selectLine(0, true); break;
     case "End": e.preventDefault(); freeScroll = 0;
@@ -2139,16 +2173,16 @@ document.addEventListener("keydown", e => {
   }
 });
 
-/* ================= экспорт ================= */
-// Настоящая минусовка от исполнителя лучше любой разделённой. Разметка при
-// этом уже выверена руками — пересчитывать её незачем, меняется только звук.
+/* ================= export ================= */
+// A real instrumental from the artist beats any separated one. The timing is
+// already tuned by hand — there is no need to redo it, only the audio changes.
 $("btnTrack").addEventListener("click", () => openBrowser("track"));
 async function replaceTrack(path){
   await flush();
   const j = await api(`/api/project/${encodeURIComponent(pid)}/track`,
                       {path, track: "instrumental", shift: true});
   watchJob(j.job, T.replTrack, async r => {
-    await openProject(pid);            // перечитываем: сменился и звук, и время
+    await openProject(pid);            // re-read: both the audio and the times changed
     const parts = [T.replDone];
     if (Math.abs(r.offset) >= 0.05)
       parts.push(T.offsetDiff((r.offset > 0 ? "+" : "") + r.offset.toFixed(2)));
@@ -2159,9 +2193,9 @@ async function replaceTrack(path){
   });
 }
 
-// Разбивку текста по строкам обычно правят уже после первой сборки — когда
-// стало ясно, как удобнее петь. Гонять из-за этого всё заново незачем:
-// дорожки в проекте уже лежат, пересчитывается только разметка.
+// The way the text is split into lines is usually fixed after the first build,
+// once it is clear how it sings. That is no reason to redo everything: the
+// tracks are already in the project, only the timing is recomputed.
 async function realign(lyricsPath){
   await flush();
   try{
@@ -2184,14 +2218,14 @@ $("btnLyrics").addEventListener("click", () => {
   openBrowser("lyrics2");
 });
 $("btnRealign").addEventListener("click", async () => {
-  // Частый случай: тот же файл, просто отредактированный. Перечитываем его
-  // с диска — выбирать заново ничего не нужно.
+  // A common case: the same file, simply edited. It is re-read from disk —
+  // nothing has to be picked again.
   if (!confirm(T.askRealign)) return;
   realign("");
 });
 
-// Готовый файл лежит рядом с исходной песней, и найти его без подсказки
-// непросто. Показываем путь и даём открыть папку одним нажатием.
+// The finished file sits next to the original song and is not easy to find
+// without a hint. Show the path and open the folder with one press.
 let madeFile = "";
 function showMade(path){
   madeFile = path || "";
@@ -2216,7 +2250,8 @@ $("btnExportMp4").addEventListener("click", async () => {
   const j = await api(`/api/project/${encodeURIComponent(pid)}/export`, {kind:"mp4"});
   watchJob(j.job, T.jobVideo, r => {
     screen("scrEdit"); showMade(r.path); toast(T.videoReady);
-    // Ролик рисуется долго, а потом его ещё надо найти. Открываем папку сами.
+    // The video takes a while to draw, and then it has to be found. Open the
+    // folder ourselves.
     reveal(r.path);
   });
 });

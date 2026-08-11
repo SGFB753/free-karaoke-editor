@@ -1,4 +1,4 @@
-"""Признаки жизни на долгих шагах.
+"""Signs of life during long steps.
 
 Demucs и Whisper молчат минутами: модель грузится, разделение считается, а в
 логе последняя строка так и висит. Со стороны это неотличимо от зависания —
@@ -23,7 +23,8 @@ def mmss(sec: float) -> str:
 
 
 class Heartbeat:
-    """Контекст: пока внутри — раз в `every` секунд пишет, что шаг ещё идёт.
+    """A context manager: while inside, every `every` seconds it reports that
+    the step is still running.
 
         with Heartbeat(log, "выравнивание") as hb:
             model.align(..., progress_callback=hb.progress)
@@ -36,8 +37,8 @@ class Heartbeat:
         self._log = log
         self._what = what
         self._every = every
-        # Затянувшийся шаг сам по себе ничего не объясняет: человек видит только
-        # растущие секунды и не знает, ждать ему или это уже беда.
+        # A step that drags on explains nothing by itself: all one sees is the
+        # seconds going up, with no idea whether to keep waiting.
         self._slow_after = slow_after
         self._slow_note = slow_note
         self._said_slow = False
@@ -49,24 +50,24 @@ class Heartbeat:
         self._total = 0.0
         self._extra = ""
 
-    # --- то, что зовут снаружи ---------------------------------------------
+    # --- what the caller uses ----------------------------------------------
     def progress(self, done: float, total: float) -> None:
-        """Колбэк для шагов, которые знают свой объём (секунды, куски, проценты)."""
+        """Callback for steps that know their size (seconds, chunks, percent)."""
         with self._lock:
             self._done, self._total = float(done or 0), float(total or 0)
 
     def note(self, text: str) -> None:
-        """Приписка к следующему удару: например, процент от самого Demucs."""
+        """A note for the next beat: for example, Demucs\'s own percentage."""
         with self._lock:
             self._extra = text
 
-    # --- механика ----------------------------------------------------------
+    # --- machinery ---------------------------------------------------------
     def _line(self) -> str:
         with self._lock:
             done, total, extra = self._done, self._total, self._extra
         s = f"  …{self._what}: идёт {mmss(time.time() - self._t0)}"
-        # Долю показываем, только если она осмысленная: нулевой или полный
-        # счётчик сообщает не больше, чем его отсутствие.
+        # Show the fraction only when it means something: a counter at zero or
+        # at the very end says no more than no counter at all.
         if total > 0 and 0 < done < total:
             s += f", готово {done / total * 100:.0f}%"
         if extra:
@@ -82,7 +83,7 @@ class Heartbeat:
                     self._said_slow = True
                     self._log("  " + self._slow_note)
             except Exception:
-                # Признак жизни не имеет права уронить сам шаг.
+                # A sign of life must never bring the step down with it.
                 return
 
     def __enter__(self) -> "Heartbeat":

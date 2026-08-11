@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Караоке из аудиофайла и текста песни → один HTML-файл, который открывается
-в любом браузере на любой ОС без интернета.
+Karaoke from an audio file and its lyrics → one HTML file that opens in any
+browser on any OS without internet.
 
-    python karaoke.py песня.mp3 текст.txt -o караоке.html
+    python karaoke.py song.mp3 lyrics.txt -o karaoke.html
 
-Полная версия с минусовкой и точной разметкой по словам:
+The full version, with an instrumental and word-by-word timing:
 
     pip install stable-ts demucs
-    python karaoke.py песня.mp3 текст.txt -o караоке.html --align whisper
+    python karaoke.py song.mp3 lyrics.txt -o karaoke.html --align whisper
 """
 
 from __future__ import annotations
@@ -61,8 +61,8 @@ def parse_args(argv=None):
         epilog="""примеры:
   python karaoke.py song.mp3 lyrics.txt
   python karaoke.py song.mp3 lyrics.txt -o out.html --align whisper --whisper-model medium
-  python karaoke.py song.mp3 lyrics.txt --no-separate          # быстро, без минусовки
-  python karaoke.py song.mp3 lyrics.txt --timings timings.json # применить ручную правку
+  python karaoke.py song.mp3 lyrics.txt --no-separate          # fast, no instrumental
+  python karaoke.py song.mp3 lyrics.txt --timings timings.json # apply hand edits
 """)
     p.add_argument("audio", help="аудиофайл песни (mp3, wav, flac, m4a, ogg…)")
     p.add_argument("lyrics", help="текстовый файл с текстом песни (UTF-8)")
@@ -127,11 +127,11 @@ def main(argv=None) -> int:
 
     tmp = tempfile.mkdtemp(prefix="karaoke_")
     try:
-        AU.ffmpeg()          # ранняя понятная ошибка, если ffmpeg не установлен
-        AU.ensure_on_path()  # чтобы Whisper и Demucs тоже смогли его запустить
+        AU.ffmpeg()          # an early, plain error if ffmpeg is missing
+        AU.ensure_on_path()  # so Whisper and Demucs can run it too
 
-        # Предупреждаем заранее: падение по памяти на середине выглядит как
-        # набор системных кодов, по которым непонятно, что делать.
+        # Warn in advance: running out of memory halfway looks like a pile of
+        # system codes that say nothing about what to do.
         from kstudio import sysinfo
         need = 0.5
         if not args.no_separate and S.available():
@@ -150,8 +150,8 @@ def main(argv=None) -> int:
         log(tr(f"Length: {int(dur//60)}:{int(dur%60):02d}",
            f"Длительность: {int(dur//60)}:{int(dur%60):02d}"))
 
-        # Отчёт до тяжёлого: если текст не от этой песни или памяти не хватит,
-        # лучше узнать сейчас, а не через десять минут.
+        # The report before the heavy work: if the text belongs to another song
+        # or memory will run out, better to know now than in ten minutes.
         from kstudio import report as REP
         try:
             env, hop = AU.rms_envelope(work)
@@ -171,7 +171,7 @@ def main(argv=None) -> int:
             instrumental, vocals = S.separate(work, os.path.join(tmp, "stems"),
                                               args.demucs_model, args.device, log)
 
-        # по чистому вокалу разметка точнее, чем по полному миксу
+        # timing from the clean vocal is more accurate than from the full mix
         align_src = vocals or work
 
         if args.timings:
@@ -217,8 +217,8 @@ def main(argv=None) -> int:
                      "\nМинусовки нет. Чтобы её получить: pip install demucs"))
 
         if engine == "energy":
-            # советовать установку имеет смысл, только если её и правда нет:
-            # иначе подсказка врёт тому, кто просто выбрал быстрый движок
+            # suggesting an install only makes sense when it really is missing:
+            # otherwise the hint lies to someone who just picked the fast engine
             print(tr("\nThe timing is approximate — it finds phrases by loudness "
                      "and often misses on a dense mix.",
                      "\nРазметка приблизительная — она ищет фразы по громкости и на "
@@ -260,8 +260,8 @@ def main(argv=None) -> int:
         print(tr(f"\nError: {e}", f"\nОшибка: {e}"), file=sys.stderr)
         return 1
     except RuntimeError as e:
-        # Внятные сообщения от движка показываем как есть: трассировка Python
-        # пользователю ничего не объясняет.
+        # Clear messages from the engine are shown as they are: a Python
+        # traceback explains nothing to the person running it.
         print(tr(f"\nIt did not work: {e}", f"\nНе получилось: {e}"), file=sys.stderr)
         return 1
     except KeyboardInterrupt:

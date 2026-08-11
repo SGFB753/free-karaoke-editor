@@ -7,6 +7,8 @@ account, no subscription.
 
 *По-русски: [README.ru.md](README.ru.md)*
 
+![Karaoke Studio: the editor with the lyrics stage, the summary and the timeline](app/docs/studio.png)
+
 | | |
 |---|---|
 | **Timing** | word-by-word, by Whisper (`stable-ts`) — or instantly by loudness |
@@ -249,7 +251,22 @@ with a switch in each. The program's own messages follow `ui-lang` in
 `settings.ini`, then the system language. Language *names* in the picker are
 written in their own language and are never translated.
 
+## Adding a language
+
+The window and the finished page speak English and Russian. Another language is
+a JSON file — no code, no rebuild:
+
+1. Copy `app/kstudio/messages/template.json` to `<code>.json` (`de.json`,
+   `uk.json`, `pl.json`…).
+2. Translate the values. An empty value falls back to English, so a
+   half-finished file is already useful.
+3. Reload the window: the language button cycles through everything it finds.
+
+Pull requests with translations are welcome — that is the easiest way to help.
+
 ## Video for YouTube
+
+![A frame from the rendered video: the intro countdown above the lyrics](app/docs/video.png)
 
 ```bash
 python app/tools/video.py page.html -o clip.mp4
@@ -268,6 +285,34 @@ its start. Gaps shorter than five seconds are not counted down.
 The video takes the colours and the look from the page: the second voice is
 painted in its own colour, and when two voices sing at once they are drawn on
 two rows — the first voice above, the second below, in a fixed order.
+
+## In a container
+
+If you would rather not install PyTorch and the rest on your own machine — or
+simply do not want to run software from the internet outside a box:
+
+```bash
+cd app && docker compose up --build     # then open http://127.0.0.1:8770/
+```
+
+Songs stay in `projects/` next to the launchers, and the music you want to
+import goes into `music/` (mounted read only, created on first run). The models are downloaded once
+into a named volume, so a rebuild does not fetch them again. The port is
+published to `127.0.0.1` only, exactly like the local run.
+
+Without compose:
+
+```bash
+docker build -t karaoke app
+docker run --rm -p 127.0.0.1:8770:8770 \
+  -v "$PWD/projects:/songs" -v "$HOME/Music:/music:ro" karaoke
+```
+
+**GPU.** For an NVIDIA card install the container toolkit on the host and add
+`--gpus all` (or uncomment the `deploy:` block in `docker-compose.yml`). Whisper
+and Demucs then use the card; without it everything still works on the CPU, only
+slower. Apple silicon cannot be passed into a container at all — there the local
+run is the fast one.
 
 ## Tests
 

@@ -1,4 +1,4 @@
-"""Отчёт перед сборкой: что за песня, что за текст и чего ждать.
+"""The report before building: what the song is, what the text is, what to expect.
 
 Сборка занимает минуты, а половина промахов видна заранее: текст не от этой
 песни, строк вдвое меньше, чем куплетов, язык определился не тот, памяти не
@@ -14,18 +14,18 @@ from .progress import mmss as _mmss
 from .i18n import tr
 from typing import Dict, List, Optional, Tuple
 
-# Разумные границы темпа для песни. Ниже — уже не танцуют, выше — считается
-# вдвое завышенным (обычно это удвоенная доля).
+# Sensible tempo bounds for a song. Below that nobody dances; above it the
+# number is usually doubled (the beat counted twice).
 BPM_MIN, BPM_MAX = 60.0, 190.0
 
 
 def _onset_strength(env: List[float]) -> List[float]:
-    """Насколько резко нарастает громкость — по этому и слышен «удар»."""
+    """How sharply the loudness rises — that is what a beat sounds like."""
     return [max(0.0, env[i] - env[i - 1]) for i in range(1, len(env))]
 
 
 def bpm(env: List[float], dt: float) -> Tuple[Optional[float], float]:
-    """Темп по огибающей громкости. → (ударов в минуту, уверенность 0..1).
+    """Tempo from the loudness envelope. → (beats per minute, confidence 0..1).
 
     Считаем автокорреляцию нарастаний громкости и ищем период доли гребёнкой:
     настоящая доля отзывается и на своём периоде, и на всех кратных, а такт —
@@ -38,14 +38,14 @@ def bpm(env: List[float], dt: float) -> Tuple[Optional[float], float]:
     o = _onset_strength(env)
     n = len(o)
     mean = sum(o) / n
-    o = [x - mean for x in o]                    # без постоянной составляющей
+    o = [x - mean for x in o]                    # drop the constant component
 
-    lo = max(1, int(60.0 / (BPM_MAX * dt)))      # лаг самой быстрой доли
+    lo = max(1, int(60.0 / (BPM_MAX * dt)))      # lag of the fastest beat
     hi = int(60.0 / (BPM_MIN * dt))
     if hi <= lo or hi >= n:
         return None, 0.0
 
-    # Считаем до четырёх периодов: гребёнке нужны кратные лаги.
+    # Go up to four periods: the comb needs multiples of the lag.
     top = min(4 * hi, n - 2)
     corr = [0.0] * (top + 1)
     for lag in range(lo, top + 1):
@@ -55,13 +55,13 @@ def bpm(env: List[float], dt: float) -> Tuple[Optional[float], float]:
         corr[lag] = s / (n - lag)
 
     def at(x: float) -> float:
-        """Корреляция на дробном лаге — период доли редко попадает в столбик."""
+        """Correlation at a fractional lag — a beat rarely lands on a whole bin."""
         if x < lo or x >= top:
             return 0.0
         k = int(x)
         return corr[k] + (corr[k + 1] - corr[k]) * (x - k)
 
-    # Темпы около 120 в песнях встречаются несравнимо чаще, чем 60 или 190.
+    # Tempos around 120 are far more common in songs than 60 or 190.
     def prior(t: float) -> float:
         return math.exp(-0.5 * (math.log(t / 120.0, 2) / 0.9) ** 2)
 
@@ -71,8 +71,8 @@ def bpm(env: List[float], dt: float) -> Tuple[Optional[float], float]:
     while t <= BPM_MAX:
         lag = 60.0 / (t * dt)
         comb = sum(w * at(lag * m) for m, w in WEIGHTS)
-        # Если на половине предполагаемого периода тоже стоит горб, значит доля
-        # вдвое чаще, а мы смотрим на такт. У настоящей доли между ударами пусто.
+        # If half the assumed period also has a bump, the beat is twice as fast
+        # and we are looking at the bar. A real beat has silence between hits.
         s = (comb - 0.6 * at(lag / 2)) * prior(t)
         scores.append(s)
         if s > best_s:
@@ -88,7 +88,7 @@ def bpm(env: List[float], dt: float) -> Tuple[Optional[float], float]:
 
 
 def quiet_stretches(env: List[float], dt: float, least: float = 5.0) -> List[Dict]:
-    """Долгие места, где не поют: вступление, проигрыш, соло, хвост.
+    """Long stretches without singing: intro, interlude, solo, tail.
 
     Для караоке это важнее темпа: там текст молчит, и туда не надо тащить
     строки. Считаем по громкости — до разделения дорожек мы слышим весь микс,
@@ -116,7 +116,7 @@ def quiet_stretches(env: List[float], dt: float, least: float = 5.0) -> List[Dic
 
 
 def loudness(env: List[float]) -> Dict:
-    """Насколько запись громкая и не срезаны ли пики."""
+    """How loud the recording is and whether the peaks are clipped."""
     if not env:
         return {}
     peak = max(env)
@@ -142,15 +142,16 @@ def text_stats(lyrics) -> Dict:
             "longest": max((len(ln.words) for ln in lines), default=0)}
 
 
-# Во сколько раз дольше самой песни считается шаг. Замеры на обычном ноутбуке
-# без видеокарты; на другой машине цифры другие, поэтому и подписаны «примерно».
+# How many times the song's own length a step takes. Measured on an ordinary
+# laptop without a graphics card; another machine gives other numbers, which is
+# why the report says “about”.
 COST = {"separate": 2.2,
         "tiny": 0.6, "base": 0.9, "small": 1.6, "medium": 4.0, "large-v3": 8.0}
 
 
 def estimate(duration: float, model: str, separate: bool, whisper: bool) -> Dict:
-    """Сколько примерно ждать. Числа грубые и честно об этом говорят."""
-    secs = 8.0                                  # подготовка звука и сборка файла
+    """Roughly how long to wait. The numbers are crude and say so."""
+    secs = 8.0                                  # preparing the audio and writing the file
     if separate:
         secs += duration * COST["separate"]
     if whisper:
@@ -171,7 +172,7 @@ def human_time(sec: float) -> str:
 def build(audio_path: str, lyrics, duration: float, envelope: List[float],
           hop: float, *, model: str = "small", separate: bool = True,
           whisper: bool = True, language: str = "auto") -> Dict:
-    """Собрать отчёт целиком. Ничего тяжёлого не считает."""
+    """Put the whole report together. Nothing heavy is computed here."""
     from . import lang as LG
     from . import sysinfo
 
@@ -180,8 +181,8 @@ def build(audio_path: str, lyrics, duration: float, envelope: List[float],
     stats = text_stats(lyrics)
     code = LG.resolve(language, lyrics.plain_text())
 
-    # Текст и песня должны быть примерно одной длины: слишком мало строк на
-    # долгую песню — обычно значит, что взят не тот текст или пропущены повторы.
+    # Text and song should be about the same length: too few lines for a long
+    # song usually means the wrong text, or repeats left unwritten.
     per_line = duration / stats["lines"] if stats["lines"] else 0
     notes: List[str] = []
     if stats["lines"] == 0:
@@ -250,7 +251,7 @@ def build(audio_path: str, lyrics, duration: float, envelope: List[float],
 
 
 def as_text(rep: Dict) -> str:
-    """Отчёт в несколько строк — для вывода в консоль."""
+    """The report as a few lines — for printing to the console."""
     a, t, plan = rep["audio"], rep["text"], rep["plan"]
     out = [tr("Before we start", "Отчёт перед сборкой"), "─" * 46]
     dur = a["duration"]

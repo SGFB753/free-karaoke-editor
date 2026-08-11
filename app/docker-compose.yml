@@ -1,0 +1,28 @@
+# One command instead of a long docker run:
+#
+#   cd app && docker compose up --build     then open http://127.0.0.1:8770/
+#
+# Songs are kept in ../projects, next to the launchers; put the music you want
+# to import under ../music (mounted read-only, created on first run).
+services:
+  studio:
+    build: .
+    ports:
+      - "127.0.0.1:8770:8770"
+    volumes:
+      - ../projects:/songs
+      - ../music:/music:ro
+      - karaoke-models:/cache          # Whisper and Demucs models, downloaded once
+    environment:
+      KARAOKE_UI_LANG: auto
+    # For an NVIDIA card, uncomment: the models then run on the GPU.
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+volumes:
+  karaoke-models:

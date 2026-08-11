@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Рендер караоке-ролика в MP4 для YouTube — без OBS и без записи экрана.
+"""Rendering a karaoke video to MP4 for YouTube — no OBS, no screen capture.
 
-    py tools\\video.py "D:\\Музыка\\Pesnya_karaoke.html"
-    py tools\\video.py "...html" -o клип.mp4 --audio guide
-    py tools\\video.py "...html" --start 60 --seconds 20     # быстрый пробник
+    py tools\\video.py "D:\\Music\\Pesnya_karaoke.html"
+    py tools\\video.py "...html" -o clip.mp4 --audio guide
+    py tools\\video.py "...html" --start 60 --seconds 20     # a quick sample
 
-Кадры рисуются программно и передаются ffmpeg — получается быстрее реального
-времени. Текст, тайминги и звук берутся из самой HTML-страницы.
-Если правили разметку в плеере, выгрузите её («Правка» → «Скачать тайминги»)
-и укажите ключом --timings.
+Frames are drawn in code and piped into ffmpeg, which is faster than real
+time. The text, the timings and the audio all come from the HTML page itself.
+If the timing was edited in the player, export it (“Edit” → “Download timings”)
+and pass it with --timings.
 """
 
 from __future__ import annotations
@@ -31,23 +31,23 @@ from kstudio.i18n import tr        # noqa: E402
 from kstudio import audio as AU      # noqa: E402
 from kstudio import build as B       # noqa: E402
 
-# ---------------------------------------------------------------- оформление
-# Значения по умолчанию — те же, что у страницы. Если в странице заданы свои
-# цвета и оформление, ролик берёт их: иначе в готовом файле всё оказывалось
-# одинаковым, хотя в редакторе у голосов цвета разные.
+# ---------------------------------------------------------------- look
+# The defaults match the page. When the page carries its own colours and look,
+# the video takes them: otherwise everything came out the same colour in the
+# finished file while the editor showed two different voices.
 BG_TOP = (10, 11, 20)
 BG_BOTTOM = (20, 24, 48)
-COL_DIM = (93, 100, 128)        # ещё не спетое
-COL_HOT = (77, 225, 255)        # спетое, основной голос
-COL_HOT2 = (255, 138, 209)      # спетое, второй голос
-COL_SIDE = (63, 69, 92)         # соседние строки
-COL_SECT = (255, 204, 77)       # метка секции
+COL_DIM = (93, 100, 128)        # not sung yet
+COL_HOT = (77, 225, 255)        # sung, main voice
+COL_HOT2 = (255, 138, 209)      # sung, second voice
+COL_SIDE = (63, 69, 92)         # neighbouring lines
+COL_SECT = (255, 204, 77)       # section label
 COL_BAR = (77, 225, 255)
-COL_PIP = (52, 58, 82)          # точки-ориентиры между строками
+COL_PIP = (52, 58, 82)          # guide dots between lines
 
 
 def _hex_rgb(value, fallback):
-    """«#4de1ff» → (77, 225, 255). Непонятное — как было."""
+    """“#4de1ff” → (77, 225, 255). Anything unclear is left as it was."""
     c = str(value or "").strip().lstrip("#")
     if len(c) == 3:
         c = "".join(ch * 2 for ch in c)
@@ -78,7 +78,7 @@ def _contrast(a, b):
 
 
 def _readable(color, bg, need):
-    """Не дать цвету слиться с фоном: чёрное на чёрном — это пустой ролик."""
+    """Keep a colour off its background: black on black is an empty video."""
     up = _lum(bg) < 0.5
     out = tuple(color)
     for _ in range(40):
@@ -90,7 +90,7 @@ def _readable(color, bg, need):
 
 
 def apply_colors(payload) -> None:
-    """Перенести цвета страницы в ролик."""
+    """Carry the page colours over into the video."""
     global COL_HOT, COL_HOT2, COL_BAR, COL_DIM, COL_SIDE, BG_TOP, BG_BOTTOM
     colors = payload.get("colors") or []
     COL_HOT = _hex_rgb(colors[0] if len(colors) > 0 else None, COL_HOT)
@@ -103,8 +103,8 @@ def apply_colors(payload) -> None:
         BG_TOP = bg
         BG_BOTTOM = _mix(bg, (255, 255, 255), 0.06)
     if text and bg:
-        # Тусклые строки — тот же цвет, только приглушённый: на светлом фоне
-        # серый по умолчанию не читался бы вовсе.
+        # Dim lines use the same colour, only muted: on a light background the
+        # default grey would not read at all.
         COL_DIM = _readable(_mix(text, bg, 0.45), bg, 2.2)
         COL_SIDE = _readable(_mix(text, bg, 0.68), bg, 1.6)
     COL_HOT = _readable(COL_HOT, BG_TOP, 2.5)
@@ -143,9 +143,9 @@ def find_font(explicit=None) -> str:
                             "Не нашёл ни одного шрифта .ttf — укажите его ключом --font"))
 
 
-# ---------------------------------------------------------------- звук
+# ---------------------------------------------------------------- audio
 def keep_spans(payload: dict) -> list:
-    """Куски, на которых оригинальный голос оставлен нарочно."""
+    """Stretches where the original voice is deliberately kept."""
     out = []
     for ln in (payload.get("data") or {}).get("lines") or []:
         if ln.get("keep"):
@@ -155,7 +155,7 @@ def keep_spans(payload: dict) -> list:
     for a, b in out:
         if b <= a:
             continue
-        if merged and a - merged[-1][1] < 0.35:      # соседние строки — один кусок
+        if merged and a - merged[-1][1] < 0.35:      # adjacent lines make one stretch
             merged[-1][1] = max(merged[-1][1], b)
         else:
             merged.append([a, b])
@@ -163,7 +163,7 @@ def keep_spans(payload: dict) -> list:
 
 
 def extract_audio(payload: dict, html_path: str, tmp: str, mode: str) -> str:
-    """Достать нужную дорожку из страницы (или из файла рядом) в WAV."""
+    """Pull the needed track out of the page (or a file next to it) into WAV."""
     srcs = {}
     for name, uri in payload.get("audio", {}).items():
         if uri.startswith("data:"):
@@ -188,11 +188,11 @@ def extract_audio(payload: dict, html_path: str, tmp: str, mode: str) -> str:
     if mode == "minus":
         spans = keep_spans(payload)
         if spans and instr and voc:
-            # На отмеченных строках голос должен остаться: подпевка, речь,
-            # важный для сюжета кусок. Вне них вокал глушится в ноль.
-            # enable у volume работает по таймлайну: где фильтр выключен,
-            # звук проходит как есть.
-            # Запятые внутри выражения экранируются для ffmpeg, а не для питона.
+            # On marked lines the voice must stay: backing vocals, speech, a bit
+            # that matters to the story. Everywhere else the vocal is muted.
+            # volume's `enable` works along the timeline: where the filter is off,
+            # the audio passes through untouched.
+            # The commas inside the expression are escaped for ffmpeg, not Python.
             cond = "+".join("between(t\\,%.3f\\,%.3f)" % (a, b) for a, b in spans)
             total = sum(b - a for a, b in spans)
             print(tr(f"Video audio: instrumental, the original voice kept on "
@@ -239,9 +239,9 @@ def extract_audio(payload: dict, html_path: str, tmp: str, mode: str) -> str:
     return out
 
 
-# ---------------------------------------------------------------- раскладка
+# ---------------------------------------------------------------- layout
 class LineArt:
-    """Готовые картинки строки: тусклая и подсвеченная, плюс позиции слов."""
+    """Prepared images of a line: dim and lit, plus the word positions."""
 
     def __init__(self, line, font_for, width, margin, main=True):
         from PIL import Image, ImageDraw
@@ -270,7 +270,7 @@ class LineArt:
         self.hot = draw(hot) if main else None
 
     def fill_x(self, line, t) -> float:
-        """Докуда закрашивать строку в момент t."""
+        """How far the line is filled in at moment t."""
         ws = line["words"]
         if not ws or t < ws[0]["t"]:
             return 0.0
@@ -296,14 +296,14 @@ def make_background(W, H):
     return img
 
 
-# ---------------------------------------------------------------- рендер
+# ---------------------------------------------------------------- render
 def render(payload, audio_wav, out_path, args, on_progress=None):
     from PIL import Image, ImageDraw, ImageFont
 
     apply_colors(payload)
     if on_progress:
-        # Пусть в окне сразу видно, что за песня и с какими цветами рисуем:
-        # пустой лог выглядит как «ничего не происходит».
+        # Show in the window right away what song and which colours are being
+        # drawn: an empty log looks like nothing is happening.
         for row in video_report(payload, args, AU.duration(audio_wav),
                                 min(args.seconds or 1e9,
                                     AU.duration(audio_wav) - args.start)).splitlines():
@@ -381,8 +381,8 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
             idx = bisect.bisect_right(starts, t) - 1
 
-            # Второй голос может звучать одновременно с основным. Рисуем его
-            # отдельной строкой ниже — иначе два текста налезали бы друг на друга.
+            # The second voice can sound together with the main one. It is drawn
+            # on its own row below — otherwise the two texts would overlap.
             duo = -1
             if idx >= 0:
                 for j in (idx - 1, idx + 1):
@@ -392,8 +392,8 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                         break
 
             if idx >= 0:
-                # Порядок строк постоянный: первый голос сверху, второй снизу.
-                # Иначе при смене «текущей» строки они прыгали бы местами.
+                # The order is fixed: first voice on top, second below.
+                # Otherwise they would swap places as the “current” line changes.
                 pair = [idx] if duo < 0 else sorted(
                     [idx, duo], key=lambda j: lines[j].get("voice") == 2)
                 for k, j in enumerate(pair):
@@ -412,8 +412,8 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             if idx - 1 >= 0 and idx - 1 != duo:
                 p = get(idx - 1, False)
                 frame.paste(p.dim, (0, y_prev - p.h // 2), p.dim)
-            # Точки-ориентиры между строками — как в плеере: всегда видны, чтобы
-            # понимать, где следующая, и загораются отсчётом перед вступлением.
+            # Guide dots between lines, as in the player: always visible so the
+            # next line is expected, and they count down before it starts.
             def dots(cy, lit=0):
                 r = max(int(H * 0.0055), 3)
                 for k in range(3):
@@ -435,9 +435,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                     lit = min(3 - int(left) + (1 if left < 3 else 0), 3)
                 dots((y_main + y_next) // 2, lit)
 
-            # Пока не поют, экран пуст и непонятно, идёт ли песня. Сверху —
-            # отсчёт до ближайшей строки, как в самой программе. Короткие
-            # перерывы не считаем: они и так на виду.
+            # While nobody sings the screen is empty and it is unclear whether
+            # the song is running. At the top — a countdown to the next line, as
+            # in the program itself. Short gaps are not counted: they are obvious.
             nxt = None
             for ln in lines:
                 if ln["start"] > t:
@@ -455,8 +455,8 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                            else f"{int(math.ceil(left))} " + tr("s", "с"))
                     tail = (tr("until “", "до «") + nxt["text"][:34] + tr("”", "»")
                             if nxt else tr("until the end", "до конца записи"))
-                    # Плашка строится вокруг текста, а текст ставится по её
-                    # центру — и по ширине, и по высоте.
+                    # The pill is built around the text, and the text sits in its
+                    # centre — horizontally and vertically.
                     cx, cy = W // 2, int(H * 0.105)
                     txt = f"{head}   {num}   {tail}"
                     box = d.textbbox((0, 0), txt, font=small)
@@ -469,7 +469,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                         fill=_mix(BG_TOP, (255, 255, 255), 0.10),
                         outline=_mix(BG_TOP, (255, 255, 255), 0.28))
                     d.text((cx, cy), txt, font=small, fill=COL_DIM, anchor="mm")
-                    # Полоска — тоже по центру, сразу под плашкой.
+                    # The bar is centred too, right under the pill.
                     bw = max(int(W * 0.16), tw // 2)
                     bx, by = cx - bw // 2, cy + th // 2 + pad_y + int(H * 0.012)
                     bh = max(int(H * 0.004), 2)
@@ -530,7 +530,7 @@ def apply_timings(payload: dict, path: str) -> None:
 
 
 def list_pages(folder: str) -> list:
-    """Страницы караоке в папке — сначала те, что похожи на наши."""
+    """Karaoke pages in a folder — ours first."""
     try:
         names = sorted(os.listdir(folder))
     except OSError:
@@ -542,7 +542,7 @@ def list_pages(folder: str) -> list:
 
 
 def pick_pages() -> list:
-    """Ничего не перетащили — показать, что есть рядом, и дать выбрать."""
+    """Nothing was dropped in — show what is around and let one be chosen."""
     seen, pages = set(), []
     for folder in (os.getcwd(), ROOT):
         for p in list_pages(folder):
@@ -582,7 +582,7 @@ def pick_pages() -> list:
 
 
 def find_timings(html_path: str):
-    """Правки разметки, выгруженные из плеера и лежащие рядом со страницей."""
+    """Timing edits exported from the player and left next to the page."""
     folder = os.path.dirname(os.path.abspath(html_path))
     stem = os.path.splitext(os.path.basename(html_path))[0].lower()
     best = None
@@ -591,7 +591,7 @@ def find_timings(html_path: str):
         if not low.endswith(".json"):
             continue
         if "timings" in low or "тайминг" in low:
-            # файл с именем песни важнее, чем просто timings.json
+            # a file named after the song beats a plain timings.json
             if os.path.splitext(low)[0].replace("_timings", "").strip("_ -") in stem:
                 return os.path.join(folder, name)
             best = best or os.path.join(folder, name)
@@ -599,8 +599,8 @@ def find_timings(html_path: str):
 
 
 def _try_timings(payload: dict, path: str) -> bool:
-    """Применить найденный рядом файл правок. Если он от другой песни — просто
-    пропустить: обрывать рендер из-за чужого JSON в папке нельзя."""
+    """Apply an edits file found next to the page. If it belongs to another
+    song, just skip it: a stray JSON must not abort the render."""
     try:
         apply_timings(payload, path)
         return True
@@ -671,7 +671,7 @@ def main(argv=None) -> int:
 
 
 def video_report(payload, args, song: float, want: float) -> str:
-    """Что за песня и что с ней будет — до долгой отрисовки.
+    """What the song is and what will happen to it — before the long drawing.
 
     Перед сборкой страницы такой отчёт есть, а перед роликом его не было:
     ошибку — не тот звук, не те цвета, забытые пометки — видно было только на
@@ -771,8 +771,8 @@ def render_one(html_path: str, args) -> int:
             got = AU.duration(out)
         except Exception:
             pass
-        # Явно печатаем ДЛИНУ ролика, а не только время сборки: иначе одно
-        # принимают за другое, и обрезанный файл легко не заметить.
+        # Print the video LENGTH explicitly, not just the build time: the two
+        # get confused, and a truncated file is easy to miss.
         spent = int(time.time() - t0)
         print(tr(f"\nDone: {out}", f"\nГотово: {out}"))
         print(tr(f"  video length : {mmss(got) if got else '?'}   ({size:.1f} MB)",

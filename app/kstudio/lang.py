@@ -1,4 +1,4 @@
-"""Язык текста песни: список поддерживаемых и определение по самому тексту.
+"""Language of the lyrics: the supported list and detection from the text.
 
 Whisper выравнивает текст по звуку с оглядкой на язык, и ошибка тут стоит
 дорого — разметка расползается. Спрашивать язык у человека каждый раз незачем:
@@ -11,8 +11,8 @@ from __future__ import annotations
 import re
 from typing import Dict, Tuple
 
-# Языки, которые Whisper знает хорошо и которые реально встречаются в песнях.
-# Порядок — как показывать в списке.
+# Languages Whisper handles well and that actually turn up in songs.
+# The order is the order shown in the picker.
 NAMES: Dict[str, str] = {
     "auto": "определить по тексту",
     "ru": "русский",
@@ -30,8 +30,8 @@ NAMES: Dict[str, str] = {
     "zh": "中文",
 }
 
-# Буквы-приметы. Сильный признак, но общий для целых групп: à и è есть и во
-# французском, и в итальянском, поэтому одних букв мало.
+# Telltale letters. A strong hint, but shared across whole families: à and è
+# exist in French and in Italian alike, so letters alone are not enough.
 _MARKS: Tuple[Tuple[str, str], ...] = (
     ("uk", "їієґ"),
     ("ru", "ёъыэ"),
@@ -42,8 +42,8 @@ _MARKS: Tuple[Tuple[str, str], ...] = (
     ("pt", "ãõ"),
 )
 
-# Служебные слова — то, что различает похожие языки надёжнее любых значков.
-# В песне их всегда много, и они короткие, поэтому попадают даже в куплет.
+# Function words separate similar languages far better than diacritics do.
+# A song is full of them, and they are short, so even one verse contains some.
 _WORDS: Dict[str, Tuple[str, ...]] = {
     "ru": ("не", "что", "как", "меня", "тебя", "мне", "всё", "это", "был", "она"),
     "uk": ("не", "що", "як", "мене", "тебе", "мені", "все", "це", "був", "вона"),
@@ -66,17 +66,17 @@ def supported(code: str) -> bool:
 
 
 def detect(text: str) -> str:
-    """Код языка по тексту. Никогда не падает: в крайнем случае вернёт «en»."""
+    """Language code from the text. Never raises: falls back to “en”."""
     t = (text or "").lower()
     if not t.strip():
         return "en"
 
-    # Иероглифы и слоговые азбуки определяются однозначно по диапазону.
-    if re.search(r"[\u3040-\u30ff]", t):        # хирагана и катакана
+    # Han characters and the kana scripts are decided by their code range alone.
+    if re.search(r"[\u3040-\u30ff]", t):        # hiragana and katakana
         return "ja"
-    if re.search(r"[\uac00-\ud7af]", t):        # хангыль
+    if re.search(r"[\uac00-\ud7af]", t):        # hangul
         return "ko"
-    if re.search(r"[\u4e00-\u9fff]", t):        # китайские иероглифы
+    if re.search(r"[\u4e00-\u9fff]", t):        # han characters
         return "zh"
 
     cyr = len(re.findall(r"[а-яёіїєґ]", t))
@@ -88,8 +88,8 @@ def detect(text: str) -> str:
     words = set(re.findall(r"[^\W\d_]+", t, re.UNICODE))
     score = {code: 0.0 for code in group}
     for code in group:
-        # Служебное слово весит единицу, буква-примета — три: букв мало,
-        # но каждая почти однозначна.
+        # A function word scores one, a telltale letter three: there are few
+        # such letters, but each of them is nearly conclusive.
         score[code] += sum(1 for w in _WORDS.get(code, ()) if w in words)
     for code, marks in _MARKS:
         if code in score:
@@ -102,10 +102,10 @@ def detect(text: str) -> str:
 
 
 def resolve(code: str, text: str) -> str:
-    """Что отдавать движку: «auto» превращаем в конкретный язык."""
+    """What to hand the engine: “auto” becomes a concrete language."""
     if not code or code == "auto":
         return detect(text)
-    return code if supported(code) else code      # чужой код пропускаем как есть
+    return code if supported(code) else code      # an unknown code is passed through as is
 
 
 def label(code: str) -> str:

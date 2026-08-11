@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Диагностика готовой караоке-страницы: где разъехались тайминги.
+"""Diagnosing a built karaoke page: where the timings drifted apart.
 
     py tools\\diagnose.py "D:\\Музыка\\Pesnya_karaoke.html"
     py tools\\diagnose.py "...html" "D:\\Музыка\\Песня.mp3"    # ещё и сверить с оригиналом
@@ -41,7 +41,7 @@ def load_payload(html_path: str) -> dict:
 
 
 def track_duration(uri: str, tmp: str, name: str):
-    """Длительность дорожки: она внутри страницы (data:) или лежит файлом рядом."""
+    """Track length: the audio is inside the page (data:) or in a file next to it."""
     if uri.startswith("data:"):
         head, _, b64 = uri.partition(",")
         ext = ".mp3" if "mpeg" in head else (".ogg" if "ogg" in head else ".m4a")

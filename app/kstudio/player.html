@@ -30,7 +30,7 @@
   body.playing::before{opacity:1}
   .app{position:relative; z-index:1; height:100%; display:flex; flex-direction:column}
 
-  /* ---------- шапка ---------- */
+  /* ---------- header ---------- */
   header{
     display:flex; align-items:center; gap:14px; padding:14px 20px;
     border-bottom:1px solid var(--line); flex:none;
@@ -41,7 +41,7 @@
   .meta p{font-size:15px; color:var(--muted); margin-top:2px; white-space:nowrap;
           overflow:hidden; text-overflow:ellipsis}
 
-  /* ---------- сцена с текстом ---------- */
+  /* ---------- the lyrics stage ---------- */
   .stage{flex:1; position:relative; overflow:hidden; -webkit-mask-image:
       linear-gradient(180deg,transparent 0,#000 14%,#000 84%,transparent 100%);
       mask-image:linear-gradient(180deg,transparent 0,#000 14%,#000 84%,transparent 100%)}
@@ -56,32 +56,32 @@
   .ln.done{opacity:.30; color:var(--sung)}
   .ln.next{opacity:.55}
   .ln.cur{opacity:1; color:var(--text); transform:scale(1.045)}
-  /* Строка целиком в скобках — подпевка. Её пишут, чтобы было слышно
-     бэк-вокал, поэтому и на экране она должна быть скромнее основной. */
+  /* A line wholly in brackets is backing vocals. It is written so the backing
+     can be heard, so on screen it stays humbler than the main line. */
   .ln.back{font-size:calc(var(--stage-size) * .72); font-style:italic;
            letter-spacing:0}
   .ln.back.cur{transform:scale(1.02)}
-  /* Строка, которую поёт оригинал: здесь голос из записи не убирается.
-     Подпевка, речь, важный для сюжета кусок — петь его не нужно, и это
-     должно быть видно заранее, а не выясняться на слух. */
+  /* A line the original sings: the recorded voice is not removed here.
+     Backing vocals, speech, a bit that matters to the story — it is not yours
+     to sing, and that has to be visible in advance, not learnt by ear. */
   .ln.keep .kp{font-size:.42em; font-style:normal; font-weight:600;
     letter-spacing:.08em; text-transform:uppercase; vertical-align:middle;
     color:var(--accent-2); border:1px solid currentColor; border-radius:999px;
     padding:.18em .5em; margin-left:.5em; opacity:.75; white-space:nowrap}
   .ln.keep.cur{text-shadow:0 0 24px color-mix(in srgb, var(--accent-2) 45%, transparent)}
-  /* Заливка слова — не градиент по буквам, а второй слой поверх, обрезанный по
-     ширине. Меняется только ширина: браузер не перерисовывает текст каждый кадр,
-     и подсветка не мерцает. */
+  /* A word is filled not by a gradient over letters but by a second layer on
+     top, clipped by width. Only the width changes, so the browser does not
+     redraw the text every frame and the highlight does not flicker. */
   .ln .w{position:relative; display:inline-block; white-space:pre}
   .ln .w .hl{
     position:absolute; left:0; top:0; width:0; overflow:hidden; white-space:pre;
     color:var(--accent); pointer-events:none;
   }
-  /* Второй голос — своим цветом: видно, кто поёт и где сменилась манера. */
+  /* The second voice gets its own colour: who sings and where the style changed. */
   .ln.v2 .w .hl{color:var(--accent-2)}
-  /* Два голоса разом. Строки стоят одна под другой, но по центру они читаются
-     как одна каша: глазу не за что зацепиться. Разводим их по сторонам —
-     основной голос влево, второй вправо, — и оставляем метку с цифрой. */
+  /* Two voices at once. The lines sit one under another, but centred they read
+     as one mush with nothing for the eye to hold on to. So they are pulled
+     apart — main voice left, second right — each with a number tag. */
   .ln.duo{transform:none !important; transition:transform .25s, margin .25s}
   .ln.duo.cur{opacity:1}
   .ln.duo:not(.v2){text-align:left; padding-left:6vw; padding-right:22vw}
@@ -97,7 +97,7 @@
   .ln.cur .w{color:rgba(232,235,245,.34)}
   .sect{font-size:12px; font-weight:600; letter-spacing:2.5px; text-transform:uppercase;
         color:var(--accent2); opacity:.62; text-align:center; padding:1.1em 0 .2em}
-  /* обратный отсчёт перед вступлением строки */
+  /* the countdown before a line comes in */
   .pips{display:flex; gap:8px; justify-content:center; align-items:center; height:14px}
   .pips span{width:9px; height:9px; border-radius:50%; background:var(--line);
              transform:scale(.8); transition:background .15s, transform .15s}
@@ -105,7 +105,7 @@
   .empty{position:absolute; inset:0; display:grid; place-items:center; color:var(--muted);
          font-size:15px}
 
-  /* ---------- низ ---------- */
+  /* ---------- the bottom bar ---------- */
   footer{flex:none; padding:12px 20px 16px; border-top:1px solid var(--line);
          background:rgba(10,11,20,.55); backdrop-filter:blur(12px)}
   .bar{display:flex; align-items:center; gap:12px; font-variant-numeric:tabular-nums;
@@ -145,7 +145,7 @@
   #vVocal{min-width:38px}
   #tCur{min-width:74px; text-align:right}
 
-  /* ---------- панель правки ---------- */
+  /* ---------- the edit panel ---------- */
   .editor{display:none; margin-top:12px; padding:14px; border:1px solid var(--line);
           border-radius:12px; background:rgba(0,0,0,.28); font-size:13px}
   .editor.open{display:block}
@@ -165,9 +165,9 @@
          transition:opacity .25s, transform .25s; z-index:50}
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
 
-  /* Строка, которую сейчас правят кнопками. Метку показываем только при
-     открытой панели правки и рисуем короткой чертой под текстом — полоса во
-     всю ширину экрана мешала смотреть караоке. */
+  /* The line the buttons are editing. The tag shows only while the edit panel
+     is open, drawn as a short bar under the text — a full-width stripe got in
+     the way of watching the karaoke. */
   .ln.tgt::after{content:""; position:absolute; left:50%; bottom:.1em; width:52px;
     height:3px; transform:translateX(-50%); background:var(--accent2);
     border-radius:2px; opacity:.85}
@@ -177,7 +177,8 @@
            text-overflow:ellipsis; white-space:nowrap; font-variant-numeric:tabular-nums}
   #btnTgtPrev, #btnTgtNext{padding:6px 11px}
   .hide{display:none !important}
-  /* Закреплённую цель видно и по подписи: её держат руками, песня её не двигает. */
+  /* A pinned target shows in the caption too: it is held by hand, the song
+     does not move it. */
   .row.held .tgtName{text-decoration:underline; text-underline-offset:3px}
   #btnUnpin{padding:6px 10px; font-size:12px; color:var(--muted)}
 
@@ -187,7 +188,7 @@
   @media (max-width:640px){
     .controls{gap:8px} .knobgrp{padding:5px 9px} input[type=range]{width:74px}
     header{padding:10px 14px} footer{padding:10px 12px 14px}
-    /* Низ на телефоне высокий: подпись снизу накрывала кнопку пуска. */
+    /* The bottom bar is tall on a phone: the caption used to cover the play button. */
     .toast{bottom:auto; top:14px; max-width:88vw}
   }
   @media print{body{display:none}}
@@ -272,10 +273,11 @@
 const P = JSON.parse(document.getElementById("payload").textContent);
 const D = P.data;
 
-/* ---------- язык страницы ----------
-   Страница уезжает к людям, у которых родной язык не обязательно русский.
-   Все видимые надписи собраны здесь; язык берётся из настройки сборки, а если
-   она «auto» — из языка браузера. Английский по умолчанию: он понятен шире. */
+/* ---------- the language of the page ----------
+   The page travels to people whose native language is anything at all.
+   Every visible label lives here; the language comes from the build setting,
+   and when that is “auto”, from the browser. English by default: it reaches
+   further. */
 const STR = {
   en: {
     voice: "Voice", offset: "Offset", edit: "Edit", fullscreen: "Full screen",
@@ -362,15 +364,15 @@ const STR = {
     badAudio: "Не удалось подготовить звук", tapSaved: "Разметка сохранена",
   },
 };
-// Цвета подсветки: первый — основной вокал, второй — подпевка или иная манера
-// (чистый / экстрим). Задаются при сборке, чтобы страница уехала уже нужной.
+// Highlight colours: the first for the main vocal, the second for backing or
+// another style. They are set at build time so the page travels ready.
 const COLORS = Array.isArray(P.colors) && P.colors.length
   ? P.colors : ["#4de1ff", "#ff8ad1"];
 document.documentElement.style.setProperty("--accent", COLORS[0]);
 document.documentElement.style.setProperty("--accent-2", COLORS[1] || COLORS[0]);
 
-// Фон и цвет букв. Пару, в которой текст сливается с фоном, страница не берёт:
-// читать её всё равно было бы нельзя.
+// Background and text colour. A pair where the text blends into the background
+// is refused: it could not be read anyway.
 function rgbOf(c){
   c = String(c || "").trim().replace("#", "");
   if (c.length === 3) c = c.split("").map(x => x + x).join("");
@@ -392,8 +394,8 @@ if (P.theme && P.theme.bg && P.theme.text && contrast(P.theme.bg, P.theme.text) 
   root.setProperty("--bg", P.theme.bg);
   root.setProperty("--bg2", P.theme.bg);
   root.setProperty("--text", P.theme.text);
-  // Тусклые строки — тот же цвет, только приглушённый: иначе на светлом фоне
-  // они остаются светло-серыми и не видны вовсе.
+  // Dim lines use the same colour, only muted: otherwise on a light background
+  // they stay pale grey and are not visible at all.
   const t = rgbOf(P.theme.text), b = rgbOf(P.theme.bg);
   const mixed = t.map((v, i) => Math.round(v * 0.55 + b[i] * 0.45));
   const hex = "#" + mixed.map(v => v.toString(16).padStart(2, "0")).join("");
@@ -402,8 +404,8 @@ if (P.theme && P.theme.bg && P.theme.text && contrast(P.theme.bg, P.theme.text) 
   root.setProperty("--muted", hex);
 }
 
-// Язык надписей: сначала выбранный руками на этой странице, затем заданный при
-// сборке, затем язык браузера. Английский — если ничего не подошло.
+// Label language: first the one chosen by hand on this page, then the one set
+// at build time, then the browser's. English if nothing matched.
 const LANG_KEY = "karaoke-lang-" + (P.id || "");
 let LANG = (() => {
   try {
@@ -432,39 +434,39 @@ applyLang();
 const $ = id => document.getElementById(id);
 const clamp = (v,a,b) => v<a?a:(v>b?b:v);
 const fmt = s => { s=Math.max(0,s|0); return (s/60|0)+":"+String(s%60).padStart(2,"0"); };
-// то же, но с миллисекундами — для правки разметки округление до секунды бесполезно
+// the same with milliseconds — rounding to a second is useless when editing
 const fmtMs = s => { s=Math.max(0,s); const m=s/60|0, r=s-m*60;
   return m+":"+(r<10?"0":"")+r.toFixed(3); };
 
-/* ---------- звук ----------
-   Две дорожки в двух <audio> имеют независимые часы: они неизбежно расходятся,
-   а любая попытка их подтягивать слышна — либо провалами от перемотки, либо
-   плаванием скорости. Поэтому основной путь — Web Audio: обе дорожки идут от
-   одного тактового генератора, и рассинхрон невозможен в принципе.
-   Запасной путь на отдельных элементах остаётся на случай, когда декодировать
-   не вышло — например, звук лежит отдельными файлами и открыт через file://.
+/* ---------- audio ----------
+   Two tracks in two <audio> elements have independent clocks: they inevitably
+   drift, and every attempt to pull them together is audible — either as gaps
+   from seeking or as wavering speed. So the main path is Web Audio: both tracks
+   run off one clock and cannot fall out of sync at all.
+   The fallback on separate elements stays for the case where decoding failed —
+   for instance when the audio sits in separate files opened over file://.
 */
 const stems = !!(P.audio.instrumental && P.audio.vocals);
 let engine = "loading";                  // loading | wa | el
-let vocalLevel = stems ? 0 : 1;          // 0 = минус, 1 = оригинал
+let vocalLevel = stems ? 0 : 1;          // 0 = instrumental, 1 = the original
 let offset = 0, dur = D.duration || 0, sizeStep = 0;
 let pendingPlay = false, pendingSeek = null;
 
 let ctx = null, bufs = null, srcs = null, gains = null;   // Web Audio
 let waStart = 0, waOffset = 0, waOn = false;
-let master = null, voice = null;                          // запасной путь
+let master = null, voice = null;                          // the fallback path
 let lines = D.lines.map(l => ({...l, words: l.words.map(w => ({...w}))}));
 const KEY = "karaoke:" + P.id;
 const history = [];
 
-/* ---------- отрисовка текста ---------- */
+/* ---------- drawing the lyrics ---------- */
 const scroll = $("scroll");
 const lineEls = [];
 function build(){
   scroll.innerHTML = "";
   lineEls.length = 0;
-  pipLine = -1; pipCount = 0;      // старые точки ушли вместе со старым DOM
-  shownTarget = -2;                // подсветка цели тоже жила в старом DOM
+  pipLine = -1; pipCount = 0;      // the old dots went with the old DOM
+  shownTarget = -2;                // the target underline lived there too
   if (!lines.length){
     scroll.innerHTML = `<div class="empty">${T.noLyrics}</div>`;
     return;
@@ -487,7 +489,7 @@ function build(){
       const txt = w.w + (j < ln.words.length - 1 ? " " : "");
       const sp = document.createElement("span");
       sp.className = "w";
-      const hl = document.createElement("span");   // яркий слой поверх тусклого
+      const hl = document.createElement("span");   // the lit layer over the dim one
       hl.className = "hl";
       hl.textContent = txt;
       sp.appendChild(hl);
@@ -495,11 +497,11 @@ function build(){
       el.appendChild(sp);
     });
     el.addEventListener("click", () => {
-      // в режиме тапов клик выбирает, С КАКОЙ строки продолжать отмечать
+      // in tap mode a click chooses WHICH line to carry on tapping from
       if (tapping) { startFrom(i); return; }
-      // При правке щелчок ЗАКРЕПЛЯЕТ строку: иначе цель приходилось угадывать
-      // по времени перемотки, а перематываем мы чуть раньше начала — и цель
-      // уезжала на предыдущую строку.
+      // While editing, a click PINS the line: otherwise the target had to be
+      // guessed from the seek position, and we seek slightly before the start,
+      // so the target slipped to the previous line.
       if (document.body.classList.contains("editing")) pinLine(i);
       seekTo(Math.max(0, ln.start - 0.35));
     });
@@ -510,20 +512,20 @@ function build(){
       el.appendChild(kp);
     }
     scroll.appendChild(el);
-    // Метка «поёт оригинал» — не слово, подсвечивать её нечем.
+    // The “original sings” tag is not a word, there is nothing to highlight.
     const spans = [...el.children].filter(e => e.classList.contains("w"));
     lineEls.push({el, pips, dots: [...pips.children], spans,
                   hls: spans.map(s => s.firstChild)});
   });
 }
 
-/* ---------- цикл синхронизации ---------- */
+/* ---------- the sync loop ---------- */
 let curIdx = -1, raf = 0, pipLine = -1, pipCount = 0, shownTarget = -2;
 let wasDuo = false;
 function currentTime(){ return mediaTime() - offset; }
 
 function findLine(t){
-  // строка активна от своего начала до начала следующей
+  // a line is active from its own start to the start of the next one
   let lo = 0, hi = lines.length - 1, res = -1;
   while (lo <= hi){
     const mid = (lo + hi) >> 1;
@@ -534,17 +536,17 @@ function findLine(t){
 
 function tick(){
   const t = currentTime();
-  // В режиме тапов текст ведёт НЕ время, а сам пользователь: показываем ту строку,
-  // которую он сейчас отмечает. Иначе плеер листает по старым — неверным —
-  // таймингам и убегает вперёд от нажатий.
+  // In tap mode the lyrics are led by the person, NOT by the clock: the line
+  // being tapped is the one shown. Otherwise the player scrolls by the old —
+  // wrong — timings and runs ahead of the presses.
   let idx = tapping ? Math.min(tapIdx, lines.length - 1) : findLine(t);
-  // Спели последнюю строку — подсветку снимаем: висящая до конца записи
-  // строка выглядит забытой, будто плеер завис.
+  // The last line has been sung — drop the highlight: a line hanging lit until
+  // the end of the recording looks forgotten, as if the player froze.
   if (!tapping && idx === lines.length - 1 && idx >= 0 && t > lines[idx].end + 0.25)
     idx = -1;
 
-  // Голоса иногда накладываются: основной ещё тянет, подпевка уже вступила.
-  // Показываем все строки, которые звучат сейчас, а не одну «текущую».
+  // Voices sometimes overlap: the main one still holds while the backing has
+  // come in. Every line sounding now is shown, not just the “current” one.
   const act = new Set();
   if (!tapping){
     for (let i = 0; i < lines.length; i++)
@@ -552,7 +554,7 @@ function tick(){
   }
   if (idx >= 0) act.add(idx);
 
-  // Разные голоса звучат одновременно — значит, их надо развести по сторонам.
+  // Different voices sound at once — so they must be pulled apart.
   const voices = new Set([...act].map(i => lines[i].voice === 2 ? 2 : 1));
   const duo = act.size > 1 && voices.size > 1;
 
@@ -567,19 +569,19 @@ function tick(){
     });
     curIdx = idx;
     wasDuo = duo;
-    // className выше переписан целиком, вместе с меткой цели — просим
-    // перерисовать её заново, иначе подчёркивание пропадает на каждой строке
+    // className above was rewritten wholesale, target tag included — ask for a
+    // redraw, or the underline disappears on every line
     shownTarget = -2;
-    // Показываем обе строки разом: центрируем по середине пары.
+    // Show both lines at once: centre on the middle of the pair.
     centerLine(idx, duo ? [...act] : null);
   }
   refreshTarget();
 
-  // Въехали в кусок с оригинальным голосом или выехали из него.
+  // We entered a stretch with the original voice, or left it.
   const kp = stems && !tapping && inKeep(t);
   if (kp !== keepOn){ keepOn = kp; applyVocal(); document.body.classList.toggle("keeping", kp); }
 
-  // Подсветку слов ведём по каждой звучащей строке, а не только по ведущей.
+  // Words are lit in every sounding line, not only in the leading one.
   if (!tapping) act.forEach(k => {
     if (k === idx) return;
     const L2 = lineEls[k], l2 = lines[k];
@@ -597,12 +599,12 @@ function tick(){
       const w = ln.words[j], hl = L.hls[j];
       const p = w.d > 0 ? clamp((t - w.t) / w.d, 0, 1) : (t >= w.t ? 1 : 0);
       const want = p >= 1 ? "100%" : (p <= 0 ? "0px" : (p * 100).toFixed(1) + "%");
-      if (hl.style.width !== want) hl.style.width = want;   // пишем только при смене
+      if (hl.style.width !== want) hl.style.width = want;   // write only on change
     }
   }
 
-  // отсчёт перед следующей строкой (если пауза больше 2,5 с);
-  // трогаем DOM только когда точки реально меняются, а не каждый кадр
+  // the countdown before the next line (when the gap is over 2.5 s);
+  // the DOM is touched only when the dots really change, not every frame
   const nxt = idx + 1;
   let wantLine = -1, wantCount = 0;
   if (!tapping && nxt < lines.length){
@@ -625,8 +627,8 @@ function tick(){
   $("seekKnob").style.left  = (dur ? mediaTime() / dur * 100 : 0) + "%";
   $("tCur").textContent = fmtMs(mediaTime());
 
-  // Подтяжка дорожек нужна только запасному пути: в Web Audio они идут от одного
-  // тактового генератора и разойтись не могут.
+  // Only the fallback path needs the tracks nudged together: under Web Audio
+  // they run off one clock and cannot drift apart.
   if (engine === "el" && voice && wantPlaying && !master.paused && voice.paused
       && !voice.seeking && Date.now() - lastRevive > 300){
     lastRevive = Date.now();
@@ -650,8 +652,8 @@ function tick(){
   raf = requestAnimationFrame(tick);
 }
 
-// Листать текст руками — колесом и клавишами. Без этого до начала длинной
-// песни добираешься только перемоткой звука.
+// Scrolling the lyrics by hand — wheel and keys. Without it the start of a
+// long song can only be reached by seeking the audio.
 let freeScroll = 0, scrollY = 0;
 function stageScroll(dy){
   const stage = $("stage");
@@ -667,10 +669,10 @@ $("stage").addEventListener("wheel", e => {
 }, {passive:false});
 
 function centerLine(idx, pair){
-  if (Date.now() - freeScroll < 2500) return;   // человек листает сам
+  if (Date.now() - freeScroll < 2500) return;   // a person is scrolling
   scroll.style.transition = "";
-  // Поют двое — держим в центре середину пары, иначе вторая строка уезжает
-  // за край и её не прочитать.
+  // Two are singing — keep the middle of the pair centred, or the second line
+  // slides off the edge and cannot be read.
   if (pair && pair.length > 1){
     const els = pair.map(i => lineEls[i] && lineEls[i].el).filter(Boolean);
     if (els.length > 1){
@@ -681,10 +683,10 @@ function centerLine(idx, pair){
       return;
     }
   }
-  // До начала пения показываем первую строку по центру сцены. Раньше здесь
-  // сбрасывалось смещение в ноль, а отступ у текста задан в долях ОКНА —
-  // сцена же короче окна, особенно с открытой панелью правки. Из-за этого при
-  // открытии страницы текста было не видно вовсе.
+  // Before the singing starts, the first line is centred on the stage. This
+  // used to reset the offset to zero while the text padding is set in fractions
+  // of the WINDOW — and the stage is shorter than the window, especially with
+  // the edit panel open. Because of that the lyrics were invisible on opening.
   if (idx < 0) idx = 0;
   if (!lineEls[idx]){ scroll.style.transform = "translateY(0)"; return; }
   const el = lineEls[idx].el;
@@ -692,8 +694,8 @@ function centerLine(idx, pair){
   scroll.style.transform = "translateY(" + (-scrollY) + "px)";
 }
 
-/* ---------- транспорт ---------- */
-let wantPlaying = false;   // намерение пользователя, а не текущее состояние тега
+/* ---------- transport ---------- */
+let wantPlaying = false;   // what the person wants, not the tag's current state
 let lastRevive = 0;
 function mediaTime(){
   if (engine === "wa")
@@ -716,12 +718,12 @@ function waPlayFrom(t){
     s.connect(gains[i]);
     return s;
   });
-  const at = ctx.currentTime + 0.03;      // общий момент старта для обеих дорожек
+  const at = ctx.currentTime + 0.03;      // one start moment for both tracks
   srcs.forEach(s => s.start(at, t));
   srcs[0].onended = () => {
-    // Дорожки кодируются отдельно, и у mp3-кодера padding не всегда совпадает
-    // бит-в-бит — если вторая дорожка на миллисекунды длиннее первой, она бы
-    // доигрывала одна в тишине. Глушим явно все источники, а не только первый.
+    // The tracks are encoded separately, and mp3 padding does not always match
+    // bit for bit — if the second track is milliseconds longer it would play on
+    // alone in the silence. Every source is stopped explicitly, not just one.
     if (waOn && mediaTime() >= dur - 0.2){
       waOn = false; waOffset = dur; wantPlaying = false; syncIcon();
     }
@@ -736,13 +738,13 @@ function play(){
   if (engine === "loading"){ pendingPlay = true; return; }
   if (engine === "wa"){
     if (ctx.state === "suspended" && ctx.resume) ctx.resume();
-    if (waOffset >= dur - 0.05) waOffset = 0;      // с конца — начинаем заново
+    if (waOffset >= dur - 0.05) waOffset = 0;      // from the end — start over
     waPlayFrom(waOffset);
     return;
   }
-  // обе дорожки запускаем синхронно, внутри обработчика нажатия: если
-  // отложить второй play() в .then(), Safari на iPhone сочтёт его
-  // «не жестом пользователя» и заблокирует — вокал молча не заиграет
+  // both tracks start together, inside the click handler: if the second play()
+  // is deferred into a .then(), Safari on iPhone treats it as “not a user
+  // gesture” and blocks it — the vocal silently never starts
   if (voice) voice.currentTime = master.currentTime;
   const pm = master.play();
   const pv = voice ? voice.play() : null;
@@ -756,8 +758,8 @@ function pause(){
   if (master) master.pause();
   if (voice) voice.pause();
 }
-// Смотрим на намерение, а не на состояние тега: во время перемотки элемент
-// стоит на паузе, и по нему выходило, что нажатие «пауза» должно запускать звук.
+// Go by the intention, not by the tag's state: during a seek the element is
+// paused, which made pressing “pause” look like it should start playback.
 function toggle(){ wantPlaying ? pause() : play(); }
 
 function syncIcon(){
@@ -771,42 +773,42 @@ function seekTo(t){
   curIdx = -2;
 
   if (engine === "wa"){
-    // одна общая точка старта для обеих дорожек — расходиться нечему
+    // one shared start point for both tracks — nothing can drift
     waOffset = t;
     if (wantPlaying && !dragging) waPlayFrom(t);
     else { waOn = false; waStop(); }
     return;
   }
-  // звук ещё грузится — запомним и применим, когда движок поднимется
+  // the audio is still loading — remember it and apply once the engine is up
   if (engine === "loading"){ pendingSeek = t; return; }
   if (!voice){ master.currentTime = t; return; }
 
-  // Две дорожки перематываются не мгновенно и не синхронно, а MP3 ещё и
-  // позиционируется приблизительно. Если просто задать обеим currentTime, одна
-  // доигрывает старое место, пока вторая играет новое — слышно как эхо.
-  // Поэтому: остановить обе, дождаться перемотки у обеих, выровнять, запустить.
+  // Two tracks do not seek instantly or in step, and MP3 positions only
+  // approximately. Setting currentTime on both simply leaves one playing the
+  // old place while the other plays the new one — it sounds like an echo.
+  // So: stop both, wait for both to seek, align them, start.
   const tok = ++seekTok;
   master.pause(); voice.pause();
   master.playbackRate = voice.playbackRate = 1;
   master.currentTime = t;
   voice.currentTime = t;
 
-  // Готовность именно опрашиваем, а не ждём события «seeked»: событие от прошлой
-  // перемотки может прийти уже после начала новой, и тогда звук запустится
-  // раньше времени — обе дорожки заиграют вразнобой.
+  // Readiness is polled rather than awaited through the “seeked” event: an
+  // event from the previous seek can arrive after a new one has begun, and then
+  // playback starts too early with the tracks out of step.
   const began = Date.now();
   const check = () => {
-    if (tok !== seekTok) return;                       // подоспела более свежая
+    if (tok !== seekTok) return;                       // a newer seek arrived
     if (master.seeking || voice.seeking){
       if (Date.now() - began < 1500){ setTimeout(check, 25); return; }
     }
-    // спрашиваем намерение на момент готовности, а не на момент начала перемотки:
-    // иначе пауза, нажатая пока шла перемотка, была бы отменена
+    // the intention is read at the moment of readiness, not when the seek
+    // began: otherwise a pause pressed mid-seek would be undone
     if (wantPlaying && !dragging) play();
   };
   setTimeout(check, 25);
 }
-/* ---------- запуск звукового движка ---------- */
+/* ---------- starting the audio engine ---------- */
 function initElements(){
   const mk = src => { const a = new Audio(); a.src = src; a.preload = "auto"; return a; };
   master = mk(stems ? P.audio.instrumental : P.audio.mix);
@@ -840,23 +842,23 @@ function initWebAudio(){
 }
 
 initWebAudio().catch(() => {
-  // не вышло — работаем на отдельных элементах, как раньше
+  // it did not work — fall back to separate media elements
   if (ctx && ctx.close) { try { ctx.close(); } catch (e) {} }
   ctx = null; bufs = null; gains = null;
   try { initElements(); }
   catch (e) { toast(T.badAudio); }
 }).then(() => {
-  if (engine === "loading") return;            // звук поднять не удалось
+  if (engine === "loading") return;            // the audio could not be started
   $("tDur").textContent = fmt(dur);
   setVocal(vocalLevel);
   if (pendingSeek !== null){ const t = pendingSeek; pendingSeek = null; seekTo(t); }
   if (pendingPlay){ pendingPlay = false; play(); }
 });
 
-/* ---------- ползунки ---------- */
-// Куски, где голос из записи оставлен нарочно: подпевка, речь, важный для
-// сюжета момент. Петь их не нужно — там играет оригинал, что бы ни стоял
-// ползунок «Голос».
+/* ---------- sliders ---------- */
+// Stretches where the recorded voice is kept on purpose: backing vocals,
+// speech, a moment that matters to the story. They are not yours to sing — the
+// original plays there whatever the “Voice” slider says.
 let keepOn = false;
 function ramp(param, v){
   if (param.setTargetAtTime) param.setTargetAtTime(v, ctx.currentTime, 0.03);
@@ -871,8 +873,8 @@ function applyVocal(){
   const lvl = keepOn ? 1 : vocalLevel;
   if (engine === "wa" && gains){
     gains[0].gain.value = 1;
-    // Плавно: скачок громкости на границе строки слышен щелчком.
-    // Плавно, если движок умеет; иначе просто ставим значение.
+    // Smoothly: a jump in level at a line boundary is heard as a click.
+    // Smoothly if the engine can; otherwise just set the value.
     if (stems) ramp(gains[1].gain, lvl);
   } else if (voice) voice.volume = lvl;
 }
@@ -886,7 +888,7 @@ function setOffset(ms){
   offset = clamp(ms, -3000, 3000) / 1000;
   $("rOffset").value = Math.round(offset*1000);
   $("vOffset").textContent = (offset >= 0 ? "+" : "") + offset.toFixed(3) + T.sec;
-  curIdx = -2; shownTarget = -2; save();     // подпись цели показывает время со сдвигом
+  curIdx = -2; shownTarget = -2; save();     // the target caption shows the shifted time
 }
 $("rVocal").addEventListener("input", e => setVocal(e.target.value/100));
 $("rOffset").addEventListener("input", e => setOffset(+e.target.value));
@@ -899,13 +901,14 @@ function seekAt(clientX){
 }
 seek.addEventListener("pointerdown", e => {
   dragging = true;
-  try { seek.setPointerCapture(e.pointerId); } catch (err) {}   // есть не везде
+  try { seek.setPointerCapture(e.pointerId); } catch (err) {}   // not everywhere
   seekAt(e.clientX);
 });
-// Слушаем всё окно, а не саму полосу: мышь часто отпускают уже за её пределами,
-// и тогда флаг «тащим» залипал бы навсегда — музыка больше не запустилась бы.
+// The whole window is listened to, not the bar itself: the mouse is often
+// released outside it, and then the “dragging” flag would stick forever and the
+// music would never start again.
 window.addEventListener("pointermove", e => { if (dragging) seekAt(e.clientX); });
-// пока тащим — звук не запускаем; играть начинаем один раз, когда отпустили
+// no playback while dragging; it starts once, when the button is released
 window.addEventListener("pointerup", e => {
   if (!dragging) return;
   dragging = false;
@@ -919,8 +922,8 @@ window.addEventListener("pointercancel", () => {
 
 $("btnPlay").addEventListener("click", toggle);
 
-// Страница собрана на одном языке, а открыть её могут где угодно. Переключатель
-// меняет надписи на месте и запоминает выбор для этой песни.
+// The page is built in one language but can be opened anywhere. The switch
+// changes the labels in place and remembers the choice for this song.
 function setLang(code){
   if (!STR[code] || code === LANG) return;
   LANG = code; T = STR[LANG];
@@ -928,12 +931,12 @@ function setLang(code){
   try { localStorage.setItem(LANG_KEY, LANG); } catch (e) {}
   applyLang();
   labelLang();
-  build();                      // в строках есть надпись «поёт оригинал»
+  build();                      // the lines carry the “original sings” tag
   curIdx = -2; shownTarget = -2;
   centerLine(curIdx);
   toast(T.langSwitched);
 }
-// На кнопке — язык, НА КОТОРЫЙ переключит: так понятнее, чем текущий.
+// The button shows the language it switches TO: clearer than the current one.
 function labelLang(){ $("btnLang").textContent = LANG === "ru" ? "EN" : "RU"; }
 labelLang();
 $("btnLang").addEventListener("click", () => setLang(LANG === "ru" ? "en" : "ru"));
@@ -949,13 +952,13 @@ $("btnSize").addEventListener("click", () => {
   setTimeout(() => centerLine(curIdx), 60);
 });
 
-/* ---------- режим правки ---------- */
+/* ---------- edit mode ---------- */
 let tapping = false, tapIdx = 0;
 $("btnEdit").addEventListener("click", e => {
   const open = $("editor").classList.toggle("open");
   e.currentTarget.classList.toggle("on", open);
-  document.body.classList.toggle("editing", open);   // метка цели только при правке
-  centerLine(curIdx);            // сцена стала ниже — текст надо доцентровать
+  document.body.classList.toggle("editing", open);   // target tag only while editing
+  centerLine(curIdx);            // the stage got shorter — re-centre the text
 });
 function snapshot(){ history.push(JSON.stringify(lines)); if (history.length > 250) history.shift(); }
 
@@ -963,7 +966,7 @@ function tapLabel(){
   $("btnTap").textContent = tapping
     ? T.tapOn(Math.min(tapIdx + 1, lines.length), lines.length)
     : T.tapOff;
-  $("tapRow").classList.toggle("hide", !tapping);   // стену текста показываем по делу
+  $("tapRow").classList.toggle("hide", !tapping);   // show the wall of text only when needed
 }
 
 $("btnTap").addEventListener("click", () => {
@@ -973,7 +976,7 @@ $("btnTap").addEventListener("click", () => {
   if (tapping){
     snapshot();
     tapIdx = 0;
-    pause();                    // размечать имеет смысл с самого начала песни
+    pause();                    // tapping makes sense from the start of the song
     seekTo(0);
     toast(T.tapHow);
   } else { save(); toast(T.tapSaved); }
@@ -984,10 +987,10 @@ $("btnTap").addEventListener("click", () => {
 function tap(){
   if (tapIdx >= lines.length){ toast(T.allTapped); return; }
   const t = currentTime();
-  snapshot();                                 // чтобы каждый тап можно было отменить
+  snapshot();                                 // so every tap can be undone
   const ln = lines[tapIdx];
   ln.start = t;
-  if (tapIdx > 0){                            // закрыть предыдущую строку
+  if (tapIdx > 0){                            // close the previous line
     const prev = lines[tapIdx-1];
     prev.end = Math.max(prev.start + 0.3, t - 0.05);
     spreadWords(prev);
@@ -1029,19 +1032,19 @@ function spreadWords(ln){
   });
 }
 
-// Какую строку правят кнопки. Угадывать нельзя: во время проигрыша одинаково
-// осмысленно и подправить только что спетую строку, и подготовить следующую.
-// Поэтому по умолчанию правим ТУ, ЧТО ВИДНО подсвеченной, а сдвинуть цель на
-// соседнюю можно кнопками ◀ ▶ — и выбранная строка подчёркивается на экране.
-// pinned >= 0 — строку выбрали руками (щелчком или ◀ ▶), и цель больше никуда
-// не убегает, пока играет песня. Это и есть порядок работы: выбрал строку,
-// доиграл до нужного места, нажал «сюда». Без закрепления к моменту нажатия
-// подсвечена уже другая строка, и правка уходит не туда.
+// Which line the buttons edit. Guessing is not allowed: during an interlude it
+// is equally sensible to fix the line just sung or to prepare the next one. So
+// by default the line SEEN highlighted is edited, and the target can be moved to
+// a neighbour with ◀ ▶ — the chosen line is underlined on screen.
+// pinned >= 0 means the line was chosen by hand (by a click or ◀ ▶) and the
+// target stops running away while the song plays. That is the working order:
+// pick a line, play up to the right spot, press “here”. Without pinning, by the
+// time the button is pressed another line is lit and the edit lands elsewhere.
 let pinned = -1;
 function activeLine(){
   if (pinned >= 0) return clamp(pinned, 0, lines.length - 1);
   let base = curIdx >= 0 ? curIdx : findLine(currentTime());
-  if (base < 0) base = lines.length ? 0 : -1;       // ещё вступление — правим первую
+  if (base < 0) base = lines.length ? 0 : -1;       // still the intro — edit the first
   return base;
 }
 function pinLine(i){
@@ -1056,7 +1059,7 @@ function nudgeTarget(d){
   const before = activeLine();
   if (before < 0) return;
   const after = clamp(before + d, 0, lines.length - 1);
-  if (after === before) return;                     // упёрлись в край списка
+  if (after === before) return;                     // we hit the end of the list
   pinLine(after);
 }
 
@@ -1071,7 +1074,7 @@ function shiftLines(from, dt, toEnd){
   curIdx = -2; save();
   toast(toEnd ? T.movedRest(from + 1, dt) : T.movedOne(from + 1, dt));
 }
-// Показать, какая строка сейчас под правкой: подписью и подчёркиванием на сцене.
+// Show which line is being edited: by the caption and the underline on stage.
 function refreshTarget(force){
   const i = activeLine();
   if (i === shownTarget && !force) return;
@@ -1084,8 +1087,8 @@ function refreshTarget(force){
   } else {
     $("tgtName").textContent = "—";
   }
-  // Закреплённая строка не должна стать ловушкой: видно, что цель держат руками,
-  // и рядом же — как вернуть её к песне.
+  // A pinned line must not become a trap: it is visible that the target is held
+  // by hand, and right next to it is how to hand it back to the song.
   $("btnUnpin").classList.toggle("hide", pinned < 0);
   $("tgtRow").classList.toggle("held", pinned >= 0);
 }
@@ -1093,8 +1096,8 @@ $("btnTgtPrev").addEventListener("click", () => nudgeTarget(-1));
 $("btnTgtNext").addEventListener("click", () => nudgeTarget(1));
 $("btnUnpin").addEventListener("click", () => { unpin(); toast(T.unpinned); });
 
-// Одно понятное действие вместо четырёх кнопок сдвига: доиграли до места, где
-// строку начинают петь, и нажали. Флажок решает, ехать ли остатку песни следом.
+// One clear action instead of four nudge buttons: play up to where the line
+// starts being sung and press. The checkbox decides whether the rest follows.
 function restToo(){ return $("chkRest").checked; }
 $("btnHere").addEventListener("click", () => {
   const i = activeLine();
@@ -1114,20 +1117,20 @@ $("btnReset").addEventListener("click", () => {
   toast(T.resetDone);
 });
 
-/* ---------- сохранение / экспорт ---------- */
+/* ---------- saving / export ---------- */
 let booted = false, hadStored = false;
 function save(){
-  // До конца запуска не пишем ничего: иначе страница сохраняет саму себя ещё
-  // до единой правки, и при следующем открытии честно сообщает «открыты ваши
-  // правки» — про правки, которых человек не делал.
+  // Nothing is written until boot finishes: otherwise the page saves itself
+  // before a single edit and, on the next opening, honestly reports “your edits
+  // are open” — about edits nobody made.
   if (!booted) return;
   try { localStorage.setItem(KEY, JSON.stringify({offset: offset*1000, lines})); } catch(e){}
-  // Правки живут в браузере. Пока страница не пересохранена, видео и другой
-  // компьютер о них не знают — поэтому кнопку сохранения подсвечиваем.
+  // Edits live in the browser. Until the page is saved again, the video and any
+  // other computer know nothing of them — so the save button is highlighted.
   markUnsaved(true);
 }
 function markUnsaved(on){
-  if (!booted) return;          // при открытии страницы правок ещё нет
+  if (!booted) return;          // on opening the page there are no edits yet
   const b = $("btnSavePage");
   b.classList.toggle("on", on);
   b.textContent = on ? T.saveUnsaved : T.savePage;
@@ -1135,7 +1138,7 @@ function markUnsaved(on){
 function restore(){
   try {
     const s = JSON.parse(localStorage.getItem(KEY) || "null");
-    // структура должна совпадать до последнего слова, иначе подсветка разъедется
+    // the structure must match to the last word, or the highlight falls apart
     const fits = s && Array.isArray(s.lines) && s.lines.length === lines.length &&
       s.lines.every((l, i) => l.words && l.words.length === lines[i].words.length);
     if (fits){
@@ -1162,8 +1165,8 @@ $("btnSaveJson").addEventListener("click", () => {
   download("timings.json", JSON.stringify(out, null, 1), "application/json");
   toast(T.jsonSaved);
 });
-// Сохранить саму страницу с вшитой разметкой. Иначе правки остаются только в
-// браузере, и рендер видео берёт из файла исходные — машинные — тайминги.
+// Save the page itself with the timing baked in. Otherwise the edits stay in
+// the browser only, and the video render takes the original machine timings.
 $("btnSavePage").addEventListener("click", () => {
   const baked = lines.map(l => ({
     text: l.text, section: l.section,
@@ -1171,19 +1174,19 @@ $("btnSavePage").addEventListener("click", () => {
     words: l.words.map(w => ({w: w.w, t: +(w.t + offset).toFixed(3),
                               d: +w.d.toFixed(3), s: w.s})),
   }));
-  let h = 0;                                    // свой ключ хранения для новой страницы
+  let h = 0;                                    // a storage key of its own for the new page
   baked.forEach(l => { h = (h * 31 + Math.round(l.start * 100)) | 0; });
 
   const P2 = {...P, id: (P.id + "e" + (h >>> 0).toString(36)).slice(0, 24),
-              edited: true,                     // рендер видео поймёт, что правки уже внутри
+              edited: true,                     // the video render sees the edits are inside
               data: {...D, lines: baked}};
 
   const root = document.documentElement.cloneNode(true);
-  root.querySelector("#scroll").innerHTML = "";  // разметку страница строит сама
+  root.querySelector("#scroll").innerHTML = "";  // the page builds the lines itself
   root.querySelector("#editor").classList.remove("open");
-  // клон снят с живой страницы — вычищаем состояние текущего сеанса, иначе
-  // сохранённый файл откроется «играющим», в режиме тапов или с висящим тостом
-  // чистим состояние сеанса по элементам, которые точно есть
+  // the clone is taken from a live page — the current session state is cleared,
+  // or the saved file would open “playing”, in tap mode, or with a stuck toast
+  // clear the session state on the elements that are certainly there
   const reset = (id, fn) => { const e = root.querySelector(id); if (e) fn(e); };
   reset("body", e => e.className = "");
   reset("#btnTap", e => { e.className = ""; e.textContent = T.tapOff; });
@@ -1216,7 +1219,7 @@ $("btnSaveLrc").addEventListener("click", () => {
   download("lyrics.lrc", out, "text/plain;charset=utf-8");
 });
 
-/* ---------- клавиатура ---------- */
+/* ---------- keyboard ---------- */
 let toastT = 0;
 function toast(msg){
   const el = $("toast"); el.textContent = msg; el.classList.add("show");
@@ -1227,7 +1230,7 @@ document.addEventListener("keydown", e => {
   switch(e.key){
     case " ":
       e.preventDefault();
-      // в режиме тапов первый Пробел запускает песню, дальше каждый отмечает строку
+      // in tap mode the first Space starts the song, each next marks a line
       if (tapping) { wantPlaying ? tap() : play(); } else { toggle(); }
       break;
     case "Backspace": if (tapping){ e.preventDefault(); untap(); } break;
@@ -1248,16 +1251,16 @@ document.addEventListener("keydown", e => {
 });
 $("stage").addEventListener("click", e => { if (tapping && e.target === $("stage")) tap(); });
 
-// После клика мышью фокус остаётся на кнопке, и следующий Пробел срабатывает
-// дважды: наша глобальная обработка + браузерная активация сфокусированной
-// кнопки. Выглядит как «пробел не работает» (два переключения подряд) или
-// как самопроизвольный выход из режима тапов. Снимаем фокус сразу.
+// After a mouse click the focus stays on the button, and the next Space fires
+// twice: our global handler plus the browser activating the focused button. It
+// looks like “Space does not work” (two toggles in a row) or like tap mode
+// quitting by itself. The focus is dropped right away.
 document.addEventListener("click", e => {
   const b = e.target && e.target.closest && e.target.closest("button");
   if (b) b.blur();
 });
 
-/* ---------- старт ---------- */
+/* ---------- start ---------- */
 $("mTitle").textContent = D.title || T.karaokeTitle;
 $("mArtist").textContent = D.artist || "";
 if (!stems){ $("grpVocal").style.display = "none"; }
@@ -1267,8 +1270,8 @@ restore();
 setVocal(vocalLevel);
 setOffset(offset * 1000);
 booted = true;
-// Правки из прошлого захода лежат в браузере, а в самом файле их нет — значит
-// подсветить кнопку надо сразу, а не ждать следующего движения.
+// Edits from a previous session live in the browser while the file itself has
+// none — so the button is highlighted at once, not on the next move.
 if (hadStored) markUnsaved(true);
 window.addEventListener("resize", () => centerLine(curIdx));
 raf = requestAnimationFrame(tick);

@@ -1,3 +1,3 @@
-"""kstudio — сборка караоке-страницы из аудиофайла и текста песни."""
+"""kstudio — building a karaoke page out of an audio file and its lyrics."""
 
 __version__ = "4.27.0"

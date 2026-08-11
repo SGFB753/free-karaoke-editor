@@ -1,13 +1,13 @@
-"""Язык сообщений программы.
+"""Language of the program's own messages.
 
-Надписи окна лежат в словаре внутри ui.js, а всё, что программа печатает в
-консоль и в лог сборки, живёт прямо в коде. Заводить для этого файлы переводов
-незачем: сообщений немного, и рядом с кодом видно оба варианта сразу.
+Window labels live in a dictionary inside ui.js; everything the program prints
+to the console and to the build log lives right here in the code. Both variants
+sit next to each other, so a message is never translated blindly:
 
     log(tr("Preparing the audio…", "Готовлю звук…"))
 
-Язык берётся из KARAOKE_UI_LANG, потом из settings.ini, потом из языка системы.
-Английский — если ничего не подошло.
+The language comes from KARAOKE_UI_LANG, then from settings.ini, then from the
+system. English if nothing matched.
 """
 
 from __future__ import annotations
@@ -16,8 +16,8 @@ import os
 
 _LANG = None
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# Настройки и песни лежат не в папке программы, а рядом с ней: в корне видно
-# только то, что нужно человеку.
+# Settings and songs live next to the program folder, not inside it: the root
+# holds only what a person actually needs.
 HOME = os.path.dirname(ROOT)
 
 
@@ -48,7 +48,7 @@ def _from_system() -> str:
             return "ru"
         if val:
             return "en"
-    if os.name == "nt":                       # на Windows переменных обычно нет
+    if os.name == "nt":                       # Windows usually has no such vars
         try:
             import ctypes
             lang = ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3FF
@@ -69,7 +69,7 @@ def lang() -> str:
 
 
 def set_lang(code: str) -> None:
-    """Задать язык вручную — этим пользуется ключ --ui-lang и проверки."""
+    """Set the language by hand — used by --ui-lang and by the tests."""
     global _LANG
     _LANG = code if code in ("ru", "en") else None
 

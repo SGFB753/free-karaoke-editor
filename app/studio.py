@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Караоке-студия — окно программы вместо возни с файлами.
+"""Karaoke Studio — a window instead of juggling files.
 
     py studio.py
 
-Открывается окно, в нём список песен и редактор. Правки пишутся на диск сразу,
-пересобирать ничего не нужно. Тяжёлое (Demucs, Whisper) считается один раз при
-добавлении песни.
+A window opens with the list of songs and the editor. Edits go to disk at
+once, nothing has to be rebuilt. The heavy parts (Demucs, Whisper) run once,
+when the song is added.
 
-Внутри — обычный локальный сервер: браузер служит окном, вся работа идёт в
-Python, у которого есть доступ к файлам.
+Inside it is a plain local server: the browser is the window, all the work
+happens in Python, which is the part with access to the files.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ JOBS_LOCK = threading.Lock()
 
 
 # --------------------------------------------------------------------------- #
-#  Фоновые задачи с отчётом о ходе работы
+#  Background jobs that report their progress
 # --------------------------------------------------------------------------- #
 
 def start_job(title: str, fn) -> str:
@@ -87,7 +87,7 @@ def start_job(title: str, fn) -> str:
 # --------------------------------------------------------------------------- #
 
 def dec_path(p: str) -> str:
-    """Путь из запроса в нормальный вид.
+    """Bring a path from a request into a sane shape.
 
     http.server разбирает строку запроса как latin-1, поэтому русские имена
     приезжают мусором. Разворачиваем %XX в байты и читаем их как UTF-8.
@@ -100,7 +100,7 @@ def dec_path(p: str) -> str:
 
 
 def project_dir(pid: str) -> str:
-    """Только внутри папки проектов — путь из запроса наружу не выпускаем."""
+    """Inside the projects folder only — a path from a request never escapes."""
     safe = os.path.basename(pid.strip().strip("/\\"))
     folder = os.path.join(PROJECTS, safe)
     if not os.path.isdir(folder) or os.path.dirname(os.path.abspath(folder)) != \
@@ -129,19 +129,19 @@ def capabilities() -> dict:
     return {"ffmpeg": ff, "whisper": have_ts, "demucs": S.available(),
             "pillow": have_pil, "version": __version__,
             "models": downloaded_models(),
-            # сколько памяти свободно и сколько какой модели нужно — чтобы окно
-            # могло сказать «эта для вашей машины тяжёлая» до запуска, а не после
+            # how much memory is free and how much each model needs — so the
+            # window can say “this one is heavy for your machine” beforehand
             "freeGb": sysinfo.available_gb(),
             "needGb": dict(sysinfo.NEED_WHISPER, demucs=sysinfo.NEED_DEMUCS),
             "langs": LG.NAMES}
 
 
 def reveal(path: str) -> None:
-    """Открыть папку с файлом и по возможности подсветить сам файл."""
+    """Open the folder with the file and, if possible, highlight the file."""
     path = os.path.abspath(path)
     folder = path if os.path.isdir(path) else os.path.dirname(path)
     if os.name == "nt":
-        # /select, показывает файл выделенным — так его видно сразу
+        # /select shows the file selected — it is spotted straight away
         subprocess.Popen(["explorer", "/select,", path] if os.path.isfile(path)
                          else ["explorer", folder])
     elif sys.platform == "darwin":
@@ -151,15 +151,25 @@ def reveal(path: str) -> None:
         subprocess.Popen(["xdg-open", folder])
 
 
+def extra_langs() -> list:
+    """Language codes that have a translation file of their own."""
+    folder = os.path.join(ROOT, "kstudio", "messages")
+    try:
+        return sorted(n[:-5] for n in os.listdir(folder)
+                      if n.endswith(".json") and n != "template.json")
+    except OSError:
+        return []
+
+
 def ui_lang() -> str:
-    """Язык надписей окна: переменная среды, потом настройки, потом «сам»."""
+    """Language of the window labels: env var, then settings, then “auto”."""
     val = (os.environ.get("KARAOKE_UI_LANG") or "").strip().lower()
     if val in ("en", "ru"):
         return val
     home = os.path.dirname(ROOT)
     ini = os.path.join(ROOT, "settings.ini")
     for other in (os.path.join(home, "settings.ini"),
-                  os.path.join(home, "настройки.ini")):   # места из прошлых версий
+                  os.path.join(home, "настройки.ini")):   # places from older versions
         if not os.path.isfile(ini) and os.path.isfile(other):
             ini = other
     try:
@@ -179,7 +189,7 @@ def ui_lang() -> str:
 
 
 def make_report(audio: str, lyrics_path: str, opts: dict) -> dict:
-    """Быстрый разбор пары файлов — без Demucs и Whisper, за секунду-другую."""
+    """A quick look at a pair of files — no Demucs, no Whisper, a second or two."""
     import tempfile
 
     from kstudio import lyrics as L
@@ -206,7 +216,7 @@ def make_report(audio: str, lyrics_path: str, opts: dict) -> dict:
 
 
 def downloaded_models() -> dict:
-    """Какие модели Whisper уже лежат на диске.
+    """Which Whisper models are already on disk.
 
     Иначе выбор выглядит равноценным: «medium — 1,5 ГБ» ничем не отличается от
     уже скачанной small, а разница между ними — несколько минут молчания перед
@@ -219,10 +229,10 @@ def downloaded_models() -> dict:
 class Handler(BaseHTTPRequestHandler):
     server_version = "KaraokeStudio/" + __version__
 
-    def log_message(self, fmt, *args):        # тише в консоли
+    def log_message(self, fmt, *args):        # keep the console quiet
         pass
 
-    # ---------------- отправка ----------------
+    # ---------------- sending ----------------
     def _send(self, code: int, body: bytes, ctype: str, extra: dict = None):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
@@ -242,7 +252,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": msg}, code)
 
     def _file(self, path: str):
-        """Отдаём звук с поддержкой перемотки — браузеру нужен Range."""
+        """Serve audio with seeking support — the browser needs Range."""
         if not os.path.isfile(path):
             return self._err(404, tr("no such file", "нет файла"))
         size = os.path.getsize(path)
@@ -280,7 +290,7 @@ class Handler(BaseHTTPRequestHandler):
                 try:
                     self.wfile.write(chunk)
                 except (BrokenPipeError, ConnectionResetError):
-                    return                       # окно закрыли или перемотали
+                    return                       # the window closed or seeked away
                 left -= len(chunk)
 
     def _body(self) -> dict:
@@ -293,17 +303,17 @@ class Handler(BaseHTTPRequestHandler):
             return {}
 
     def _local(self) -> bool:
-        """Пускаем только обращения на localhost: страница в интернете не должна
-        уметь достучаться до студии через подменённое имя узла."""
+        """Only requests to localhost are served: a page on the internet must not
+        be able to reach the studio through a spoofed host name."""
         host = (self.headers.get("Host") or "").split(":")[0].strip("[]")
         return host in ("127.0.0.1", "localhost", "::1", "")
 
-    # ---------------- маршруты ----------------
+    # ---------------- routes ----------------
     def do_HEAD(self):
         self.do_GET()
 
     def _pick_lang(self):
-        """Язык окна выбирается в браузере, а сообщения собираются здесь.
+        """The window language is chosen in the browser, the messages are built here.
 
         Без этого в английском окне панель «Проверить» и лог сборки оставались
         русскими: сервер про выбор в окне ничего не знал.
@@ -320,8 +330,8 @@ class Handler(BaseHTTPRequestHandler):
         path, q = dec_path(u.path), parse_qs(u.query)
         try:
             if path in ("/", "/index.html"):
-                # Язык надписей окна: из настроек, иначе по языку системы.
-                # Выбор кнопкой в окне всё равно перебивает это значение.
+                # Language of the window labels: from settings, otherwise from
+                # the system. The button in the window still overrides it.
                 with open(UI, encoding="utf-8") as f:
                     page = f.read().replace("__UI_LANG__", ui_lang())
                 return self._send(200, page.encode("utf-8"),
@@ -334,6 +344,7 @@ class Handler(BaseHTTPRequestHandler):
 
             if path == "/api/state":
                 return self._json({"projects": P.list_all(PROJECTS),
+                                   "uiLangs": extra_langs(),
                                    "caps": capabilities(),
                                    "projectsDir": PROJECTS})
 
@@ -341,6 +352,21 @@ class Handler(BaseHTTPRequestHandler):
                 with JOBS_LOCK:
                     job = JOBS.get(q.get("id", [""])[0])
                     return self._json(job or {"error": tr("no such task", "нет такой задачи")})
+
+            if path == "/api/messages":
+                # Extra languages live as JSON files next to the code, so adding
+                # one needs no rebuild and no programming.
+                code = (q.get("lang", [""])[0] or "").lower()
+                if not re.fullmatch(r"[a-z]{2,3}(-[a-z0-9]+)?", code):
+                    return self._err(400, tr("bad language code", "неверный код языка"))
+                path_json = os.path.join(ROOT, "kstudio", "messages", code + ".json")
+                if not os.path.isfile(path_json):
+                    return self._json({})
+                try:
+                    with open(path_json, encoding="utf-8") as f:
+                        return self._json(json.load(f))
+                except (OSError, ValueError) as e:
+                    return self._err(400, str(e))
 
             if path == "/api/browse":
                 raw = q.get("path", [""])[0]
@@ -370,8 +396,8 @@ class Handler(BaseHTTPRequestHandler):
 
             return self._err(404, tr("not found", "не найдено"))
         except FileNotFoundError as e:
-            # Не всякий пропавший файл — это пропавший проект: раньше любая
-            # такая ошибка выдавала «проект не найден», и искать было негде.
+            # Not every missing file means a missing project: any such error
+            # used to say “song not found”, leaving nowhere to look.
             self._err(404, tr("song not found", "проект не найден") if "проект" in str(e).lower()
                       or not str(e) else f"не найдено: {e}")
         except Exception as e:
@@ -379,8 +405,8 @@ class Handler(BaseHTTPRequestHandler):
             self._err(500, str(e))
 
     def _upload(self, q):
-        """Файл, брошенный в окно. Браузер не даёт путь к нему, только содержимое,
-        поэтому принимаем байты и кладём рядом с проектами."""
+        """A file dropped into the window. The browser gives no path, only the
+        contents, so the bytes are taken and put next to the projects."""
         raw = (q.get("name", [""])[0] or "файл")
         try:
             raw = raw.encode("latin-1").decode("utf-8")
@@ -395,12 +421,12 @@ class Handler(BaseHTTPRequestHandler):
         if size > 600 * 1024 * 1024:
             return self._err(413, tr("the file is larger than 600 MB", "файл больше 600 МБ"))
 
-        # Латиницей: кириллические имена папок ломаются на нерусских системах.
+        # In Latin letters: Cyrillic folder names break on non-Russian systems.
         inbox = os.path.join(PROJECTS, "_incoming")
         old_inbox = os.path.join(PROJECTS, "_входящие")
         if os.path.isdir(old_inbox) and not os.path.isdir(inbox):
             try:
-                os.rename(old_inbox, inbox)      # у кого уже лежит — переедет сам
+                os.rename(old_inbox, inbox)      # an existing one moves by itself
             except OSError:
                 inbox = old_inbox
         os.makedirs(inbox, exist_ok=True)
@@ -437,8 +463,8 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
 
             if path == "/api/reveal":
-                # Показать готовый файл в проводнике. Иначе после экспорта его
-                # приходится искать вручную — а лежит он рядом с исходной песней.
+                # Show the finished file in the file manager. Otherwise it has
+                # to be hunted for — it sits next to the original song.
                 target = body.get("path", "")
                 if not os.path.exists(target):
                     return self._err(404, tr("the file is gone: ", "файла уже нет: ") + target)
@@ -449,7 +475,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._err(500, tr(f"could not open the folder: {e}", f"не вышло открыть папку: {e}"))
 
             if path == "/api/report":
-                # Отчёт до сборки: что за песня, что за текст и чего ждать.
+                # The report before building: the song, the text, what to expect.
                 audio, lyrics = body.get("audio", ""), body.get("lyrics", "")
                 for f in (audio, lyrics):
                     if not os.path.isfile(f):
@@ -514,8 +540,8 @@ class Handler(BaseHTTPRequestHandler):
 
             return self._err(404, tr("not found", "не найдено"))
         except FileNotFoundError as e:
-            # Не всякий пропавший файл — это пропавший проект: раньше любая
-            # такая ошибка выдавала «проект не найден», и искать было негде.
+            # Not every missing file means a missing project: any such error
+            # used to say “song not found”, leaving nowhere to look.
             self._err(404, tr("song not found", "проект не найден") if "проект" in str(e).lower()
                       or not str(e) else f"не найдено: {e}")
         except Exception as e:
@@ -530,13 +556,13 @@ TEXT_EXT = {".txt", ".lrc"}
 
 
 def browse(path: str, kind: str) -> dict:
-    """Простой обзор папок — файловых диалогов у браузера для нас нет."""
+    """A simple folder browser — the browser gives us no file dialogs."""
     exts = AUDIO_EXT if kind == "audio" else TEXT_EXT
     if not path:
         path = os.path.expanduser("~")
     path = os.path.abspath(path)
-    # Запомненная папка может исчезнуть: флешку вынули, папку переименовали.
-    # Поднимаемся вверх, пока не найдём существующую, а не падаем с ошибкой.
+    # A remembered folder can vanish: a stick was pulled out, a folder renamed.
+    # Walk up until an existing one is found instead of failing with an error.
     while path and not os.path.isdir(path):
         parent = os.path.dirname(path)
         if parent == path:
@@ -557,7 +583,7 @@ def browse(path: str, kind: str) -> dict:
                 files.append({"name": name, "path": full,
                               "size": os.path.getsize(full)})
     except (PermissionError, OSError):
-        pass                      # нет прав или папка исчезла между проверками
+        pass                      # no rights, or it vanished between checks
 
     drives = []
     if os.name == "nt":
@@ -571,14 +597,14 @@ def browse(path: str, kind: str) -> dict:
 
 
 def realign(folder: str, opts: dict, log) -> dict:
-    """Посчитать разметку заново — например, когда доставили stable-ts.
-    Стемы уже лежат в проекте, так что Demucs повторно не гоняем."""
+    """Recompute the timing — for instance once stable-ts has been installed.
+    The stems are already in the project, so Demucs is not run again."""
     from kstudio import align as A
     from kstudio import lyrics as L
 
     data = P.load(folder)
-    # Текст можно подменить: правку разбивки по строкам ради удобства пения
-    # делают уже после первой сборки, и гонять всё заново из-за неё незачем.
+    # The text can be swapped: people re-split lines for easier singing after
+    # the first build, and that is no reason to redo everything.
     fresh = (opts.get("lyrics") or "").strip()
     if fresh:
         if not os.path.isfile(fresh):
@@ -624,7 +650,7 @@ def realign(folder: str, opts: dict, log) -> dict:
 
 
 def offset_between(a: list, b: list, hop: float, limit: float = 12.0) -> float:
-    """На сколько вторая запись сдвинута относительно первой, в секундах.
+    """How far the second recording is shifted against the first, in seconds.
 
     Официальный инструментал почти всегда начинается не там же, где сведённая
     песня: другой отсчёт, другая пауза перед вступлением.
@@ -653,18 +679,18 @@ def offset_between(a: list, b: list, hop: float, limit: float = 12.0) -> float:
             s += a[i] * b[i + sh]
         return s / (hi - lo)
 
-    # 1. Грубо: смотрим каждый четвёртый сдвиг и реже перебираем отсчёты.
+    # 1. Coarse: look at every fourth lag and sample the signal more sparsely.
     span = int(limit / hop)
     coarse = max(1, int(0.04 / hop))
     rough = [(score(sh, 8), sh) for sh in range(-span, span + 1, coarse)]
     best_s = max(v for v, _ in rough)
     if best_s <= 0:
         return 0.0
-    # Из всех почти таких же хороших берём ближайший к нулю.
+    # Among the near-equally good peaks, take the one closest to zero.
     near = [sh for v, sh in rough if v >= best_s * 0.97]
     guess = min(near, key=abs)
 
-    # 2. Точно: рядом с найденным, с полным шагом.
+    # 2. Fine: around the winner, at full resolution.
     lo, hi = guess - 2 * coarse, guess + 2 * coarse
     fine = [(score(sh), sh) for sh in range(lo, hi + 1)]
     best_s, best = max(fine)
@@ -672,7 +698,7 @@ def offset_between(a: list, b: list, hop: float, limit: float = 12.0) -> float:
     best = min(near, key=abs)
     best_s = dict((sh, v) for v, sh in fine)[best]
 
-    # 3. Вершину уточняем параболой: настоящий сдвиг редко кратен шагу.
+    # 3. Refine the peak with a parabola: a real shift rarely lands on a step.
     left, right = score(best - 1), score(best + 1)
     frac = 0.0
     if left > -1e17 and right > -1e17:
@@ -683,7 +709,7 @@ def offset_between(a: list, b: list, hop: float, limit: float = 12.0) -> float:
 
 
 def shift_audio(path: str, seconds: float, tmp: str) -> str:
-    """Сдвинуть запись во времени: положительное — позже, отрицательное — раньше."""
+    """Shift a recording in time: positive — later, negative — earlier."""
     out = os.path.join(tmp, "shifted.wav")
     if seconds >= 0:
         ms = int(round(seconds * 1000))
@@ -698,7 +724,7 @@ def shift_audio(path: str, seconds: float, tmp: str) -> str:
 
 
 def _best_gain(mix: str, instr: str, spans: list) -> float:
-    """Во сколько раз усилить инструментал, чтобы он лучше всего гасил оригинал.
+    """By how much to scale the instrumental so it cancels the original best.
 
     Считаем по настоящим отсчётам, а не по огибающей: огибающая нормирована
     на собственный максимум каждой записи, и отношение по ней ничего не значит.
@@ -716,7 +742,7 @@ def _best_gain(mix: str, instr: str, spans: list) -> float:
         idx.append((max(0, int(x * sr)), min(n, int(y * sr))))
     num = den = 0.0
     for lo, hi in idx:
-        for i in range(lo, hi, 4):          # каждый четвёртый: точности хватает
+        for i in range(lo, hi, 4):          # every fourth sample is precise enough
             av, bv = a[i], b[i]
             num += av * bv
             den += bv * bv
@@ -726,7 +752,7 @@ def _best_gain(mix: str, instr: str, spans: list) -> float:
 
 
 def _rms_at(path: str, spans: list) -> float:
-    """Настоящая громкость записи в указанных промежутках, без нормировки."""
+    """The real loudness of a recording over the given spans, unnormalised."""
     sr = 16000
     x = AU.read_pcm_mono(path, sr)
     total = cnt = 0.0
@@ -738,7 +764,7 @@ def _rms_at(path: str, spans: list) -> float:
 
 
 def _spectral_vocals(mix: str, instr: str, spans: list, out: str, log) -> Optional[str]:
-    """Вычесть инструментал по частотам, а не одной громкостью.
+    """Subtract the instrumental per frequency band, not by one volume level.
 
     Официальный инструментал почти никогда не совпадает с тем, что лежит под
     голосом в песне: другой мастеринг, другая эквализация, другой уровень.
@@ -761,7 +787,7 @@ def _spectral_vocals(mix: str, instr: str, spans: list, out: str, log) -> Option
     a = np.frombuffer(AU.read_pcm_mono(mix, sr).tobytes(), dtype="<i2").astype(np.float32) / 32768.0
     b = np.frombuffer(AU.read_pcm_mono(instr, sr).tobytes(), dtype="<i2").astype(np.float32) / 32768.0
     n = min(len(a), len(b))
-    N, hop = 4096, 1024                  # окно 93 мс, перекрытие 75 %
+    N, hop = 4096, 1024                  # 93 ms window, 75 % overlap
     if n < N * 4:
         return None
     a, b = a[:n], b[:n]
@@ -772,24 +798,24 @@ def _spectral_vocals(mix: str, instr: str, spans: list, out: str, log) -> Option
     A = np.fft.rfft(a[idx] * win, axis=1)
     B = np.fft.rfft(b[idx] * win, axis=1)
 
-    # кадры, целиком попавшие в места без пения
+    # frames that fall entirely inside the stretches without singing
     mask = np.zeros(frames, dtype=bool)
     for lo, hi in spans:
         i0 = max(0, int((lo * sr) // hop))
         i1 = min(frames, int(((hi * sr) - N) // hop) + 1)
         if i1 > i0:
             mask[i0:i1] = True
-    if int(mask.sum()) < 12:             # мерить не на чем
+    if int(mask.sum()) < 12:             # nothing to measure on
         return None
 
     num = (A[mask] * np.conj(B[mask])).sum(axis=0)
     den = (np.abs(B[mask]) ** 2).sum(axis=0)
-    quiet_bins = den < den.max() * 1e-9  # там, где инструментала нет, гасить нечего
+    quiet_bins = den < den.max() * 1e-9  # where there is no instrumental, nothing to cancel
     H = num / np.where(den > 0, den, 1.0)
     H[quiet_bins] = 0.0
 
-    # Сглаживаем по частоте: соседние полосы не могут отличаться втрое, а по
-    # одному куску без пения оценка шумит.
+    # Smooth across frequency: neighbouring bands cannot differ threefold, and
+    # an estimate from a single silent stretch is noisy.
     k = 5
     pad = np.r_[H[:k][::-1], H, H[-k:][::-1]]
     H = np.convolve(pad, np.ones(2 * k + 1) / (2 * k + 1), mode="same")[k:-k]
@@ -819,7 +845,7 @@ def _spectral_vocals(mix: str, instr: str, spans: list, out: str, log) -> Option
 
 def extract_vocals(mix: str, instr: str, off: float, quiet: list, tmp: str,
                    log) -> Optional[str]:
-    """Голос ≈ оригинал минус инструментал.
+    """Voice ≈ the original minus the instrumental.
 
     Когда инструментал взят у того же исполнителя и от той же записи, разница
     двух дорожек — это и есть вокал. Иначе «голосом» остаётся весь оригинал,
@@ -828,17 +854,18 @@ def extract_vocals(mix: str, instr: str, off: float, quiet: list, tmp: str,
 
     Возвращает путь к дорожке или None, если вычитание не сработало.
     """
-    # 1. Приводим оригинал в то же время, что и новый инструментал.
+    # 1. Bring the original into the same time frame as the new instrumental.
     aligned = mix if abs(off) < 0.005 else shift_audio(mix, off, tmp)
 
-    # 2. Подбираем громкость: у инструментала она почти всегда другая.
-    #    Меряем там, где не поют — там обе дорожки должны звучать одинаково.
+    # 2. Fit the level: an instrumental almost always has a different one.
+    #    Measure where nobody sings — there both tracks must sound the same.
     spans = [(q["start"], q["end"]) for q in quiet] or None
     k = _best_gain(aligned, instr, spans)
     log(tr(f"  instrumental volume matched: ×{k:.2f}",
             f"  громкость инструментала подобрана: ×{k:.2f}"))
 
-    # 3. Вычитаем. amerge сводит две записи в два канала, pan берёт их разность.
+    # 3. Subtract. amerge puts both recordings into two channels, pan takes the
+    #    difference between them.
     out = os.path.join(tmp, "voice.wav")
     flt = (f"[1:a]volume={k:.4f}[i];[0:a][i]amerge=inputs=2,"
            f"pan=mono|c0=c0-c1[out]")
@@ -851,8 +878,8 @@ def extract_vocals(mix: str, instr: str, off: float, quiet: list, tmp: str,
                f"  вычесть инструментал не вышло ({(p.stderr or '').strip()[:80]})"))
         return None
 
-    # 3б. То же самое, но с поправкой на каждую частоту. Обычно выходит заметно
-    #     чище; берём тот вариант, где в местах без пения тише.
+    # 3b. The same, but corrected per frequency. Usually noticeably cleaner;
+    #     whichever leaves the silent stretches quieter wins.
     spec = _spectral_vocals(aligned, instr, spans, os.path.join(tmp, "voice_f.wav"), log)
     if spec and spans:
         r_plain, r_spec = _rms_at(out, spans), _rms_at(spec, spans)
@@ -865,8 +892,8 @@ def extract_vocals(mix: str, instr: str, off: float, quiet: list, tmp: str,
             log(tr("  plain subtraction was no worse — taking that",
                    "  простое вычитание оказалось не хуже — беру его"))
 
-    # 4. Проверяем, что стало тише именно там, где не поют. Если нет —
-    #    инструментал не от этой записи, и подсовывать мусор нельзя.
+    # 4. Check that it got quieter exactly where nobody sings. If it did not,
+    #    the instrumental belongs to another recording and must not be used.
     if spans:
         before, after = _rms_at(aligned, spans), _rms_at(out, spans)
         if before > 1e-6:
@@ -881,7 +908,7 @@ def extract_vocals(mix: str, instr: str, off: float, quiet: list, tmp: str,
 
 
 def replace_track(folder: str, src: str, kind: str, shift: bool, log) -> dict:
-    """Подменить дорожку в готовом проекте, оставив разметку на месте.
+    """Swap a track in a finished project, leaving the timing in place.
 
     Смысл: разметка уже выверена руками, а минусовку хочется настоящую —
     ту, что выпустил исполнитель. Пересчитывать ничего не надо, меняется
@@ -909,13 +936,13 @@ def replace_track(folder: str, src: str, kind: str, shift: bool, log) -> dict:
                f"Длина новой дорожки: {int(new_dur//60)}:{int(new_dur%60):02d}"
                f" (в проекте {int(old_dur//60)}:{int(old_dur%60):02d})"))
 
-        # Сдвиг ищем по той дорожке, что уже лежит в проекте.
+        # The shift is measured against the track already in the project.
         off = 0.0
         ref = old_name or tracks.get("mix") or tracks.get("vocals")
         if ref:
             try:
-                # Мельче шаг — точнее сдвиг. 10 мс это ещё быстро, а ошибка
-                # вдвое меньше, чем на стандартных 20.
+                # A finer step means a finer shift. 10 ms is still fast, and the
+                # error is half of what the usual 20 ms gives.
                 ea, ha = AU.rms_envelope(os.path.join(folder, ref), hop_ms=10)
                 eb, _ = AU.rms_envelope(wav, hop_ms=10)
                 off = offset_between(ea, eb, ha)
@@ -935,9 +962,9 @@ def replace_track(folder: str, src: str, kind: str, shift: bool, log) -> dict:
         tracks[kind] = name
         made_voice = False
         if kind == "instrumental" and "mix" in tracks:
-            # Был один общий звук. Оставлять его «голосом» нельзя: поверх нового
-            # минуса заиграет вторая аранжировка. Пробуем получить настоящий
-            # голос вычитанием — оригинал минус инструментал.
+            # There was one mixed track. Keeping it as the “voice” is wrong: a
+            # second arrangement would play over the new instrumental. Try to get
+            # the real voice by subtraction — the original minus the instrumental.
             from kstudio import report as REP
             mix_path = os.path.join(folder, tracks["mix"])
             log(tr("Trying to extract the voice: the original minus your instrumental…",
@@ -962,8 +989,8 @@ def replace_track(folder: str, src: str, kind: str, shift: bool, log) -> dict:
                        "comes from it.",
                        "Голос выделен — под него и поётся, волна на дорожке от него же."))
             else:
-                # Не вышло — честнее убрать голосовую дорожку совсем, чем
-                # подсовывать вместо неё целую песню.
+                # It did not work — dropping the vocal track altogether is
+                # honester than passing off the whole song as the voice.
                 try:
                     os.remove(mix_path)
                 except OSError:
@@ -982,8 +1009,8 @@ def replace_track(folder: str, src: str, kind: str, shift: bool, log) -> dict:
             log(tr(f"The timing was shifted by {off:+.3f} s along with the track.",
                 f"Разметку сдвинул на {off:+.3f} с вслед за дорожкой."))
 
-            # И голос тоже: он остался в старом времени, а минус теперь в новом.
-            # Без этого вокал звучит невпопад с новой минусовкой.
+            # The voice too: it is still in the old time frame while the
+            # instrumental has moved. Otherwise the vocal is out of step.
             voc = None if made_voice else tracks.get("vocals")
             if voc:
                 try:
@@ -1024,7 +1051,7 @@ def replace_track(folder: str, src: str, kind: str, shift: bool, log) -> dict:
 
 
 def export(folder: str, kind: str, opts: dict, log) -> dict:
-    """Экспорт: автономная HTML-страница или ролик MP4."""
+    """Export: a standalone HTML page or an MP4 video."""
     data = P.load(folder)
     lyr = _lyrics_from(data)
     tracks = {}
@@ -1037,8 +1064,8 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
     base = P.slugify(data.get("title") or "караоке")
 
     if kind == "html":
-        # Имя латиницей: файл уедет к людям, у которых кириллица в именах
-        # превращается в крякозябры.
+        # A Latin name: the file travels to people where Cyrillic in file names
+        # turns into mojibake.
         out = os.path.join(out_dir, base + "_karaoke.html")
         log(tr("Building the standalone page…", "Собираю автономную страницу…"))
         B.build_html(out, lyr, data["duration"], tracks, data.get("engine", ""),
@@ -1095,7 +1122,7 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
 
 
 def _lyrics_from(data: dict):
-    """Собрать объект текста из сохранённой разметки — для экспорта."""
+    """Rebuild the lyrics object from the saved timing — for export."""
     from kstudio.lyrics import Line, Lyrics, Word
     lyr = Lyrics(title=data.get("title"), artist=data.get("artist"))
     for l in data.get("lines") or []:
@@ -1127,7 +1154,7 @@ def free_port(preferred: int = 8770) -> int:
 
 
 def open_window(url: str) -> None:
-    """Окно приложения: без адресной строки и вкладок, если найдётся Chrome/Edge."""
+    """An app window: no address bar, no tabs, if Chrome or Edge is around."""
     if os.name == "nt":
         candidates = [
             os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
@@ -1148,9 +1175,9 @@ def open_window(url: str) -> None:
 
 
 def parse_args(argv):
-    """Разбор ключей. Раньше их не было вовсе: --port молча игнорировался, порт
-    выбирался сам, и было непонятно, куда всё уехало."""
-    port, no_browser = None, False
+    """Option parsing. There used to be none: --port was silently ignored, the
+    port was picked automatically, and it was a mystery where things went."""
+    port, no_browser, host = None, False, "127.0.0.1"
     args = list(argv)
     while args:
         a = args.pop(0)
@@ -1163,29 +1190,39 @@ def parse_args(argv):
             port = int(args.pop(0))
         elif a.startswith("--port="):
             port = int(a.split("=", 1)[1])
+        elif a in ("--host",):
+            # Inside a container the request arrives from outside it, so the
+            # server has to listen on 0.0.0.0. Publish the port to 127.0.0.1
+            # on the host and it stays as private as before.
+            if not args:
+                raise SystemExit(tr("--host needs an address, for example: --host 0.0.0.0",
+                                    "После --host нужен адрес, например: --host 0.0.0.0"))
+            host = args.pop(0)
+        elif a.startswith("--host="):
+            host = a.split("=", 1)[1]
         elif a in ("-h", "--help"):
-            print("py studio.py [--port 8770] [--no-browser]")
+            print("py studio.py [--port 8770] [--host 127.0.0.1] [--no-browser]")
             raise SystemExit(0)
         else:
             raise SystemExit(tr(f"Unknown option: {a}", f"Не понял ключ: {a}"))
-    return port, no_browser
+    return port, no_browser, host
 
 
 def main(argv=None) -> int:
-    want, no_browser = parse_args(sys.argv[1:] if argv is None else argv)
+    want, no_browser, host = parse_args(sys.argv[1:] if argv is None else argv)
     if want is None:
         port = free_port()
         if not port:
             print(tr("Could not find a free port.", "Не нашёл свободный порт."), file=sys.stderr)
             return 1
     else:
-        # Порт назвали явно — значит, на него и рассчитывают. Тихо переехать на
-        # соседний нельзя: обращаться будут по названному, и попадут в пустоту
-        # или в чужую студию, которая этот порт и занимает.
+        # A port was named explicitly, so that is the one expected. Quietly
+        # moving to the next one is wrong: requests will go to the named port and
+        # land either nowhere or in someone else's studio holding it.
         port = want
         with socket.socket() as probe:
             try:
-                probe.bind(("127.0.0.1", port))
+                probe.bind((host, port))
             except OSError:
                 print(tr(f"Port {port} is taken — the studio may already be running.",
                          f"Порт {port} уже занят — возможно, студия уже запущена."),
@@ -1211,7 +1248,7 @@ def main(argv=None) -> int:
     print(tr("To finish, close this console window or press Ctrl+C.\n",
                   "Чтобы закончить — закройте это окно консоли или нажмите Ctrl+C.\n"))
 
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    srv = ThreadingHTTPServer((host, port), Handler)
     if not no_browser:
         threading.Timer(0.6, lambda: open_window(url)).start()
     try:

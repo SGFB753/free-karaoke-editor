@@ -1,8 +1,8 @@
-"""Проект песни на диске: стемы, разметка, огибающая вокала.
+"""A song project on disk: stems, timing, the vocal envelope.
 
-Смысл в том, чтобы тяжёлое считалось один раз. Demucs и Whisper отрабатывают
-при создании проекта, дальше правки — это просто запись в project.json.
-Ни пересборок, ни ручных сохранений.
+The point is that the heavy work happens once. Demucs and Whisper run when the
+project is created; after that an edit is just a write to project.json. No
+rebuilds, no manual saving.
 """
 
 from __future__ import annotations
@@ -25,15 +25,15 @@ from . import separate as S
 
 Log = Callable[[str], None]
 PROJECT_FILE = "project.json"
-ENVELOPE_HOP = 0.02          # шаг огибающей вокала, секунды
+ENVELOPE_HOP = 0.02          # step of the vocal envelope, seconds
 
 
 def _noop(msg: str) -> None:
     pass
 
 
-# Кириллица латиницей: имена папок и готовых файлов должны читаться на любой
-# системе. «Мамины Усы» → «maminy-usy», а не крякозябры в чужом проводнике.
+# Cyrillic in Latin letters: folder and file names must read on any system.
+# “Мамины Усы” → “maminy-usy”, not mojibake in someone else's file manager.
 TRANSLIT = {
     "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e",
     "ж": "zh", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
@@ -65,16 +65,16 @@ def slugify(name: str) -> str:
 
 
 def projects_root(base: Optional[str] = None) -> str:
-    # KARAOKE_PROJECTS позволяет держать песни не в папке программы: это нужно
-    # проверкам, чтобы не лезть в настоящие проекты, и удобно, если песни лежат
-    # на другом диске.
-    # На уровень выше папки программы: в корне у человека только его файлы.
+    # KARAOKE_PROJECTS keeps songs outside the program folder: the tests need
+    # that so they never touch real projects, and it is handy when songs live on
+    # another drive.
+    # One level above the program folder: the root holds only the user's files.
     home = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     root = base or os.environ.get("KARAOKE_PROJECTS")
     if not root:
         root = os.path.join(home, "projects")
-        # Папка называлась «проекты». У кого она уже есть с песнями — работаем
-        # в ней, чтобы разметка не потерялась при обновлении.
+        # The folder used to be called “проекты” (Russian). If someone already has one
+        # with songs in it, keep using it so no timing is lost on an update.
         old_ru = os.path.join(home, "проекты")
         if not os.path.isdir(root) and os.path.isdir(old_ru):
             root = old_ru
@@ -85,12 +85,12 @@ def projects_root(base: Optional[str] = None) -> str:
 # --------------------------------------------------------------------------- #
 
 def encode_envelope(values: List[float]) -> str:
-    """Огибающая как base64 из байтов 0..255 — в JSON это в разы компактнее списка."""
+    """The envelope as base64 of 0..255 bytes — far smaller in JSON than a list."""
     return base64.b64encode(bytes(min(255, max(0, int(v * 255))) for v in values)).decode()
 
 
 def build_envelope(path: str, log: Log = _noop) -> Dict:
-    """Громкость вокала по времени — по ней рисуется волна и ищутся начала фраз."""
+    """Vocal loudness over time — the waveform and the phrase starts come from it."""
     try:
         env, dt = AU.rms_envelope(path, hop_ms=int(ENVELOPE_HOP * 1000))
     except Exception as e:                                   # pragma: no cover
@@ -107,7 +107,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
            language: str = "ru", separate: bool = True,
            device: Optional[str] = None, codec: str = "mp3",
            log: Log = _noop) -> str:
-    """Собрать проект. Возвращает путь к его папке."""
+    """Build a project. Returns the path to its folder."""
     lyr = L.load(lyrics_path)
     if not lyr.lines:
         raise ValueError(tr("The lyrics file has no lines at all.",
@@ -188,7 +188,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
 
 
 def save(folder: str, data: Dict) -> None:
-    """Пишем через временный файл: обрыв на середине не испортит проект."""
+    """Write through a temporary file: a crash halfway will not ruin the project."""
     path = os.path.join(folder, PROJECT_FILE)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -242,7 +242,7 @@ def delete(folder: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
-#  Поиск сомнительных строк — чтобы не искать промахи на слух
+#  Finding suspicious lines — so misses need not be hunted by ear
 # --------------------------------------------------------------------------- #
 
 def decode_envelope(env: Dict) -> List[float]:
@@ -251,7 +251,7 @@ def decode_envelope(env: Dict) -> List[float]:
 
 
 def quiet_spans(data: Dict) -> List[Dict]:
-    """Где в песне долго не поют — по той же огибающей, что рисует волну.
+    """Where nobody sings for a while — from the same envelope that draws the wave.
 
     Это вступление, проигрыши и соло. Видеть их на дорожке важно: строки туда
     попадать не должны, а разметка по громкости именно там и промахивается.
@@ -263,7 +263,7 @@ def quiet_spans(data: Dict) -> List[Dict]:
 
 
 def problems(data: Dict) -> List[Dict]:
-    """Список строк, которые стоит проверить, с причиной."""
+    """Lines worth checking, each with a reason."""
     lines = data.get("lines") or []
     env = decode_envelope(data.get("envelope") or {})
     hop = (data.get("envelope") or {}).get("hop") or ENVELOPE_HOP
@@ -292,10 +292,10 @@ def problems(data: Dict) -> List[Dict]:
         if i and lines[i - 1]["end"] > ln["start"] + 1e-6:
             why.append(tr("overlaps the previous line", "налезает на предыдущую"))
 
-        # Про «тянется слишком долго» здесь раньше была жалоба — и зря:
-        # долгая нота, распевка, хвост в конце строки это нормальная музыка,
-        # а не ошибка разметки. Решает тот, кто слушает песню.
-        # Осталась только невозможность: столько слогов физически не спеть.
+        # There used to be a complaint about “held too long” here — wrongly:
+        # a long note, a melisma, a tail at the end of a line is ordinary music,
+        # not a timing error. That call belongs to whoever listens to the song.
+        # Only the impossible is left: that many syllables cannot be sung.
         syl = sum((w.get("s") or 1) for w in ws) or 1
         span = ln["end"] - ln["start"]
         if span > 0 and syl and span / syl < 0.07:

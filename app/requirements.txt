@@ -1,19 +1,18 @@
-# Базовая работа: ничего из этого не обязательно.
-# Нужен только Python 3.8+ и ffmpeg в системе.
+# The basics need none of this: Python 3.8+ and ffmpeg in the system are enough.
 
-# --- точная разметка по словам (forced alignment моделью Whisper) ---
+# --- word-by-word timing (forced alignment with the Whisper model) ---
 stable-ts>=2.17
 
-# --- минусовка: отделение вокала от инструментала ---
+# --- the instrumental: separating the vocal from the backing ---
 demucs>=4.0
-# torchaudio 2.x сам писать WAV не умеет, а demucs эту зависимость не тянет
+# torchaudio 2.x cannot write WAV itself, and demucs does not pull this in
 soundfile>=0.12
 
-# --- ускоряет разбор громкости (не обязательно) ---
+# --- speeds up the loudness analysis (optional) ---
 numpy>=1.21
 
-# --- рендер ролика в MP4 (tools/video.py) ---
+# --- rendering the MP4 video (tools/video.py) ---
 pillow>=9.0
 
-# --- если нет прав ставить ffmpeg в систему, раскомментируйте ---
+# --- uncomment if you cannot install ffmpeg system-wide ---
 # imageio-ffmpeg

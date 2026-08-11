@@ -1,4 +1,4 @@
-"""Работа со звуком через ffmpeg: поиск бинарника, декод в PCM, перекодирование."""
+"""Audio through ffmpeg: finding the binary, decoding to PCM, re-encoding."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ _FFMPEG: Optional[str] = None
 _FFPROBE: Optional[str] = None
 
 CODECS = {
-    # имя: (ffmpeg args, расширение, mime)
+    # name: (ffmpeg args, extension, mime)
     "mp3": (["-c:a", "libmp3lame", "-q:a", "5"], ".mp3", "audio/mpeg"),
     "opus": (["-c:a", "libopus", "-b:a", "64k", "-vbr", "on"], ".ogg", "audio/ogg"),
     "aac": (["-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart"], ".m4a", "audio/mp4"),
@@ -30,7 +30,7 @@ class AudioError(RuntimeError):
 def _probe_candidates(name: str):
     yield os.environ.get(f"KARAOKE_{name.upper()}")
     yield shutil.which(name)
-    try:  # pip install imageio-ffmpeg — запасной вариант без системной установки
+    try:  # pip install imageio-ffmpeg — a fallback without a system install
         import imageio_ffmpeg
         if name == "ffmpeg":
             yield imageio_ffmpeg.get_ffmpeg_exe()
@@ -75,7 +75,7 @@ _ON_PATH = False
 
 
 def ensure_on_path() -> None:
-    """Сделать ffmpeg видимым для чужих библиотек, которые ищут его по имени.
+    """Make ffmpeg visible to third-party libraries that look it up by name.
 
     imageio-ffmpeg кладёт бинарник внутрь пакета под именем вроде
     ffmpeg-win64-v4.2.2.exe. Наш код его находит, а openai-whisper зовёт просто
@@ -97,7 +97,7 @@ def ensure_on_path() -> None:
         return
 
     if shutil.which("ffmpeg"):
-        return                                   # системный уже доступен
+        return                                   # the system one is already there
 
     import tempfile
     shim_dir = os.path.join(tempfile.gettempdir(), "karaoke_ffmpeg_shim")
@@ -105,7 +105,7 @@ def ensure_on_path() -> None:
     dst = os.path.join(shim_dir, want)
     if not os.path.exists(dst):
         try:
-            os.link(exe, dst)                    # жёсткая ссылка — без копирования
+            os.link(exe, dst)                    # a hard link — no copying
         except Exception:
             try:
                 shutil.copy2(exe, dst)
@@ -128,7 +128,7 @@ def duration(path: str) -> float:
                 return float(json.loads(p.stdout)["format"]["duration"])
             except Exception:
                 pass
-    # запасной путь: распарсить "Duration: 00:03:24.15" из вывода ffmpeg
+    # fallback: parse "Duration: 00:03:24.15" out of ffmpeg's output
     p = _run([ffmpeg(), "-i", path])
     m = re.search(rb"Duration:\s*(\d+):(\d+):(\d+\.?\d*)", p.stderr)
     if m:
@@ -138,7 +138,7 @@ def duration(path: str) -> float:
 
 
 def to_wav(src: str, dst: str, sample_rate: int = 44100, mono: bool = False) -> str:
-    """Привести любой вход к WAV (нужно demucs'у и как общий знаменатель)."""
+    """Bring any input to WAV (demucs needs it, and it is a common denominator)."""
     cmd = [ffmpeg(), "-y", "-i", src, "-vn", "-ar", str(sample_rate),
            "-ac", "1" if mono else "2", "-c:a", "pcm_s16le", dst]
     p = _run(cmd)
@@ -149,7 +149,7 @@ def to_wav(src: str, dst: str, sample_rate: int = 44100, mono: bool = False) -> 
 
 
 def encode(src: str, dst_base: str, codec: str = "mp3", sample_rate: int = 44100) -> Tuple[str, str]:
-    """Сжать для веба. Возвращает (путь, mime).
+    """Compress for the web. Returns (path, mime).
 
     Частоту дискретизации задаём явно: минусовка и вокал играют в браузере
     двумя разными элементами, и если у них разойдётся частота, одна дорожка
@@ -169,7 +169,7 @@ def encode(src: str, dst_base: str, codec: str = "mp3", sample_rate: int = 44100
 
 
 def read_pcm_mono(path: str, sample_rate: int = 16000) -> array:
-    """Декодировать в моно int16 через пайп. Возвращает array('h')."""
+    """Decode to mono int16 through a pipe. Returns array(\'h\')."""
     cmd = [ffmpeg(), "-v", "error", "-i", path, "-vn", "-ac", "1",
            "-ar", str(sample_rate), "-f", "s16le", "-"]
     p = _run(cmd)
@@ -182,7 +182,7 @@ def read_pcm_mono(path: str, sample_rate: int = 16000) -> array:
 
 
 def rms_envelope(path: str, hop_ms: int = 20, sample_rate: int = 16000):
-    """Огибающая громкости: (список RMS в [0..1], шаг в секундах)."""
+    """Loudness envelope: (list of RMS in [0..1], step in seconds)."""
     samples = read_pcm_mono(path, sample_rate)
     hop = max(int(sample_rate * hop_ms / 1000), 1)
     try:

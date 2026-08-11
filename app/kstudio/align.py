@@ -1,9 +1,10 @@
-"""Выравнивание текста по звуку — расстановка таймингов для каждого слова.
+"""Lining the text up with the audio — a timing for every word.
 
-Два движка:
-  whisper — forced alignment моделью Whisper (stable-ts). Точно, но нужен torch.
-  energy  — без нейросетей: слова распределяются по «массе» вокальной энергии.
-            Работает всегда, паузы и проигрыши учитывает, но по словам грубее.
+Two engines:
+  whisper — forced alignment with the Whisper model (stable-ts). Accurate, but
+            it needs torch.
+  energy  — no neural nets: words are spread over the “mass” of vocal energy.
+            Always available, respects pauses and interludes, coarser per word.
 """
 
 from __future__ import annotations
@@ -23,12 +24,12 @@ def _noop(msg: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
-#  Энергетический движок: ищем вокальные фразы и раскладываем строки по ним
+#  The loudness engine: find sung phrases and lay the lines out over them
 # --------------------------------------------------------------------------- #
 
 def _phrases(env: List[float], dt: float, min_dur: float = 0.18,
              max_gap: float = 0.32) -> List[List[float]]:
-    """Участки вокальной активности [начало, конец] по порогу с гистерезисом."""
+    """Stretches of vocal activity [start, end] found by a hysteresis threshold."""
     if not env:
         return []
     ordered = sorted(env)
@@ -37,13 +38,13 @@ def _phrases(env: List[float], dt: float, min_dur: float = 0.18,
     rng = max(peak - floor, 1e-6)
     on, off = floor + 0.20 * rng, floor + 0.11 * rng
 
-    lead = max(int(0.20 / dt), 1)        # насколько отступаем назад к тихому началу фразы
+    lead = max(int(0.20 / dt), 1)        # how far to step back to the quiet phrase start
     segs, start, active = [], 0, False
     for i, e in enumerate(env):
         if not active and e >= on:
             active, start = True, i
-            # порог срабатывает уже на разгоне звука; отходим к настоящему началу,
-            # чтобы строка загоралась чуть раньше, а не после того, как её запели
+            # the threshold trips once the sound is already rising; step back to
+            # the real start so the line lights up slightly early, not late
             while start > 0 and i - start < lead and env[start - 1] > off * 0.7:
                 start -= 1
         elif active and e < off:
@@ -61,11 +62,11 @@ def _phrases(env: List[float], dt: float, min_dur: float = 0.18,
     return [seg for seg in merged if seg[1] - seg[0] >= min_dur]
 
 
-GAP_PENALTY = 1.5      # во сколько раз пауза внутри строки «дороже» ошибки длительности
+GAP_PENALTY = 1.5      # how much costlier a gap inside a line is than a length error
 
 
 def _limit_phrases(segs: List[List[float]], target: int) -> List[List[float]]:
-    """Слишком дробную нарезку склеиваем по самым узким паузам (иначе DP медленный)."""
+    """Glue an over-fragmented split at its narrowest gaps (or DP gets slow)."""
     while len(segs) > target:
         gaps = [(segs[i + 1][0] - segs[i][1], i) for i in range(len(segs) - 1)]
         _, i = min(gaps)
@@ -75,7 +76,7 @@ def _limit_phrases(segs: List[List[float]], target: int) -> List[List[float]]:
 
 
 def _fit_lines_to_phrases(lines, segs) -> None:
-    """Оптимально разложить строки по фразам (DP) и проставить start/end."""
+    """Lay the lines over the phrases optimally (DP) and set start/end."""
     N, M = len(lines), len(segs)
     voiced = [e - s for s, e in segs]
     pre = [0.0]
@@ -87,12 +88,12 @@ def _fit_lines_to_phrases(lines, segs) -> None:
 
     INF = float("inf")
 
-    # без ограничения на размер группы DP растёт как O(N·M²) и на длинном тексте
-    # считается десятки секунд; строка почти никогда не занимает много фраз подряд
+    # without a cap on the group size DP grows as O(N·M²) and takes tens of
+    # seconds on a long text; a line almost never spans many phrases in a row
     span_cap = max(8, 2 * -(-M // N), 2 * -(-N // M))
 
     if M >= N:
-        # каждой строке — непрерывная группа из одной или нескольких фраз
+        # every line gets a contiguous group of one or more phrases
         dp = [[INF] * (M + 1) for _ in range(N + 1)]
         back = [[0] * (M + 1) for _ in range(N + 1)]
         dp[0][0] = 0.0
@@ -104,7 +105,7 @@ def _fit_lines_to_phrases(lines, segs) -> None:
                     if prev >= INF:
                         continue
                     gv = pre[j] - pre[k]
-                    inner = (segs[j - 1][1] - segs[k][0]) - gv   # паузы внутри группы
+                    inner = (segs[j - 1][1] - segs[k][0]) - gv   # gaps inside the group
                     c = prev + (gv - want[i - 1]) ** 2 + GAP_PENALTY * inner ** 2
                     if c < best:
                         best, bk = c, k
@@ -115,7 +116,7 @@ def _fit_lines_to_phrases(lines, segs) -> None:
             lines[i - 1].start, lines[i - 1].end = segs[k][0], segs[j - 1][1]
             j = k
     else:
-        # фраз меньше, чем строк: в одну фразу помещаем несколько строк
+        # fewer phrases than lines: several lines share one phrase
         dp = [[INF] * (N + 1) for _ in range(M + 1)]
         back = [[0] * (N + 1) for _ in range(M + 1)]
         dp[0][0] = 0.0
@@ -146,7 +147,7 @@ def _fit_lines_to_phrases(lines, segs) -> None:
 
 def align_energy(lyrics: Lyrics, audio_path: str, duration: float,
                  log: Log = _noop) -> Lyrics:
-    """Разложить строки по вокальным фразам, слова внутри строки — по слогам."""
+    """Lay lines over sung phrases; inside a line, words go by syllable."""
     from . import audio as A
 
     log(tr("Looking for sung phrases by loudness…", "Ищу вокальные фразы по громкости…"))
@@ -169,9 +170,9 @@ def align_energy(lyrics: Lyrics, audio_path: str, duration: float,
     if lines:
         _fit_lines_to_phrases(lines, segs)
 
-    # слова внутри строки — пропорционально слогам.
-    # Расширять span нельзя: на плотном тексте строки бывают короче любого порога,
-    # и растянутые слова заезжали бы на следующую строку, ломая порядок.
+    # words inside a line are spread in proportion to syllables.
+    # The span must not be widened: on dense text lines are shorter than any
+    # threshold, and stretched words would run into the next line.
     for ln in lines:
         span = max(ln.end - ln.start, 1e-3)
         acc = 0.0
@@ -203,19 +204,19 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     from . import models as M
     from .progress import Heartbeat
 
-    # «auto» — не «пусть Whisper угадает», а «определим по тексту сами»:
-    # так результат предсказуем и его видно в логе.
+    # “auto” does not mean “let Whisper guess” but “we work it out from the
+    # text”: the result is then predictable and visible in the log.
     if not language or language == "auto":
         language = LG.detect(lyrics.plain_text())
         log(tr(f"Language of the lyrics: {LG.label(language)} (worked out from the text)",
            f"Язык текста: {LG.label(language)} (определён по тексту)"))
 
-    # Говорим по факту: если модель на диске, обещать скачивание нельзя — окно
-    # рядом честно пишет «уже скачана», и получалось, что одно из двух врёт.
+    # Say what is true: if the model is on disk, promising a download is a lie —
+    # the window next to it says “already downloaded”, and one of the two lied.
     log(M.load_note(model_name))
     try:
-        # medium весит полтора гигабайта: и загрузка с диска, и первое скачивание
-        # идут молча по несколько минут, и окно выглядит зависшим.
+        # medium is a gigabyte and a half: both loading from disk and the first
+        # download take minutes in silence, and the window looks frozen.
         need = sysinfo.NEED_WHISPER.get(model_name, 2.2)
         with Heartbeat(log, M.step_label(model_name), every=10.0,
                        slow_after=90.0,
@@ -226,8 +227,8 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                                   f"medium → small → base.")):
             model = stable_whisper.load_model(model_name, device=device)
     except Exception as e:
-        # Отдельно ловим неудачу скачивания: «Connection refused» сам по себе
-        # ничего не объясняет, а причина почти всегда в интернете на машине.
+        # Catch a failed download separately: “Connection refused” explains
+        # nothing by itself, and the cause is almost always this machine's net.
         low = str(e).lower()
         net = ("urlopen", "connection", "getaddrinfo", "timed out", "ssl",
                "max retries", "name resolution", "unreachable", "httperror")
@@ -242,10 +243,10 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                 f"~/.cache/whisper и повторите. Исходная ошибка: {e}")
         raise
 
-    # Whisper, получив путь к файлу, зовёт `ffmpeg` по имени через PATH. Если ffmpeg
-    # поставлен через imageio-ffmpeg, он называется иначе и не находится — Windows
-    # отвечает «WinError 2». Поэтому декодируем сами и отдаём готовые отсчёты:
-    # 16 кГц моно float32 в диапазоне [-1, 1] — ровно то, что ждёт модель.
+    # Given a file path, Whisper calls `ffmpeg` by name through PATH. When
+    # ffmpeg comes from imageio-ffmpeg it has another name and is not found —
+    # Windows answers “WinError 2”. So we decode ourselves and hand over ready
+    # samples: 16 kHz mono float32 in [-1, 1], exactly what the model expects.
     audio_input = audio_path
     try:
         import numpy as np
@@ -260,9 +261,9 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
 
     log(tr("Lining the text up with the audio…", "Выравниваю текст по звуку…"))
     try:
-        # Самый долгий шаг после минусовки. stable-ts умеет докладывать, сколько
-        # секунд записи уже разобрано, — отдаём это в лог, а не в консольный
-        # прогрессбар, которого в окне студии всё равно не видно.
+        # The longest step after the instrumental. stable-ts can report how many
+        # seconds it has processed — send that to the log rather than to a
+        # console progress bar, which the studio window never shows anyway.
         with Heartbeat(log, "выравнивание", slow_after=600.0,
                        slow_note=("идёт долго. На процессоре medium считает примерно "
                                   "впятеро дольше small, а при нехватке памяти — ещё "
@@ -273,8 +274,8 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                                      language=language, original_split=True,
                                      progress_callback=hb.progress, verbose=None)
             except TypeError:
-                # у старых сборок stable-ts этих параметров нет — отсчёт времени
-                # всё равно останется, он идёт из самого Heartbeat
+                # older stable-ts builds lack these parameters — the elapsed
+                # time still shows, it comes from Heartbeat itself
                 result = model.align(audio_input, lyrics.plain_text(),
                                      language=language, original_split=True)
     except FileNotFoundError as e:
@@ -298,10 +299,10 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                               "Whisper не вернул ни одного слова с таймингом"))
 
     matched = _apply_recognized(lyrics.words, rec)
-    # Это НЕ проверка «тот ли текст»: align() натягивает переданный текст на звук
-    # принудительно, поэтому слова всегда те же самые. Проверка ловит расхождение
-    # в токенизации между нашим разбором и разбором Whisper — если её нет, такой
-    # сбой молча превращает разметку в равномерную «простыню».
+    # This is NOT a “is it the right text” check: align() forces the given text
+    # onto the audio, so the words always match. It catches a tokenisation
+    # mismatch between our parser and Whisper's — without it such a failure
+    # silently turns the timing into an evenly spread blanket.
     if matched < 0.4:
         raise RuntimeError(tr(
             f"the words could not be matched to Whisper's output "
@@ -309,7 +310,7 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
             f"слова не удалось сопоставить с выводом Whisper (совпало {matched:.0%}) — "
             f"похоже на несовместимую версию stable-ts"))
 
-    # А вот низкая уверенность уже намекает, что текст к записи не подходит
+    # Low confidence, on the other hand, hints the text does not fit the audio
     if probs:
         probs.sort()
         median = probs[len(probs) // 2]
@@ -324,23 +325,23 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     else:
         log(tr(f"  words matched: {matched:.0%}", f"  сопоставлено слов: {matched:.0%}"))
 
-    # модель весит гигабайты — отпускаем её сразу, дальше она не нужна
+    # the model weighs gigabytes — let it go at once, it is not needed further
     del result, model
     import gc
     gc.collect()
 
     _trim_leading_silence(lyrics)
-    # Границы строк берутся из слов — без этого шага у строк ещё нет времён,
-    # и чинилки сравнивали бы пустоту с пустотой.
+    # Line bounds come from the words — without this step lines have no times
+    # yet, and the repairs would compare emptiness with emptiness.
     _fill_lines(lyrics, duration)
-    repair_lines(lyrics, log=log)      # Whisper иногда роняет слово далеко от строки
+    repair_lines(lyrics, log=log)      # Whisper sometimes drops a word far away
     repair_order(lyrics, log=log)
-    _fill_lines(lyrics, duration)      # после правок границы могли выйти за трек
+    _fill_lines(lyrics, duration)      # after repairs the bounds may exceed the track
     return lyrics
 
 
 def _apply_recognized(words: List[Word], rec: List[tuple]) -> float:
-    """Сопоставить наши слова с распознанными. Возвращает долю точных совпадений."""
+    """Match our words against the recognised ones. Returns the exact-match share."""
     ours = [normalize_token(w.text) for w in words]
     theirs = [r[0] for r in rec]
 
@@ -353,7 +354,7 @@ def _apply_recognized(words: List[Word], rec: List[tuple]) -> float:
                 words[i1 + k].start = rec[j1 + k][1]
                 words[i1 + k].end = rec[j1 + k][2]
         elif tag == "replace" and (i2 - i1) and (j2 - j1):
-            # растягиваем найденный отрезок на наши слова пропорционально слогам
+            # spread the matched stretch over our words in proportion to syllables
             t0, t1 = rec[j1][1], rec[j2 - 1][2]
             chunk = words[i1:i2]
             total = sum(w.syllables for w in chunk) or 1
@@ -368,10 +369,10 @@ def _apply_recognized(words: List[Word], rec: List[tuple]) -> float:
 
 
 def _trim_leading_silence(lyrics: Lyrics, factor: float = 3.0) -> None:
-    """Whisper приклеивает паузу перед фразой к её первому слову — подрезаем.
+    """Whisper glues the pause before a phrase onto its first word — trim it.
 
-    Трогаем только первое слово строки и только когда оно неправдоподобно
-    длинное: долгие распевы в середине и в конце строки остаются как есть.
+    Only the first word of a line is touched, and only when it is implausibly
+    long: long melismas in the middle and at the end are left alone.
     """
     for ln in lyrics.lines:
         if not ln.words:
@@ -385,7 +386,7 @@ def _trim_leading_silence(lyrics: Lyrics, factor: float = 3.0) -> None:
 
 
 def _interpolate_gaps(words: List[Word]) -> None:
-    """Слова, которым не досталось времени (вставки в тексте), заполняем между соседями."""
+    """Words left without a time (insertions in the text) are filled in between."""
     i = 0
     n = len(words)
     while i < n:
@@ -410,17 +411,17 @@ def _interpolate_gaps(words: List[Word]) -> None:
 # --------------------------------------------------------------------------- #
 
 def repair_lines(lyrics: Lyrics, max_word_gap: float = 1.2, log: Log = _noop) -> int:
-    """Собрать обратно строки, у которых слова разъехались по времени.
+    """Put back together the lines whose words drifted apart in time.
 
-    Внутри одной спетой строки многосекундных провалов между словами не бывает.
-    Если такой есть — это промах выравнивания: слово улетело далеко от своих.
-    Берём самое «весомое» скопление слов как настоящее место строки, а отбившиеся
-    слова подтягиваем вплотную к нему, не трогая хорошо легшую середину.
+    Inside one sung line there are no multi-second gaps between words. If one
+    is there, alignment missed: a word flew far away from its neighbours. The
+    heaviest cluster of words is taken as the line\'s real place, and the strays
+    are pulled up against it, leaving the well-placed middle alone.
     """
     fixed = 0
     for idx, ln in enumerate(lyrics.lines):
         ws = ln.words
-        # времена могут быть ещё не проставлены — тогда чинить нечего
+        # times may not be set yet — then there is nothing to repair
         if len(ws) < 2 or any(w.start is None or w.end is None for w in ws):
             continue
 
@@ -435,9 +436,9 @@ def repair_lines(lyrics: Lyrics, max_word_gap: float = 1.2, log: Log = _noop) ->
         if len(groups) < 2:
             continue
 
-        # Какое скопление считать настоящим местом строки. Одного веса по слогам
-        # мало: соседние строки задают окно, в которое эта обязана попасть.
-        # Иначе можно подтянуть верное слово к ошибочным, а не наоборот.
+        # Which cluster counts as the line's real place. Syllable weight alone
+        # is not enough: the neighbouring lines define a window this one has to
+        # fall into. Otherwise a correct word gets pulled to the wrong ones.
         prev = lyrics.lines[idx - 1] if idx else None
         lo = (prev.end if prev is not None and prev.end is not None else 0.0)
         nxt = next((l for l in lyrics.lines[idx + 1:]
@@ -482,20 +483,20 @@ def _spread(words: List[Word], start: float, end: float) -> None:
 
 
 def repair_order(lyrics: Lyrics, log: Log = _noop) -> int:
-    """Убрать наложение строк друг на друга: конец строки не должен заходить
-    за начало следующей, иначе подсветка перескакивает и путается."""
+    """Pull overlapping lines apart: a line must not end past the start of the
+    next one, or the highlight jumps around."""
     fixed = conflicts = 0
     lines = [ln for ln in lyrics.lines
              if ln.words and ln.start is not None and ln.end is not None]
     for a, b in zip(lines, lines[1:]):
         if b.start < a.start:
-            conflicts += 1        # строки идут не по порядку — подрезать бессмысленно
+            conflicts += 1        # lines are out of order — trimming makes no sense
             continue
         if a.end <= b.start:
             continue
         last_word_end = a.words[-1].end if a.words else a.start
         new_end = b.start - 0.05
-        # подрезаем только если это не рассечёт слова: калечить разметку нельзя
+        # trim only when it will not cut through words: never maim the timing
         if new_end >= max(a.start + 0.2, last_word_end):
             a.end = new_end
             fixed += 1
@@ -513,16 +514,16 @@ def repair_order(lyrics: Lyrics, log: Log = _noop) -> int:
 
 
 def _fill_lines(lyrics: Lyrics, duration: float, min_word: float = 0.12) -> None:
-    """Границы строк из слов + санитария таймингов."""
+    """Line bounds from the words, plus a sanity pass over the timings."""
     prev_end = 0.0
     for w in lyrics.words:
         if w.start is None:
             w.start = prev_end
         if w.end is None or w.end <= w.start:
             w.end = w.start + max(min_word, 0.16 * w.syllables)
-        # Держим слово внутри трека. Порядок важен: сначала ограничиваем начало
-        # так, чтобы осталось место на минимальную длительность, и только потом
-        # конец — иначе растяжка до min_word вылезает за конец песни.
+        # Keep the word inside the track. Order matters: first clamp the start
+        # so there is room for the minimum length, and only then the end —
+        # otherwise stretching to min_word runs past the end of the song.
         w.start = min(max(w.start, 0.0), max(duration - min_word, 0.0))
         w.end = min(max(w.end, w.start + min_word), duration)
         if w.end <= w.start:
@@ -539,7 +540,7 @@ def _fill_lines(lyrics: Lyrics, duration: float, min_word: float = 0.12) -> None
 def align(lyrics: Lyrics, audio_path: str, duration: float, engine: str = "auto",
           model_name: str = "medium", language: str = "ru",
           device: Optional[str] = None, log: Log = _noop) -> tuple:
-    """Возвращает (lyrics, использованный_движок)."""
+    """Returns (lyrics, engine_used)."""
     if lyrics.has_manual_times:
         log(tr("The text already has [mm:ss.dd] timings — skipping alignment.",
             "В тексте уже есть тайминги [мм:сс.дд] — выравнивание пропускаю."))
@@ -582,7 +583,7 @@ def align(lyrics: Lyrics, audio_path: str, duration: float, engine: str = "auto"
 
 
 def _spread_manual(lyrics: Lyrics, duration: float) -> None:
-    """Есть время начала строк — раскидать слова внутри строки по слогам."""
+    """Line starts are known — spread the words inside each line by syllable."""
     lines = lyrics.lines
     for i, ln in enumerate(lines):
         start = ln.start if ln.start is not None else (lines[i - 1].end if i else 0.0)

@@ -1,7 +1,8 @@
-"""Что из моделей уже лежит на диске.
+"""Which models are already on disk.
 
-Один источник правды для окна и для лога: окно писало «уже скачана», а лог тут
-же сообщал «первый раз — качается из сети». Одно из двух всегда врало.
+One source of truth for the window and for the log. The window used to say
+“already downloaded” while the log said “first run — fetching from the net”.
+One of the two was always lying.
 """
 
 from __future__ import annotations
@@ -10,13 +11,13 @@ import os
 from typing import Dict, Optional
 from .i18n import tr
 
-# Размеры для сообщений: человеку важно понимать, ждать секунду или полчаса.
+# Sizes for the messages: what matters is whether to wait a second or half an hour.
 _SIZE_MB = {"tiny": 75, "base": 140, "small": 480,
             "medium": 1500, "large-v3": 3000, "large-v2": 3000, "large": 3000}
 
 
 def size_label(name: str) -> str:
-    """«480 MB» / «480 МБ» — единицы тоже пишутся на языке сообщений."""
+    """“480 MB” / “480 МБ” — the unit follows the message language too."""
     mb = _SIZE_MB.get(name)
     if not mb:
         return ""
@@ -25,11 +26,11 @@ def size_label(name: str) -> str:
     return (f"{mb / 1000:.1f}".replace(".0", "") + " " + tr("GB", "ГБ")
             if tr("en", "ru") == "en"
             else f"{mb / 1000:.1f}".replace(".", ",").replace(",0", "") + " ГБ")
-_MIN_BYTES = 1_000_000          # недокачанный огрызок моделью не считаем
+_MIN_BYTES = 1_000_000          # a half-downloaded stub does not count as a model
 
 
 def whisper_dir() -> str:
-    """Куда Whisper кладёт модели — ровно та же логика, что у него внутри."""
+    """Where Whisper keeps its models — exactly the logic it uses itself."""
     default = os.path.join(os.path.expanduser("~"), ".cache")
     return os.path.join(os.getenv("XDG_CACHE_HOME", default), "whisper")
 
@@ -48,7 +49,7 @@ def whisper_all() -> Dict[str, bool]:
 
 
 def load_note(name: str) -> str:
-    """Строка для лога — по факту, а не наугад."""
+    """A log line based on what is really on disk, not on a guess."""
     size = size_label(name)
     if whisper_ready(name):
         return tr(f"Loading the Whisper model “{name}” — it is already on disk…",
@@ -61,7 +62,7 @@ def load_note(name: str) -> str:
 
 
 def step_label(name: str) -> str:
-    """Как назвать шаг в отсчёте времени."""
+    """How to name this step in the elapsed-time counter."""
     return (tr(f"loading the “{name}” model", f"загрузка модели «{name}»")
             if whisper_ready(name)
             else tr(f"downloading the “{name}” model", f"скачивание модели «{name}»"))

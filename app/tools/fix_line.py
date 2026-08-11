@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ручная правка одной строки в timings.json — когда проще указать время самому.
+"""Fixing a single line in timings.json by hand — when giving the time is easier.
 
     py tools\\fix_line.py timings.json --list
     py tools\\fix_line.py timings.json --line 34 --start 150.0
@@ -29,7 +29,7 @@ def mmss(t) -> str:
 
 
 def parse_time(s: str) -> float:
-    """Секунды или время в виде 2:30.81 / 2:30,81 / 2:30:81 — как удобнее писать."""
+    """Seconds, or a time like 2:30.81 / 2:30,81 / 2:30:81 — whichever is handier."""
     s = str(s).strip().replace(",", ".")
     if ":" not in s:
         return float(s)
@@ -43,7 +43,7 @@ def parse_time(s: str) -> float:
 
 
 def tidy_line(line: dict, max_gap: float = 1.2) -> bool:
-    """Собрать строку, у которой слова разъехались во времени.
+    """Put back together a line whose words drifted apart in time.
 
     Та же логика, что при сборке страницы: внутри спетой строки многосекундных
     провалов не бывает. Отбившиеся слова подтягиваем к основному скоплению.
@@ -112,7 +112,7 @@ def pick(data: dict, args) -> int:
     if len(hits) == 1:
         return hits[0]
 
-    # Повторы в песне — обычное дело, поэтому не угадываем, а даём выбрать.
+    # Repeated lines are normal in a song, so we ask instead of guessing.
     if args.near is not None:
         i = min(hits, key=lambda k: abs(lines[k]["start"] - args.near))
         print(f"Из {len(hits)} совпадений взял ближайшее к {mmss(args.near)}: "
@@ -204,7 +204,7 @@ def main(argv=None) -> int:
     if args.and_after and len(targets) > 1:
         print(f"  вместе с ней сдвинуто строк: {len(targets)}")
 
-    # предупредим, если строка налезла на соседей — молча портить не будем
+    # warn if the line now overlaps its neighbours — never break things quietly
     if i and lines[i-1]["end"] > line["start"]:
         print(f"  ВНИМАНИЕ: налезает на предыдущую строку "
               f"(она кончается в {mmss(lines[i-1]['end'])})")

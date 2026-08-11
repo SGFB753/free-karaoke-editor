@@ -1,4 +1,4 @@
-"""Разбор текста песни: строки, слова, слоги, секции, готовые LRC-тайминги."""
+"""Parsing the lyrics: lines, words, syllables, sections, ready LRC timings."""
 
 from __future__ import annotations
 
@@ -9,14 +9,14 @@ from typing import List, Optional
 VOWELS_RU = set("аеёиоуыэюя")
 VOWELS_EN = set("aeiouy")
 
-# [00:12.34] текст строки  (классический LRC)
+# [00:12.34] line text  (classic LRC)
 LRC_RE = re.compile(r"^\s*\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]\s*(.*)$")
-# [Припев] — заголовок секции, отдельной строкой. Квадратные скобки для этого
-# и служат по общему обычаю.
+# [Chorus] on its own line is a section heading — square brackets are what
+# people conventionally use for that.
 SECTION_RE = re.compile(r"^\s*\[\s*([^\]]{1,40}?)\s*\]\s*$")
-# (Припев) — тоже заголовок, но ТОЛЬКО если внутри и правда название раздела.
-# Круглые скобки в тексте песни почти всегда означают бэк-вокал или подпевку —
-# «(о-о-о)», «(не уходи)», — и выбрасывать такие строки из пения нельзя.
+# (Chorus) is a heading too, but ONLY if the brackets really hold a section
+# name. Round brackets in lyrics almost always mean backing vocals — “(oh-oh)”,
+# “(don\'t go)” — and such lines must not be dropped from the singing.
 ROUND_RE = re.compile(r"^\s*\(\s*([^)]{1,40}?)\s*\)\s*$")
 SECTION_WORDS = (
     "куплет", "припев", "бридж", "проигрыш", "вступление", "концовка", "кода",
@@ -26,56 +26,57 @@ SECTION_WORDS = (
 )
 
 
-# «2: строка» — этой строкой поёт второй голос. «[голос 2]» / «[voice 2]» —
-# переключатель для всех следующих строк, пока не сказано иначе.
+# “2: line” — this line is sung by the second voice. “[voice 2]” switches
+# every following line until told otherwise.
 VOICE_LINE_RE = re.compile(r"^\s*([12])\s*[:>]\s+(.+)$")
 VOICE_DIR_RE = re.compile(r"^\s*(?:voice|голос|вокал)\s*([12])\s*$", re.I)
-# «Припев x4» — строку поют четыре раза подряд. Выписывать её руками четырежды
-# незачем: программа разложит повторы сама.
+# “Chorus x4” — the line is sung four times in a row. There is no need to
+# write it out four times: the repeats are expanded here.
 REPEAT_RE = re.compile(r"^(.*?)\s*[\(\[]?\s*[x×хХ]\s*(\d{1,2})\s*[\)\]]?\s*$", re.I)
 
 
 def _split_repeat(text: str):
-    """«строка x3» → («строка», 3). Без пометки — (строка, 1)."""
+    """“line x3” → (“line”, 3). Without a mark — (line, 1)."""
     m = REPEAT_RE.match(text)
     if not m:
         return text, 1
     body, times = m.group(1).strip(), int(m.group(2))
     if not body or times < 2 or times > 99:
         return text, 1
-    if not _split_words(body):            # «x4» само по себе — не строка
+    if not _split_words(body):            # “x4” on its own is not a line
         return text, 1
     return body, times
 
 
 def _is_section_name(text: str) -> bool:
-    """«Припев 2» — заголовок, «не уходи» — строка песни."""
+    """“Chorus 2” is a heading, “don\'t go” is a line of the song."""
     first = re.sub(r"[^\w-]+", " ", text.lower()).split()
     return bool(first) and first[0] in SECTION_WORDS
-# Метаданные в шапке файла: "title: ...", "# artist: ..."
+# Metadata at the top of the file: "title: ...", "# artist: ..."
 META_RE = re.compile(r"^\s*#?\s*(title|artist|название|исполнитель)\s*[:=]\s*(.+)$", re.I)
 
 _PUNCT = "«»\"'“”„‘’()[]{}—–-…!?.,;:*~/\\|"
-# пробелы обязательно: Whisper отдаёт слова с ведущим пробелом (' раз'),
-# без их удаления не совпадёт ни один токен и выравнивание молча развалится
+# the spaces matter: Whisper returns words with a leading space (" one"), and
+# without stripping them no token would match and alignment would fall apart
 _STRIP = _PUNCT + " \t\n\r   "
 
 
 def normalize_token(word: str) -> str:
-    """Ключ для сопоставления слова с распознанным: без пунктуации, ё→е, нижний регистр."""
+    """Key for matching a word against the recognised one: no punctuation,
+    ё→е, lower case."""
     w = word.lower().replace("ё", "е").replace("’", "'")
     return w.strip(_STRIP).replace("'", "")
 
 
 def count_syllables(word: str) -> int:
-    """Грубая оценка длительности слова в слогах (ru + en)."""
+    """Rough estimate of a word\'s length in syllables (ru + en)."""
     w = normalize_token(word)
     if not w:
         return 0
     n = sum(1 for ch in w if ch in VOWELS_RU)
     if n:
         return n
-    # английская эвристика: группы гласных = один слог
+    # English heuristic: a run of vowels is one syllable
     n, prev_vowel = 0, False
     for ch in w:
         is_vowel = ch in VOWELS_EN
@@ -99,7 +100,7 @@ class Word:
             self.syllables = count_syllables(self.text)
 
     def to_json(self):
-        # "s" нужен редактору в плеере: по слогам он раскладывает слова внутри строки
+        # "s" is what the player\'s editor uses to lay words out by syllable
         return {"w": self.text, "t": round(self.start or 0.0, 3),
                 "d": round(max((self.end or 0.0) - (self.start or 0.0), 0.0), 3),
                 "s": self.syllables}
@@ -109,12 +110,12 @@ class Word:
 class Line:
     text: str
     words: List[Word] = field(default_factory=list)
-    section: Optional[str] = None      # заголовок секции, начинающейся с этой строки
-    start: Optional[float] = None      # из LRC, если был задан вручную
+    section: Optional[str] = None      # heading of the section starting here
+    start: Optional[float] = None      # from LRC, if set by hand
     end: Optional[float] = None
-    backing: bool = False              # строка целиком в скобках — подпевка
-    voice: int = 1                     # 1 или 2: второй голос красится иначе
-    keep: bool = False                 # оставить оригинальный голос на этом куске
+    backing: bool = False              # whole line in brackets — backing vocals
+    voice: int = 1                     # 1 or 2: the second voice gets its own colour
+    keep: bool = False                 # keep the original voice on this stretch
 
     @property
     def syllables(self) -> int:
@@ -149,12 +150,12 @@ class Lyrics:
 
 
 def _split_words(text: str) -> List[Word]:
-    """Разбить строку на слова, ничего не потеряв.
+    """Split a line into words without losing anything.
 
-    Знак сам по себе — тире, многоточие — не слово: спеть его нельзя, и
-    отдельной подсветки он не заслуживает. Но и выбрасывать нельзя: на экране
-    строка должна выглядеть так, как её написали. Поэтому такой знак
-    прилипает к соседнему слову.
+    A mark on its own — a dash, an ellipsis — is not a word: it cannot be sung
+    and does not deserve its own highlight. It must not be dropped either: on
+    screen the line has to look the way it was written. So such a mark sticks
+    to the neighbouring word.
     """
     out: List[Word] = []
     pending = ""
@@ -163,9 +164,9 @@ def _split_words(text: str) -> List[Word]:
             out.append(Word((pending + " " + tok).strip() if pending else tok))
             pending = ""
         elif out:
-            out[-1] = Word(out[-1].text + " " + tok)     # знак после слова
+            out[-1] = Word(out[-1].text + " " + tok)     # a mark after a word
         else:
-            pending = tok                                # знак в начале строки
+            pending = tok                                # a mark at the line start
     if pending and not out:
         out.append(Word(pending))
     return out
@@ -178,11 +179,11 @@ def _parse_lrc_time(m: re.Match) -> float:
 
 
 def parse(raw: str) -> Lyrics:
-    """Текст → Lyrics. Понимает LRC-тайминги, секции в скобках и мета-заголовки."""
+    """Text → Lyrics. Understands LRC timings, bracketed sections and meta headers."""
     lyr = Lyrics()
     pending_section: Optional[str] = None
     saw_content = False
-    cur_voice = 1                  # каким голосом поют, пока не сказано иначе
+    cur_voice = 1                  # which voice sings until told otherwise
 
     for raw_line in raw.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         line = raw_line.strip()
@@ -214,10 +215,10 @@ def parse(raw: str) -> Lyrics:
             m = SECTION_RE.match(line)
             if m and _split_words(m.group(1)):
                 d = VOICE_DIR_RE.match(m.group(1))
-                if d:                       # [голос 2] — переключатель, не заголовок
+                if d:                       # [voice 2] switches, it is not a heading
                     cur_voice = int(d.group(1))
                     continue
-                # строка вида [Припев] — это заголовок для следующих строк
+                # a line like [Chorus] is a heading for the lines that follow
                 pending_section = m.group(1).strip()
                 continue
             m = ROUND_RE.match(line)
@@ -225,15 +226,15 @@ def parse(raw: str) -> Lyrics:
                 if _is_section_name(m.group(1)):
                     pending_section = m.group(1).strip()
                     continue
-                # всё прочее в круглых скобках — подпевка, её поют
+                # anything else in round brackets is backing vocals, and it is sung
                 backing = True
             m = VOICE_LINE_RE.match(line)
             if m and _split_words(m.group(2)):
-                voice = int(m.group(1))     # «2: строка» — голос только этой строки
+                voice = int(m.group(1))     # “2: line” — this line only
                 line = m.group(2).strip()
 
-        # «строка x4» — повтор. Тайминги из LRC ставятся вручную, там повторы
-        # не раскрываем: у каждой строки своё время.
+        # “line x4” — a repeat. With manual LRC timings repeats are left alone:
+        # every line there has a time of its own.
         times = 1
         if start is None:
             line, times = _split_repeat(line)
@@ -245,8 +246,8 @@ def parse(raw: str) -> Lyrics:
         saw_content = True
         if start is not None:
             lyr.has_manual_times = True
-        # Подпевка по умолчанию считается вторым голосом: обычно её и поёт
-        # кто-то другой, и на экране ей полезен свой цвет.
+        # Backing vocals default to the second voice: usually someone else sings
+        # them, and a colour of their own helps on screen.
         for k in range(times):
             lyr.lines.append(Line(text=line, words=_split_words(line),
                                   section=pending_section if k == 0 else None,
@@ -254,7 +255,7 @@ def parse(raw: str) -> Lyrics:
                                   voice=voice or (2 if backing else cur_voice)))
         pending_section = None
 
-    # если тайминги заданы вручную — конец строки = начало следующей
+    # with manual timings, a line ends where the next one begins
     if lyr.has_manual_times:
         for i, ln in enumerate(lyr.lines):
             if ln.start is None:
@@ -266,11 +267,11 @@ def parse(raw: str) -> Lyrics:
 
 
 def decode_text(raw: bytes) -> str:
-    """Определить кодировку файла с текстом.
+    """Work out the encoding of the lyrics file.
 
-    Блокнот на русской Windows до сих пор умеет сохранять в ANSI (cp1251) и в
-    UTF-16, поэтому одной UTF-8 недостаточно — иначе программа падает с
-    невразумительной ошибкой на ровном месте.
+    Notepad on a Russian Windows still saves in ANSI (cp1251) and in UTF-16, so
+    UTF-8 alone is not enough — otherwise the program dies with a baffling
+    error for no visible reason.
     """
     if raw.startswith(b"\xef\xbb\xbf"):
         return raw.decode("utf-8-sig")

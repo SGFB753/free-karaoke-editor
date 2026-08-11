@@ -1,4 +1,4 @@
-"""Разделение на минусовку и вокал через Demucs."""
+"""Splitting into an instrumental and a vocal with Demucs."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def available() -> bool:
 
 
 def explain_failure(out: str) -> List[str]:
-    """Перевести падение Demucs в понятную причину и совет.
+    """Turn a Demucs crash into a plain reason and a piece of advice.
 
     Три беды встречаются чаще всего: нет пакета для записи звука, не скачалась
     модель, не хватило памяти. Во всех трёх случаях Demucs выдаёт трассировку,
@@ -78,14 +78,14 @@ def explain_failure(out: str) -> List[str]:
 
 
 class _Done:
-    """Итог запуска в том же виде, что отдаёт subprocess.run."""
+    """The run result in the same shape subprocess.run returns."""
 
     def __init__(self, returncode: int, stdout: str):
         self.returncode, self.stdout = returncode, stdout
 
 
 def _run_with_pulse(cmd: List[str], log: Log) -> "_Done":
-    """Запустить Demucs, показывая, что он жив.
+    """Run Demucs while showing that it is alive.
 
     Demucs рисует собственный прогрессбар возвратом каретки. В консоли это
     выглядит нормально, а в окне студии не видно вообще ничего: несколько минут
@@ -103,7 +103,7 @@ def _run_with_pulse(cmd: List[str], log: Log) -> "_Done":
 
     with Heartbeat(log, tr("separating the tracks", "разделение дорожек"), every=20.0) as hb:
         assert proc.stdout is not None
-        # readline остановился бы на \r и ждал конца строки до самого финала
+        # readline would stop at \r and wait for a newline until the very end
         while True:
             piece = proc.stdout.read(256)
             if not piece:
@@ -120,7 +120,7 @@ def _run_with_pulse(cmd: List[str], log: Log) -> "_Done":
 def separate(wav_path: str, out_dir: str, model: str = "htdemucs",
              device: Optional[str] = None,
              log: Log = lambda m: None) -> Tuple[Optional[str], Optional[str]]:
-    """→ (путь_к_минусу, путь_к_вокалу). (None, None) если Demucs недоступен."""
+    """→ (instrumental_path, vocals_path). (None, None) if Demucs is unavailable."""
     if not available():
         log(tr("Demucs is not installed — there will be no instrumental "
                "(`pip install demucs` adds it).",
@@ -128,8 +128,8 @@ def separate(wav_path: str, out_dir: str, model: str = "htdemucs",
                "(`pip install demucs` добавит её)."))
         return None, None
 
-    # Проверяем до запуска: иначе Demucs честно посчитает разделение минуту
-    # и только потом упадёт на записи результата.
+    # Check before starting: otherwise Demucs spends a minute separating and
+    # only then falls over while writing the result.
     try:
         import soundfile  # noqa: F401
     except ImportError:
@@ -141,8 +141,8 @@ def separate(wav_path: str, out_dir: str, model: str = "htdemucs",
                "  Лечится одной командой:  pip install soundfile"))
         return None, None
 
-    # --segment режет трек на куски: без него Demucs держит в памяти всю песню
-    # целиком и на слабой машине падает по нехватке памяти.
+    # --segment cuts the track into chunks: without it Demucs keeps the whole
+    # song in memory and runs out of it on a weak machine.
     cmd = [sys.executable, "-m", "demucs", "-n", model, "--two-stems", "vocals",
            "--segment", "7", "-j", "1", "-o", out_dir, wav_path]
     if device:
@@ -153,7 +153,7 @@ def separate(wav_path: str, out_dir: str, model: str = "htdemucs",
     proc = _run_with_pulse(cmd, log)
     if proc.returncode != 0:
         out = proc.stdout or ""
-        # некоторые сборки Demucs не понимают --segment: пробуем без него
+        # some Demucs builds do not understand --segment: try without it
         if "segment" in out.lower() and "--segment" in cmd:
             log(tr("This Demucs version did not understand --segment, trying without it…",
                 "Эта версия Demucs не поняла --segment, пробую без него…"))
@@ -172,7 +172,7 @@ def separate(wav_path: str, out_dir: str, model: str = "htdemucs",
     vocals = os.path.join(base, "vocals.wav")
 
     if not (os.path.exists(instrumental) and os.path.exists(vocals)):
-        # на случай другой раскладки каталогов у новых версий demucs
+        # in case a newer demucs lays its folders out differently
         found = {}
         for root, _, files in os.walk(out_dir):
             for f in files:

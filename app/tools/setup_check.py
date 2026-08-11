@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Разовая настройка: проверяет ffmpeg и предлагает поставить всё остальное."""
+"""One-time setup: checks ffmpeg and offers to install everything else."""
 
 from __future__ import annotations
 
@@ -102,7 +102,7 @@ def main() -> int:
                       "instrumental.",
                       "   Не установлен. Без него не будет регулятора «Голос» и минусовки."))
         if ask("   Поставить?", default_yes=False):
-            # soundfile обязателен: без него Demucs отработает и упадёт при записи
+            # soundfile is required: without it Demucs runs and then dies on write
             pip_install("demucs", "soundfile")
 
     print(tr("\n4. Rendering an MP4 for YouTube (pillow)",

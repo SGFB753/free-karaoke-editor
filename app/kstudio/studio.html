@@ -5,8 +5,8 @@
 <title>Караоке-студия</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%230a0b14%22%2F%3E%3Crect%20x%3D%2213%22%20y%3D%226%22%20width%3D%226%22%20height%3D%2212%22%20rx%3D%223%22%20fill%3D%22%234de1ff%22%2F%3E%3Cpath%20d%3D%22M10%2015a6%206%200%200%200%2012%200%22%20fill%3D%22none%22%20stroke%3D%22%234de1ff%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M16%2021v4M13%2025h6%22%20stroke%3D%22%234de1ff%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E">
 <style>
-  /* Один множитель на всё окно: на широком мониторе надписи растут вместе с ним,
-     на ноутбуке остаются прежними. Размеры ниже заданы в rem от этой величины. */
+  /* One multiplier for the whole window: on a wide monitor the labels grow with
+     it, on a laptop they stay as they were. Sizes below are in rem of this. */
   html{font-size:clamp(16px, 0.42vw + 10px, 21px)}
   :root{
     --bg:#0a0b14; --bg2:#141830; --panel:rgba(255,255,255,.06); --line:rgba(255,255,255,.12);
@@ -38,7 +38,7 @@
   header h1{font-size:0.9375rem; font-weight:700; letter-spacing:.2px}
   header .sp{flex:1}
 
-  /* ---------- список песен ---------- */
+  /* ---------- song list ---------- */
   .list{flex:1; overflow:auto; padding:20px}
   .cards{display:grid; gap:10px; max-width:860px; margin:0 auto}
   .card{display:flex; align-items:center; gap:14px; padding:14px 16px; cursor:pointer;
@@ -57,7 +57,7 @@
     line-height:1.7}
   .empty h2{color:var(--text); font-size:1.25rem; margin-bottom:10px}
 
-  /* ---------- добавление песни ---------- */
+  /* ---------- adding a song ---------- */
   .form{max-width:640px; margin:0 auto; padding:22px; display:grid; gap:16px}
   .field{display:grid; gap:6px}
   .field label{font-size:0.8438rem; color:var(--muted)}
@@ -67,7 +67,7 @@
   .warn{font-size:0.8438rem; color:var(--accent2); line-height:1.6}
   .hint{font-size:0.8438rem; color:var(--muted); line-height:1.6; margin-top:6px}
   .hint.warnish{color:var(--accent2)}
-  /* Отчёт перед сборкой: что за песня, что за текст, чего ждать. */
+  /* The report before building: the song, the text, what to expect. */
   .report{border:1px solid var(--line); border-radius:12px; padding:14px 16px;
     background:rgba(0,0,0,.22); display:grid; gap:10px}
   .report .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
@@ -81,7 +81,7 @@
   .report .note{font-size:0.8438rem; color:var(--accent2); line-height:1.6}
   .report .busy{font-size:0.8438rem; color:var(--muted)}
 
-  /* ---------- обзор файлов ---------- */
+  /* ---------- file browser ---------- */
   .modal{position:fixed; inset:0; background:rgba(4,6,14,.72); display:grid;
     place-items:center; z-index:60}
   .browser{width:min(720px,92vw); height:min(70vh,620px); background:#12162a;
@@ -97,7 +97,7 @@
   .row .sz{margin-left:auto; font-size:0.7812rem; color:var(--muted)}
   .browser .foot{padding:10px 12px; border-top:1px solid var(--line); display:flex; gap:8px}
 
-  /* ---------- прогресс ---------- */
+  /* ---------- progress ---------- */
   .joblog{font-family:ui-monospace,Consolas,monospace; font-size:0.8125rem; color:var(--muted);
     background:rgba(0,0,0,.35); border:1px solid var(--line); border-radius:10px;
     padding:12px; height:230px; overflow:auto; white-space:pre-wrap; line-height:1.55}
@@ -105,18 +105,18 @@
     border-top-color:var(--accent); border-radius:50%; animation:sp .8s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
 
-  /* ---------- редактор ---------- */
+  /* ---------- editor ---------- */
   .edit{flex:1; display:flex; min-height:0}
-  /* Обёртка нужна, чтобы отсчёт не попадал под маску сцены: у сцены верх и низ
-     растворяются, и плашка в них выцветала до нечитаемости. */
+  /* The wrapper keeps the countdown out of the stage mask: the stage fades at
+     the top and bottom, and the pill faded with it until unreadable. */
   .stagewrap{flex:1; position:relative; overflow:hidden; min-width:0; display:flex}
   .stage{flex:1; position:relative; overflow:hidden; min-width:0;
     -webkit-mask-image:linear-gradient(180deg,transparent 0,#000 16%,#000 84%,transparent 100%);
     mask-image:linear-gradient(180deg,transparent 0,#000 16%,#000 84%,transparent 100%)}
   .scroll{position:absolute; left:0; right:0; top:0; padding:34vh 4vw 40vh;
     transition:transform .4s cubic-bezier(.22,.61,.36,1)}
-  /* Пока не поют, на сцене пусто, и по ней не понять, идёт песня или встала.
-     Отсчёт до первой строки движется — значит, движется и всё остальное. */
+  /* While nobody sings the stage is empty and it is impossible to tell whether
+     the song runs. A moving countdown means everything else moves too. */
   .wait{position:absolute; left:50%; top:12px; transform:translateX(-50%);
     display:flex; align-items:center; gap:12px; pointer-events:none;
     max-width:min(680px, 92%); padding:9px 18px; border-radius:999px;
@@ -138,23 +138,23 @@
   .ln.cur{opacity:1; color:var(--text)}
   .ln.done{opacity:.3}
   .ln.sel{background:rgba(255,204,77,.1); box-shadow:inset 0 0 0 1px rgba(255,204,77,.4)}
-  /* Выделенная пачка: видно, к чему относится следующее действие. */
-  /* Пока тянем выделение, текст не должен «синеть» как в блокноте. */
+  /* The selected batch: it is visible what the next action applies to. */
+  /* While dragging a selection the text must not turn blue like in a notepad. */
   body.picking, body.picking .ln{user-select:none; -webkit-user-select:none}
-  /* Выделенная пачка должна бросаться в глаза, иначе непонятно, выделилось ли
-     вообще что-нибудь. */
+  /* The selected batch has to catch the eye, or it is unclear whether anything
+     got selected at all. */
   .ln.mark{background:rgba(77,225,255,.22); box-shadow:inset 0 0 0 2px rgba(77,225,255,.75);
     opacity:1; color:var(--text)}
   .ln.mark::after{content:"✓"; color:var(--accent); font-size:.5em; margin-left:.5em;
     vertical-align:middle; opacity:.9}
   .blk.mark{outline:2px solid rgba(77,225,255,.85); outline-offset:-2px;
     background:rgba(77,225,255,.30)}
-  /* Сколько выделено — видно и в строке состояния дорожки. */
+  /* How many are selected shows in the timeline status line too. */
   #selNote.many{color:var(--accent); font-weight:700}
-  /* строка целиком в скобках — подпевка, её и на экране видно как подпевку */
+  /* a line wholly in brackets is backing vocals, and it looks like it on screen */
   .ln.back{font-size:clamp(15px,1.9vw,26px); font-style:italic}
-  /* правка текста прямо на сцене: размер и начертание те же, чтобы строка
-     не прыгала под курсором в момент двойного щелчка */
+  /* editing the text right on the stage: same size and weight, so the line does
+     not jump under the cursor on a double click */
   .lnedit{font:inherit; font-size:inherit; font-weight:inherit; text-align:center;
     width:100%; color:var(--text); background:rgba(255,255,255,.07);
     border:1px solid var(--accent); border-radius:8px; padding:.1em .3em; outline:none}
@@ -163,9 +163,9 @@
     color:var(--accent); pointer-events:none}
   .ln.cur .w{color:rgba(232,235,245,.33)}
   .ln .bad{color:var(--bad); font-size:.5em; vertical-align:super; margin-left:.2em}
-  /* второй голос — свой цвет: другой певец или другая манера (чистый / экстрим) */
+  /* the second voice gets its own colour: another singer or another style */
   .ln.v2 .w .hl{color:var(--accent-2)}
-  /* кусок, где голос из записи остаётся: его поёт оригинал, а не человек */
+  /* a stretch where the recorded voice stays: the original sings it, not you */
   .blk.keep{background:repeating-linear-gradient(-45deg,
     rgba(126,224,138,.30) 0 7px, rgba(126,224,138,.14) 7px 14px);
     border-color:rgba(126,224,138,.65); color:#d3f6d8}
@@ -175,8 +175,8 @@
     margin-left:.5em; opacity:.8; white-space:nowrap; font-style:normal}
   .blk.v2{border-style:dashed; background:rgba(255,138,209,.2);
     border-color:rgba(255,138,209,.6); color:#ffd7ee}
-  /* Четыре квадратика подряд читались как один набор. Подпись и разделитель
-     говорят, какая пара за что отвечает. */
+  /* Four swatches in a row read as one set. A label and a divider say which
+     pair is responsible for what. */
   .pick{display:flex; align-items:center; gap:6px; font-size:0.7812rem; color:var(--muted);
     padding-left:9px; border-left:1px solid var(--line)}
   .pick b{font-weight:600; letter-spacing:.04em; text-transform:uppercase; font-size:0.7188rem}
@@ -187,8 +187,8 @@
     flex-direction:column; background:rgba(0,0,0,.2)}
   .side h3{font-size:0.8125rem; letter-spacing:1.4px; text-transform:uppercase;
     color:var(--muted); padding:14px 14px 8px}
-  /* Сводка по песне: то же, что показывалось до сборки, но уже по готовой
-     разметке. После долгой части человек должен видеть, что получилось. */
+  /* The song summary: the same as the pre-build report, but from the finished
+     timing. After the long part one should see what came out. */
   .sum{padding:0 12px 12px; display:grid; grid-template-columns:1fr 1fr; gap:7px}
   .sum .c{background:rgba(255,255,255,.05); border:1px solid var(--line);
     border-radius:9px; padding:7px 9px; display:flex; flex-direction:column; gap:2px}
@@ -208,7 +208,7 @@
   .prob .tm{font-size:0.75rem; color:var(--muted); font-variant-numeric:tabular-nums}
   .allgood{padding:16px 14px; color:var(--ok); font-size:0.8125rem; line-height:1.6}
 
-  /* готовый файл: путь и кнопка «открыть папку» */
+  /* the finished file: its path and an “open folder” button */
   .madefile{display:flex; align-items:center; gap:10px; flex:none;
     padding:9px 14px; border-top:1px solid var(--line);
     background:rgba(126,224,138,.10); font-size:0.7812rem}
@@ -217,7 +217,7 @@
     white-space:nowrap; font-family:ui-monospace,Consolas,monospace; color:var(--text)}
   .madefile button{padding:6px 11px; font-size:0.8125rem}
 
-  /* ---------- дорожка времени ---------- */
+  /* ---------- the timeline ---------- */
   .timeline{flex:none; border-top:1px solid var(--line); background:rgba(0,0,0,.32);
     padding:8px 0 0}
   .tlhead{display:flex; align-items:center; gap:10px; padding:0 14px 7px;
@@ -235,8 +235,8 @@
     border:1px solid rgba(77,225,255,.55); border-radius:6px; overflow:hidden;
     font-size:0.7188rem; line-height:28px; padding:0 7px; white-space:nowrap;
     color:#cdf3ff; cursor:grab}
-  /* Когда в окне дорожки нет ни одной строки, оно выглядит сломанным: пусто и
-     непонятно, что впереди. Подсказка у края говорит, куда всё идёт. */
+  /* With no line in the timeline window it looks broken: empty, with no clue
+     what is ahead. A hint at the edge says where things are going. */
   .tlnext{position:absolute; top:8px; right:10px; z-index:3; pointer-events:none;
     display:flex; align-items:center; gap:7px; max-width:60%;
     padding:7px 13px; border-radius:999px; font-size:0.8438rem; white-space:nowrap;
@@ -245,25 +245,24 @@
     text-overflow:ellipsis; max-width:24ch}
   .tlnext.back{right:auto; left:10px}
   .blk.sel{background:rgba(255,204,77,.28); border-color:var(--accent2); color:#ffe9b0}
-  /* Вокалы иногда идут внахлёст. Когда в песне есть второй голос, дорожка
-     раздваивается: строки второго голоса уходят на нижнюю полосу и перестают
-     наезжать на основные. */
+  /* Vocals sometimes overlap. When a song has a second voice the timeline
+     splits: its lines move to the lower lane and stop covering the main ones. */
   .tlwrap.twolane{height:158px}
   .tlwrap.twolane .blocks{height:68px}
   .tlwrap.twolane .blk.v2{top:34px}
   .tlwrap.twolane .words{top:112px}
   .blk.bad{border-color:var(--bad)}
-  /* Ручки по краям блока: левая двигает начало строки, правая — конец.
-     Шире, чем выглядят: попасть в полоску в 7px мышкой тяжело. */
+  /* Grips at the block edges: the left one moves the line start, the right one
+     the end. Wider than they look: a 7px strip is hard to hit with a mouse. */
   .blk .grip{position:absolute; top:0; bottom:0; width:9px; cursor:ew-resize;
     background:rgba(255,255,255,.18)}
   .blk .grip.right{right:0}
   .blk .grip.left{left:0}
   .blk:hover .grip{background:rgba(255,255,255,.34)}
-  /* Слова выбранной строки — отдельным рядом под блоками. Ритм в песне почти
-     никогда не ровный, поэтому каждое слово должно двигаться само по себе. */
-  /* Ряд слов — под блоками (те занимают 40–70px внутри дорожки). Размер
-     обычный, читаемый: мелкие полоски по 9px разобрать было нельзя. */
+  /* The words of the selected line get their own row under the blocks. The
+     rhythm is almost never even, so every word must move on its own. */
+  /* The word row sits under the blocks (which take 40–70px of the timeline).
+     A normal, readable size: 9px strips were impossible to make out. */
   .words{position:absolute; left:0; top:76px; height:24px}
   .wrd{position:absolute; top:0; height:22px; border-radius:5px; cursor:grab;
     background:rgba(255,204,77,.26); border:1px solid rgba(255,204,77,.6);
@@ -271,12 +270,12 @@
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
   .wrd:hover{background:rgba(255,204,77,.45)}
   .wrd.on{background:var(--accent2); color:#241c00}
-  /* Слишком узкое слово подписать нечем — показываем его как ручку без текста,
-     чтобы обрубок буквы не выглядел мусором. */
+  /* A word too narrow to label is shown as a bare grip, so half a letter does
+     not look like litter. */
   .wrd.tiny{padding:0; color:transparent}
   .wrd .wtx{pointer-events:none}
-  /* Края слова: ими задаётся его длина. Узкому слову ручки не рисуем — они
-     съели бы его целиком, там достаточно тянуть за середину. */
+  /* The word edges set its length. A narrow word gets no grips — they would
+     eat it whole; dragging the middle is enough there. */
   .wgrip{position:absolute; top:0; bottom:0; width:6px; cursor:ew-resize;
     background:rgba(255,255,255,.22)}
   .wgrip.left{left:0; border-radius:5px 0 0 5px}
@@ -286,7 +285,7 @@
   .play-head{position:absolute; top:0; bottom:0; width:2px; background:#fff;
     pointer-events:none; box-shadow:0 0 6px rgba(255,255,255,.6)}
 
-  /* ---------- транспорт ---------- */
+  /* ---------- transport ---------- */
   footer{flex:none; padding:9px 14px 12px; border-top:1px solid var(--line);
     display:flex; align-items:center; gap:11px; flex-wrap:wrap}
   .tm{font-variant-numeric:tabular-nums; font-size:0.7812rem; color:var(--muted);
@@ -308,8 +307,8 @@
     border-radius:10px; font-size:0.8125rem; opacity:0; pointer-events:none;
     transition:opacity .22s, transform .22s; z-index:80}
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
-  /* Состояние записи на диск видно постоянно: гадать, сохранилось или нет,
-     человеку не нужно. */
+  /* The save state is always in sight: nobody should have to guess whether an
+     edit reached the disk. */
   .saved{font-size:0.7188rem; color:var(--muted); opacity:0; transition:opacity .3s}
   .saved.on{opacity:1}
   .saved.ok{color:var(--ok)}
@@ -319,7 +318,7 @@
 </head>
 <body>
 
-<!-- ============ список песен ============ -->
+<!-- ============ song list ============ -->
 <div class="screen" id="scrList">
   <header>
     <h1 data-t="appTitle">Karaoke Studio</h1>
@@ -341,7 +340,7 @@
   </div>
 </div>
 
-<!-- ============ добавление ============ -->
+<!-- ============ adding a song ============ -->
 <div class="screen hide" id="scrNew">
   <header>
     <button id="btnBackNew" data-t="back">← Back</button>
@@ -389,14 +388,14 @@
   </div>
 </div>
 
-<!-- ============ прогресс ============ -->
+<!-- ============ progress ============ -->
 <div class="screen hide" id="scrJob">
   <header><div class="spin"></div><h1 id="jobTitle" data-t="working">Working…</h1>
     <div class="sp"></div><button id="btnJobBack" class="hide" data-t="toList">← To the list</button></header>
   <div class="list"><div class="form"><div class="joblog" id="jobLog"></div></div></div>
 </div>
 
-<!-- ============ редактор ============ -->
+<!-- ============ editor ============ -->
 <div class="screen hide" id="scrEdit">
   <header>
     <button id="btnBack" data-t="songs">← Songs</button>
@@ -431,7 +430,7 @@
     </div>
   </div>
 
-  <!-- Куда лёг готовый файл. Без этого его приходится искать по всему диску. -->
+  <!-- Where the finished file landed. Without this it has to be hunted for. -->
   <div class="madefile hide" id="madeRow">
     <span class="ic">✓</span>
     <span class="path" id="madePath"></span>
@@ -503,7 +502,7 @@
   </footer>
 </div>
 
-<!-- ============ обзор файлов ============ -->
+<!-- ============ file browser ============ -->
 <div class="modal hide" id="browser">
   <div class="browser">
     <div class="top">

@@ -1,4 +1,4 @@
-"""Сколько памяти доступно — чтобы предупредить заранее, а не падать на середине.
+"""How much memory is free — to warn in advance instead of dying halfway.
 
 Demucs и Whisper — прожорливые. На машине с малым файлом подкачки они валятся
 с системными кодами вроде WinError 1455, по которым непонятно, что делать.
@@ -12,13 +12,13 @@ import sys
 from .i18n import tr
 from typing import Optional, Tuple
 
-# Грубые оценки пиковой потребности, гигабайты
+# Rough estimates of the peak requirement, gigabytes
 NEED_DEMUCS = 4.0
 NEED_WHISPER = {"tiny": 1.0, "base": 1.3, "small": 2.2, "medium": 4.5, "large-v3": 8.0}
 
 
 def available_gb() -> Optional[float]:
-    """Сколько памяти реально можно занять прямо сейчас. None — если не выяснить."""
+    """How much memory can really be taken right now. None if unknown."""
     if os.name == "nt":
         try:
             import ctypes
@@ -38,7 +38,7 @@ def available_gb() -> Optional[float]:
             st.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
             if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)):
                 return None
-            # Считаем по файлу подкачки: именно его нехватка даёт WinError 1455
+            # Count the page file: running out of it is what gives WinError 1455
             return st.ullAvailPageFile / (1024 ** 3)
         except Exception:
             return None
@@ -54,7 +54,7 @@ def available_gb() -> Optional[float]:
 
 
 def is_memory_error(exc: BaseException) -> bool:
-    """Похоже ли исключение на нехватку памяти — под разными обличьями."""
+    """Does this exception look like running out of memory — in any disguise."""
     if isinstance(exc, MemoryError):
         return True
     text = str(exc).lower()
@@ -67,11 +67,11 @@ def is_memory_error(exc: BaseException) -> bool:
 
 
 def memory_advice(need_gb: float, free_gb: Optional[float]) -> str:
-    """Что делать пользователю. Без системных кодов и без воды."""
+    """What the person should do. No system codes, no waffle."""
     have = (tr(f"About {free_gb:.1f} GB is free", f"Свободно около {free_gb:.1f} ГБ")
             if free_gb else tr("There was not enough memory", "Памяти не хватило"))
-    # Первый совет — самый действенный, но он у Windows и Linux разный,
-    # а показывать «Параметры → Система» на сервере просто некуда идти.
+    # The first piece of advice is the most effective one, but it differs
+    # between Windows and Linux — “Settings → System” leads nowhere on a server.
     if sys.platform.startswith("win"):
         first = tr(
             "  1. Grow the Windows page file: Settings → System → About → "
@@ -106,7 +106,7 @@ def memory_advice(need_gb: float, free_gb: Optional[float]) -> str:
 
 
 def check(need_gb: float) -> Tuple[bool, str]:
-    """(хватит ли, пояснение). Не запрещаем, а предупреждаем: оценка приблизительная."""
+    """(is it enough, explanation). A warning, not a ban: the estimate is rough."""
     free = available_gb()
     if free is None:
         return True, ""

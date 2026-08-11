@@ -1,5 +1,6 @@
 # Песни и всё, что программа делает сама
 projects/
+music/
 *.mp4
 *_karaoke.html
 
