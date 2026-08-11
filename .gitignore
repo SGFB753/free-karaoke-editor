@@ -1,0 +1,21 @@
+# Песни и всё, что программа делает сама
+projects/
+*.mp4
+*_karaoke.html
+
+karaoke.zip
+
+# Питон
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Проверки
+app/node_modules/
+node_modules/
+
+# Мелочи систем
+.DS_Store
+Thumbs.db
+desktop.ini

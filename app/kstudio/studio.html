@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Караоке-студия</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Crect%20width%3D%2232%22%20height%3D%2232%22%20rx%3D%227%22%20fill%3D%22%230a0b14%22%2F%3E%3Crect%20x%3D%2213%22%20y%3D%226%22%20width%3D%226%22%20height%3D%2212%22%20rx%3D%223%22%20fill%3D%22%234de1ff%22%2F%3E%3Cpath%20d%3D%22M10%2015a6%206%200%200%200%2012%200%22%20fill%3D%22none%22%20stroke%3D%22%234de1ff%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M16%2021v4M13%2025h6%22%20stroke%3D%22%234de1ff%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E">
+<style>
+  /* Один множитель на всё окно: на широком мониторе надписи растут вместе с ним,
+     на ноутбуке остаются прежними. Размеры ниже заданы в rem от этой величины. */
+  html{font-size:clamp(16px, 0.42vw + 10px, 21px)}
+  :root{
+    --bg:#0a0b14; --bg2:#141830; --panel:rgba(255,255,255,.06); --line:rgba(255,255,255,.12);
+    --dim:#5d6480; --text:#e8ebf5; --muted:#8b93b0;
+    --accent:#4de1ff; --accent-2:#ff8ad1; --accent2:#ffcc4d; --bad:#ff7a7a; --ok:#7ee08a;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%}
+  body{background:linear-gradient(180deg,var(--bg),var(--bg2)); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    overflow:hidden; user-select:none; font-size:0.875rem}
+  button{font:inherit; font-size:0.8438rem; color:var(--text); background:var(--panel);
+    border:1px solid var(--line); border-radius:9px; padding:8px 13px; cursor:pointer;
+    display:inline-flex; align-items:center; gap:7px}
+  button:hover{background:rgba(255,255,255,.11)}
+  button:disabled{opacity:.4; cursor:default}
+  button.pri{background:var(--accent); color:#08111c; border-color:transparent; font-weight:600}
+  button.pri:hover{background:#7feaff}
+  button.on{background:rgba(77,225,255,.16); border-color:rgba(77,225,255,.45); color:#bff2ff}
+  input,select{font:inherit; font-size:0.8438rem; color:var(--text); background:rgba(0,0,0,.3);
+    border:1px solid var(--line); border-radius:8px; padding:7px 10px}
+  input:focus,select:focus{outline:2px solid rgba(77,225,255,.5); outline-offset:-1px}
+  .muted{color:var(--muted)}
+  .hide{display:none !important}
+
+  .screen{height:100%; display:flex; flex-direction:column}
+  header{display:flex; align-items:center; gap:14px; padding:13px 18px;
+    border-bottom:1px solid var(--line); flex:none}
+  header h1{font-size:0.9375rem; font-weight:700; letter-spacing:.2px}
+  header .sp{flex:1}
+
+  /* ---------- список песен ---------- */
+  .list{flex:1; overflow:auto; padding:20px}
+  .cards{display:grid; gap:10px; max-width:860px; margin:0 auto}
+  .card{display:flex; align-items:center; gap:14px; padding:14px 16px; cursor:pointer;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px}
+  .card:hover{background:rgba(255,255,255,.1)}
+  .card .t{flex:1; min-width:0}
+  .card .t b{display:block; font-size:0.9375rem; font-weight:650; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis}
+  .card .t span{font-size:0.8438rem; color:var(--muted)}
+  .card .del{padding:5px 9px; font-size:0.75rem; opacity:.35; border-color:transparent;
+    background:transparent}
+  .card .del:hover{opacity:1; color:var(--bad); background:rgba(255,122,122,.12)}
+  .card .badge{font-size:0.7812rem; color:var(--muted); border:1px solid var(--line);
+    border-radius:99px; padding:3px 9px; white-space:nowrap}
+  .empty{max-width:520px; margin:12vh auto; text-align:center; color:var(--muted);
+    line-height:1.7}
+  .empty h2{color:var(--text); font-size:1.25rem; margin-bottom:10px}
+
+  /* ---------- добавление песни ---------- */
+  .form{max-width:640px; margin:0 auto; padding:22px; display:grid; gap:16px}
+  .field{display:grid; gap:6px}
+  .field label{font-size:0.8438rem; color:var(--muted)}
+  .pickrow{display:flex; gap:8px}
+  .pickrow input{flex:1}
+  .opts{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+  .warn{font-size:0.8438rem; color:var(--accent2); line-height:1.6}
+  .hint{font-size:0.8438rem; color:var(--muted); line-height:1.6; margin-top:6px}
+  .hint.warnish{color:var(--accent2)}
+  /* Отчёт перед сборкой: что за песня, что за текст, чего ждать. */
+  .report{border:1px solid var(--line); border-radius:12px; padding:14px 16px;
+    background:rgba(0,0,0,.22); display:grid; gap:10px}
+  .report .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
+    gap:10px 16px}
+  .report .cell b{display:block; font-size:1.0625rem; font-weight:650;
+    font-variant-numeric:tabular-nums}
+  .report .cell span{font-size:0.7812rem; color:var(--muted);
+    text-transform:uppercase; letter-spacing:.08em}
+  .report .plan{font-size:0.8438rem; color:var(--muted); line-height:1.6;
+    border-top:1px solid var(--line); padding-top:10px}
+  .report .note{font-size:0.8438rem; color:var(--accent2); line-height:1.6}
+  .report .busy{font-size:0.8438rem; color:var(--muted)}
+
+  /* ---------- обзор файлов ---------- */
+  .modal{position:fixed; inset:0; background:rgba(4,6,14,.72); display:grid;
+    place-items:center; z-index:60}
+  .browser{width:min(720px,92vw); height:min(70vh,620px); background:#12162a;
+    border:1px solid var(--line); border-radius:14px; display:flex; flex-direction:column}
+  .browser .top{display:flex; gap:8px; align-items:center; padding:12px;
+    border-bottom:1px solid var(--line)}
+  .browser .top input{flex:1; font-size:0.7812rem}
+  .browser .body{flex:1; overflow:auto; padding:6px}
+  .row{display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:8px;
+    cursor:pointer; font-size:0.8438rem}
+  .row:hover{background:rgba(255,255,255,.08)}
+  .row .ic{width:18px; text-align:center; opacity:.75}
+  .row .sz{margin-left:auto; font-size:0.7812rem; color:var(--muted)}
+  .browser .foot{padding:10px 12px; border-top:1px solid var(--line); display:flex; gap:8px}
+
+  /* ---------- прогресс ---------- */
+  .joblog{font-family:ui-monospace,Consolas,monospace; font-size:0.8125rem; color:var(--muted);
+    background:rgba(0,0,0,.35); border:1px solid var(--line); border-radius:10px;
+    padding:12px; height:230px; overflow:auto; white-space:pre-wrap; line-height:1.55}
+  .spin{width:15px; height:15px; border:2px solid rgba(255,255,255,.25);
+    border-top-color:var(--accent); border-radius:50%; animation:sp .8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  /* ---------- редактор ---------- */
+  .edit{flex:1; display:flex; min-height:0}
+  /* Обёртка нужна, чтобы отсчёт не попадал под маску сцены: у сцены верх и низ
+     растворяются, и плашка в них выцветала до нечитаемости. */
+  .stagewrap{flex:1; position:relative; overflow:hidden; min-width:0; display:flex}
+  .stage{flex:1; position:relative; overflow:hidden; min-width:0;
+    -webkit-mask-image:linear-gradient(180deg,transparent 0,#000 16%,#000 84%,transparent 100%);
+    mask-image:linear-gradient(180deg,transparent 0,#000 16%,#000 84%,transparent 100%)}
+  .scroll{position:absolute; left:0; right:0; top:0; padding:34vh 4vw 40vh;
+    transition:transform .4s cubic-bezier(.22,.61,.36,1)}
+  /* Пока не поют, на сцене пусто, и по ней не понять, идёт песня или встала.
+     Отсчёт до первой строки движется — значит, движется и всё остальное. */
+  .wait{position:absolute; left:50%; top:12px; transform:translateX(-50%);
+    display:flex; align-items:center; gap:12px; pointer-events:none;
+    max-width:min(680px, 92%); padding:9px 18px; border-radius:999px;
+    background:rgba(10,14,24,.82); border:1px solid rgba(255,255,255,.16);
+    box-shadow:0 6px 24px rgba(0,0,0,.45);
+    color:var(--muted); font-size:0.9375rem; white-space:nowrap; z-index:2}
+  .wait .ttl{letter-spacing:.14em; text-transform:uppercase; font-size:0.75rem;
+    color:var(--accent)}
+  .wait .num{font-weight:800; font-size:1.3125rem; color:var(--text);
+    font-variant-numeric:tabular-nums; letter-spacing:-.01em}
+  .wait .txt{overflow:hidden; text-overflow:ellipsis; min-width:0; opacity:.9;
+    font-size:0.9375rem}
+  .wait .rail{width:130px; flex:none; height:5px; border-radius:999px;
+    background:rgba(255,255,255,.16); overflow:hidden}
+  .wait .rail .fill{height:100%; width:0; border-radius:999px; background:var(--accent)}
+  .ln{font-size:clamp(20px,2.5vw,34px); line-height:1.3; font-weight:700; text-align:center;
+    color:var(--dim); padding:.28em .3em; cursor:pointer; opacity:.45; border-radius:8px;
+    transition:opacity .25s, color .25s}
+  .ln.cur{opacity:1; color:var(--text)}
+  .ln.done{opacity:.3}
+  .ln.sel{background:rgba(255,204,77,.1); box-shadow:inset 0 0 0 1px rgba(255,204,77,.4)}
+  /* Выделенная пачка: видно, к чему относится следующее действие. */
+  /* Пока тянем выделение, текст не должен «синеть» как в блокноте. */
+  body.picking, body.picking .ln{user-select:none; -webkit-user-select:none}
+  /* Выделенная пачка должна бросаться в глаза, иначе непонятно, выделилось ли
+     вообще что-нибудь. */
+  .ln.mark{background:rgba(77,225,255,.22); box-shadow:inset 0 0 0 2px rgba(77,225,255,.75);
+    opacity:1; color:var(--text)}
+  .ln.mark::after{content:"✓"; color:var(--accent); font-size:.5em; margin-left:.5em;
+    vertical-align:middle; opacity:.9}
+  .blk.mark{outline:2px solid rgba(77,225,255,.85); outline-offset:-2px;
+    background:rgba(77,225,255,.30)}
+  /* Сколько выделено — видно и в строке состояния дорожки. */
+  #selNote.many{color:var(--accent); font-weight:700}
+  /* строка целиком в скобках — подпевка, её и на экране видно как подпевку */
+  .ln.back{font-size:clamp(15px,1.9vw,26px); font-style:italic}
+  /* правка текста прямо на сцене: размер и начертание те же, чтобы строка
+     не прыгала под курсором в момент двойного щелчка */
+  .lnedit{font:inherit; font-size:inherit; font-weight:inherit; text-align:center;
+    width:100%; color:var(--text); background:rgba(255,255,255,.07);
+    border:1px solid var(--accent); border-radius:8px; padding:.1em .3em; outline:none}
+  .ln .w{position:relative; display:inline-block; white-space:pre}
+  .ln .w .hl{position:absolute; left:0; top:0; width:0; overflow:hidden; white-space:pre;
+    color:var(--accent); pointer-events:none}
+  .ln.cur .w{color:rgba(232,235,245,.33)}
+  .ln .bad{color:var(--bad); font-size:.5em; vertical-align:super; margin-left:.2em}
+  /* второй голос — свой цвет: другой певец или другая манера (чистый / экстрим) */
+  .ln.v2 .w .hl{color:var(--accent-2)}
+  /* кусок, где голос из записи остаётся: его поёт оригинал, а не человек */
+  .blk.keep{background:repeating-linear-gradient(-45deg,
+    rgba(126,224,138,.30) 0 7px, rgba(126,224,138,.14) 7px 14px);
+    border-color:rgba(126,224,138,.65); color:#d3f6d8}
+  .ln.keep .kp{font-size:.42em; font-weight:600; letter-spacing:.06em;
+    text-transform:uppercase; vertical-align:middle; color:var(--ok);
+    border:1px solid currentColor; border-radius:999px; padding:.18em .5em;
+    margin-left:.5em; opacity:.8; white-space:nowrap; font-style:normal}
+  .blk.v2{border-style:dashed; background:rgba(255,138,209,.2);
+    border-color:rgba(255,138,209,.6); color:#ffd7ee}
+  /* Четыре квадратика подряд читались как один набор. Подпись и разделитель
+     говорят, какая пара за что отвечает. */
+  .pick{display:flex; align-items:center; gap:6px; font-size:0.7812rem; color:var(--muted);
+    padding-left:9px; border-left:1px solid var(--line)}
+  .pick b{font-weight:600; letter-spacing:.04em; text-transform:uppercase; font-size:0.7188rem}
+  .pick input[type=color]{width:26px; height:22px; padding:0; border-radius:6px;
+    border:1px solid var(--line); background:none; cursor:pointer}
+
+  .side{width:290px; flex:none; border-left:1px solid var(--line); display:flex;
+    flex-direction:column; background:rgba(0,0,0,.2)}
+  .side h3{font-size:0.8125rem; letter-spacing:1.4px; text-transform:uppercase;
+    color:var(--muted); padding:14px 14px 8px}
+  /* Сводка по песне: то же, что показывалось до сборки, но уже по готовой
+     разметке. После долгой части человек должен видеть, что получилось. */
+  .sum{padding:0 12px 12px; display:grid; grid-template-columns:1fr 1fr; gap:7px}
+  .sum .c{background:rgba(255,255,255,.05); border:1px solid var(--line);
+    border-radius:9px; padding:7px 9px; display:flex; flex-direction:column; gap:2px}
+  .sum .c b{font-size:1.0625rem; font-weight:700; font-variant-numeric:tabular-nums}
+  .sum .c span{font-size:0.75rem; color:var(--muted); letter-spacing:.04em;
+    text-transform:uppercase}
+  .sum .wide{grid-column:1 / -1; font-size:0.8438rem; color:var(--muted); line-height:1.5;
+    background:none; border:none; padding:0}
+  .sum .wide u{text-decoration:none; color:var(--accent); cursor:pointer}
+  .probs{flex:1; overflow:auto; padding:0 8px 10px}
+  .prob{padding:9px 11px; border-radius:9px; cursor:pointer; margin-bottom:5px;
+    border:1px solid transparent}
+  .prob:hover{background:rgba(255,255,255,.07); border-color:var(--line)}
+  .prob b{display:block; font-size:0.8125rem; font-weight:600; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis}
+  .prob span{font-size:0.7812rem; color:var(--bad)}
+  .prob .tm{font-size:0.75rem; color:var(--muted); font-variant-numeric:tabular-nums}
+  .allgood{padding:16px 14px; color:var(--ok); font-size:0.8125rem; line-height:1.6}
+
+  /* готовый файл: путь и кнопка «открыть папку» */
+  .madefile{display:flex; align-items:center; gap:10px; flex:none;
+    padding:9px 14px; border-top:1px solid var(--line);
+    background:rgba(126,224,138,.10); font-size:0.7812rem}
+  .madefile .ic{color:var(--ok); font-weight:700}
+  .madefile .path{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis;
+    white-space:nowrap; font-family:ui-monospace,Consolas,monospace; color:var(--text)}
+  .madefile button{padding:6px 11px; font-size:0.8125rem}
+
+  /* ---------- дорожка времени ---------- */
+  .timeline{flex:none; border-top:1px solid var(--line); background:rgba(0,0,0,.32);
+    padding:8px 0 0}
+  .tlhead{display:flex; align-items:center; gap:10px; padding:0 14px 7px;
+    font-size:0.8125rem; color:var(--muted); flex-wrap:wrap}
+  .tlhead button{padding:5px 10px; font-size:0.75rem}
+  .chk{display:inline-flex; align-items:center; gap:6px; cursor:pointer}
+  .howto{padding:0 14px 9px; font-size:0.8438rem; color:var(--muted); line-height:1.6}
+  .howto b{color:var(--text)}
+  .tlwrap{position:relative; height:124px; overflow:hidden; cursor:grab}
+  .tlwrap.drag{cursor:grabbing}
+  #wave{position:absolute; inset:0; width:100%; height:100%}
+  .tlscroll{position:absolute; inset:0; will-change:transform}
+  .blocks{position:absolute; left:0; top:40px; height:34px}
+  .blk{position:absolute; top:0; height:30px; background:rgba(77,225,255,.22);
+    border:1px solid rgba(77,225,255,.55); border-radius:6px; overflow:hidden;
+    font-size:0.7188rem; line-height:28px; padding:0 7px; white-space:nowrap;
+    color:#cdf3ff; cursor:grab}
+  /* Когда в окне дорожки нет ни одной строки, оно выглядит сломанным: пусто и
+     непонятно, что впереди. Подсказка у края говорит, куда всё идёт. */
+  .tlnext{position:absolute; top:8px; right:10px; z-index:3; pointer-events:none;
+    display:flex; align-items:center; gap:7px; max-width:60%;
+    padding:7px 13px; border-radius:999px; font-size:0.8438rem; white-space:nowrap;
+    background:rgba(0,0,0,.5); border:1px solid var(--line); color:var(--muted)}
+  .tlnext b{color:var(--text); font-weight:600; overflow:hidden;
+    text-overflow:ellipsis; max-width:24ch}
+  .tlnext.back{right:auto; left:10px}
+  .blk.sel{background:rgba(255,204,77,.28); border-color:var(--accent2); color:#ffe9b0}
+  /* Вокалы иногда идут внахлёст. Когда в песне есть второй голос, дорожка
+     раздваивается: строки второго голоса уходят на нижнюю полосу и перестают
+     наезжать на основные. */
+  .tlwrap.twolane{height:158px}
+  .tlwrap.twolane .blocks{height:68px}
+  .tlwrap.twolane .blk.v2{top:34px}
+  .tlwrap.twolane .words{top:112px}
+  .blk.bad{border-color:var(--bad)}
+  /* Ручки по краям блока: левая двигает начало строки, правая — конец.
+     Шире, чем выглядят: попасть в полоску в 7px мышкой тяжело. */
+  .blk .grip{position:absolute; top:0; bottom:0; width:9px; cursor:ew-resize;
+    background:rgba(255,255,255,.18)}
+  .blk .grip.right{right:0}
+  .blk .grip.left{left:0}
+  .blk:hover .grip{background:rgba(255,255,255,.34)}
+  /* Слова выбранной строки — отдельным рядом под блоками. Ритм в песне почти
+     никогда не ровный, поэтому каждое слово должно двигаться само по себе. */
+  /* Ряд слов — под блоками (те занимают 40–70px внутри дорожки). Размер
+     обычный, читаемый: мелкие полоски по 9px разобрать было нельзя. */
+  .words{position:absolute; left:0; top:76px; height:24px}
+  .wrd{position:absolute; top:0; height:22px; border-radius:5px; cursor:grab;
+    background:rgba(255,204,77,.26); border:1px solid rgba(255,204,77,.6);
+    font-size:0.75rem; line-height:20px; padding:0 6px; color:#ffe9b0;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .wrd:hover{background:rgba(255,204,77,.45)}
+  .wrd.on{background:var(--accent2); color:#241c00}
+  /* Слишком узкое слово подписать нечем — показываем его как ручку без текста,
+     чтобы обрубок буквы не выглядел мусором. */
+  .wrd.tiny{padding:0; color:transparent}
+  .wrd .wtx{pointer-events:none}
+  /* Края слова: ими задаётся его длина. Узкому слову ручки не рисуем — они
+     съели бы его целиком, там достаточно тянуть за середину. */
+  .wgrip{position:absolute; top:0; bottom:0; width:6px; cursor:ew-resize;
+    background:rgba(255,255,255,.22)}
+  .wgrip.left{left:0; border-radius:5px 0 0 5px}
+  .wgrip.right{right:0; border-radius:0 5px 5px 0}
+  .wrd:hover .wgrip{background:rgba(255,255,255,.45)}
+  .wrd.tiny .wgrip{display:none}
+  .play-head{position:absolute; top:0; bottom:0; width:2px; background:#fff;
+    pointer-events:none; box-shadow:0 0 6px rgba(255,255,255,.6)}
+
+  /* ---------- транспорт ---------- */
+  footer{flex:none; padding:9px 14px 12px; border-top:1px solid var(--line);
+    display:flex; align-items:center; gap:11px; flex-wrap:wrap}
+  .tm{font-variant-numeric:tabular-nums; font-size:0.7812rem; color:var(--muted);
+    min-width:78px}
+  .knob{display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--muted);
+    background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:5px 11px}
+  input[type=range]{-webkit-appearance:none; appearance:none; height:4px; border-radius:99px;
+    background:rgba(255,255,255,.2); outline:none; width:96px}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:13px; height:13px;
+    border-radius:50%; background:var(--accent); cursor:pointer}
+  .drop{position:fixed; inset:0; z-index:70; background:rgba(6,9,20,.82);
+    display:grid; place-items:center; pointer-events:none}
+  .dropbox{border:2px dashed var(--accent); border-radius:18px; padding:44px 64px;
+    text-align:center; background:rgba(77,225,255,.07)}
+  .dropbox .big{font-size:1.375rem; font-weight:700; color:var(--accent)}
+  .dropbox .sub{margin-top:8px; font-size:0.8438rem; color:var(--muted)}
+  .toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(8px);
+    background:rgba(20,24,48,.97); border:1px solid var(--line); padding:9px 17px;
+    border-radius:10px; font-size:0.8125rem; opacity:0; pointer-events:none;
+    transition:opacity .22s, transform .22s; z-index:80}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  /* Состояние записи на диск видно постоянно: гадать, сохранилось или нет,
+     человеку не нужно. */
+  .saved{font-size:0.7188rem; color:var(--muted); opacity:0; transition:opacity .3s}
+  .saved.on{opacity:1}
+  .saved.ok{color:var(--ok)}
+  .saved.busy{color:var(--accent2)}
+  .saved.bad{color:var(--bad)}
+</style>
+</head>
+<body>
+
+<!-- ============ список песен ============ -->
+<div class="screen" id="scrList">
+  <header>
+    <h1 data-t="appTitle">Karaoke Studio</h1>
+    <span class="muted" id="capNote"></span>
+    <div class="sp"></div>
+    <button id="btnLang" data-tt="langUi" title="Interface language">EN</button>
+    <button class="pri" id="btnAdd" data-t="addSong">＋ Add a song</button>
+  </header>
+  <div class="list">
+    <div class="cards" id="cards"></div>
+    <div class="empty hide" id="emptyNote">
+      <h2 data-t="emptyTtl">Nothing here yet</h2>
+      <div data-t="emptyBody">Press “Add a song” and point to two files: the song
+      itself and its lyrics.<br>The program works out the instrumental and the
+      timing once — after that your edits save themselves, nothing has to be
+      rebuilt.<div style="margin-top:18px; color:var(--accent)">You can also just
+      drop both files into this window.</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ добавление ============ -->
+<div class="screen hide" id="scrNew">
+  <header>
+    <button id="btnBackNew" data-t="back">← Back</button>
+    <h1 data-t="newSong">New song</h1>
+  </header>
+  <div class="list">
+    <div class="form">
+      <div class="field">
+        <label data-t="fileSong">Song file</label>
+        <div class="pickrow">
+          <input id="inAudio" placeholder="mp3, wav, flac, m4a…">
+          <button data-pick="audio" data-t="choose">Choose…</button>
+        </div>
+      </div>
+      <div class="field">
+        <label data-t="fileLyrics">Lyrics file</label>
+        <div class="pickrow">
+          <input id="inLyrics" data-tp="lyricsPh" placeholder="txt — one line of the song per line of the file">
+          <button data-pick="lyrics" data-t="choose">Choose…</button>
+        </div>
+      </div>
+      <div class="field">
+        <label data-t="langAlign">Language and timing</label>
+        <div class="opts">
+          <select id="selAlign">
+            <option value="auto" data-t="alignExact">Accurate (Whisper), if available</option>
+            <option value="energy" data-t="alignFast">Fast, without a neural net</option>
+          </select>
+          <select id="selLang" data-tt="langTitle" title="Language of the lyrics"></select>
+          <select id="selModel">
+            <option value="tiny" data-t="model_tiny">tiny — 75 MB</option>
+            <option value="base" data-t="model_base">base — 140 MB</option>
+            <option value="small" selected data-t="model_small">small — 480 MB</option>
+            <option value="medium" data-t="model_medium">medium — 1.5 GB</option>
+            <option value="large-v3" data-t="model_large_v3">large-v3 — 3 GB</option>
+          </select>
+          <label class="knob"><input type="checkbox" id="chkSep" checked> <span data-t="instrumental">Instrumental</span></label>
+        </div>
+        <div class="hint" id="modelNote"></div>
+      </div>
+      <div class="warn" id="newWarn"></div>
+      <div class="report hide" id="report"></div>
+      <div><button class="pri" id="btnBuild" data-t="build">Build</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ прогресс ============ -->
+<div class="screen hide" id="scrJob">
+  <header><div class="spin"></div><h1 id="jobTitle" data-t="working">Working…</h1>
+    <div class="sp"></div><button id="btnJobBack" class="hide" data-t="toList">← To the list</button></header>
+  <div class="list"><div class="form"><div class="joblog" id="jobLog"></div></div></div>
+</div>
+
+<!-- ============ редактор ============ -->
+<div class="screen hide" id="scrEdit">
+  <header>
+    <button id="btnBack" data-t="songs">← Songs</button>
+    <h1 id="edTitle">—</h1>
+    <span class="saved on ok" id="savedNote" data-t="savedNote">saved</span>
+    <div class="sp"></div>
+    <button id="btnLyrics" data-tt="lyricsHint" data-t="otherLyrics"
+            title="Take a different lyrics file and time the song to it">⇄ Other lyrics</button>
+    <button id="btnTrack" data-tt="trackHint" data-t="ownTrack"
+            title="Use the artist's real instrumental instead of the separated one">♪ My instrumental</button>
+    <button id="btnRealign" data-tt="realignHint" data-t="realign"
+            title="Re-read the same lyrics file from disk and time it again — if you edited it">↻ Re-time</button>
+    <button id="btnExportHtml" data-t="exportHtml">Standalone HTML</button>
+    <button id="btnExportMp4" data-t="exportMp4">MP4 video</button>
+  </header>
+
+  <div class="edit">
+    <div class="stagewrap">
+      <div class="stage" id="stage"><div class="scroll" id="scroll"></div></div>
+      <div class="wait hide" id="wait">
+        <span class="ttl" id="waitTtl">Intro</span>
+        <span class="num" id="waitNum">0:00</span>
+        <span class="txt" id="waitTxt"></span>
+        <div class="rail"><div class="fill" id="waitFill"></div></div>
+      </div>
+    </div>
+    <div class="side">
+      <h3 data-t="summary">Summary</h3>
+      <div class="sum" id="sum"></div>
+      <h3 data-t="check">Check</h3>
+      <div class="probs" id="probs"></div>
+    </div>
+  </div>
+
+  <!-- Куда лёг готовый файл. Без этого его приходится искать по всему диску. -->
+  <div class="madefile hide" id="madeRow">
+    <span class="ic">✓</span>
+    <span class="path" id="madePath"></span>
+    <button id="btnReveal" data-t="openFolder">Open folder</button>
+    <button id="btnMadeHide" data-tt="hide" title="Hide">✕</button>
+  </div>
+
+  <div class="timeline">
+    <div class="tlhead">
+      <span data-t="timeline">Timeline</span>
+      <button id="btnZoomOut">−</button><button id="btnZoomIn">＋</button>
+      <span id="zoomNote">15 s</span>
+      <span class="sp" style="flex:1"></span>
+      <span id="selNote" data-t="noLine">no line selected</span>
+      <button id="btnHere" class="pri" title="Enter" data-t="lineStartsHere">⌖ Line starts here</button>
+      <label class="chk"><input type="checkbox" id="chkRest"> <span data-t="andRest">and all after it</span></label>
+      <button id="btnText" data-tt="textHint" data-t="lineText"
+              title="Fix the words of the selected line (or double-click it)">✎ Line text</button>
+      <button id="btnUndo" data-tt="undoHint" data-t="undo"
+              title="Undo the last change (Ctrl+Z)" disabled>↶ Undo</button>
+      <button id="btnAddLine" data-tt="addLineHint" data-t="addLine"
+              title="Insert a line after the selected one — if it was missing from the lyrics">＋ line</button>
+      <button id="btnDelLine" data-tt="delLineHint" data-t="delLine"
+              title="Delete the selected line from the lyrics">－ line</button>
+      <button id="btnVoice" data-tt="voiceHint"
+              title="Second voice for the selected line: another singer or another way of singing. Painted in the second colour">◑ Voice 1</button>
+      <button id="btnRhythm" data-tt="rhythmHint" data-t="copyRhythm"
+              title="Copy the selected line — its words and its rhythm (Ctrl+C)">⧉ Copy</button>
+      <button id="btnPasteLine" data-tt="pasteLineHint" data-t="pasteLine" disabled
+              title="Put the copied line in place of the selected one (Ctrl+Shift+V)">⧉ Paste line</button>
+      <button id="btnPaste" data-tt="pasteHint" disabled
+              title="Paste the copied rhythm into the selected line (Ctrl+V)">⧉ Paste rhythm</button>
+      <button id="btnKeep" data-tt="keepHint" data-t="keep"
+              title="Keep the original voice on this line: backing vocals, speech, a bit that matters to the story. You are not meant to sing it">♪ Original</button>
+      <span class="pick" data-tt="colorsHint"
+            title="What the singing is lit with: first colour is the main voice, second is the second voice">
+        <b data-t="voices">voices</b>
+        <input type="color" id="col1" data-tt="voice1" title="Main voice" value="#4de1ff"><input
+               type="color" id="col2" data-tt="voice2" title="Second voice" value="#ff8ad1"></span>
+      <span class="pick" data-tt="themeHint"
+            title="Page look: background and text colour. If the text blends into the background, the program fixes it">
+        <b data-t="bgText">background and text</b>
+        <input type="color" id="colBg" data-tt="bg" title="Background" value="#0a0b14"><input
+               type="color" id="colTx" data-tt="textColor" title="Text colour" value="#e8ebf5"></span>
+      <button id="btnLoop" data-tt="loopHint" data-t="loop"
+              title="Play the selected line over and over">↻ Loop</button>
+      <button id="btnSnap" data-tt="snapHint" data-t="snapAll"
+              title="Move every line to the nearest moment singing starts">Snap all to the vocal</button>
+    </div>
+    <div class="howto" data-t="howto"></div>
+    <div class="tlwrap" id="tlwrap">
+      <canvas id="wave"></canvas>
+      <div class="tlnext hide" id="tlnext"></div>
+      <div class="tlscroll" id="tlscroll"><div class="blocks" id="blocks"></div>
+        <div class="words" id="words"></div></div>
+      <div class="play-head" id="phead"></div>
+    </div>
+  </div>
+
+  <footer>
+    <button class="pri" id="btnPlay">▶</button>
+    <span class="tm" id="tCur">0:00.000</span>
+    <span class="muted">/</span><span class="tm" id="tDur">0:00</span>
+    <div class="knob" id="grpVoice"><span data-t="voice">Voice</span>
+      <input type="range" id="rVoice" min="0" max="100" value="0">
+      <span id="vVoice" style="min-width:34px;text-align:right">0%</span></div>
+    <span class="sp" style="flex:1"></span>
+    <span class="muted" id="hint" style="font-size:0.75rem"></span>
+  </footer>
+</div>
+
+<!-- ============ обзор файлов ============ -->
+<div class="modal hide" id="browser">
+  <div class="browser">
+    <div class="top">
+      <button id="brUp">↑</button>
+      <input id="brPath" readonly>
+    </div>
+    <div class="body" id="brBody"></div>
+    <div class="foot"><span class="sp" id="brTitle" style="flex:1;font-size:0.7812rem;color:var(--muted)"></span>
+      <button id="brCancel" data-t="cancel">Cancel</button></div>
+  </div>
+</div>
+
+<div class="drop hide" id="dropHint">
+  <div class="dropbox">
+    <div class="big" data-t="dropBig">Drop the files here</div>
+    <div class="sub" data-t="dropSub">the song and the lyrics — or one at a time</div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script>window.KARAOKE_UI_LANG = "__UI_LANG__";</script>
+<script src="/ui.js"></script>
+<script>
+</script>
+</body>
+</html>

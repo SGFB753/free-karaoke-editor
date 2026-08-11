@@ -1,0 +1,13 @@
+# Проверено на Python 3.9.21 + ffmpeg 7.0.2
+# Установка:  pip install -r requirements-server.txt
+#
+# Demucs ставьте ПЕРВЫМ, он строже всех к версии torch.
+demucs==4.1.0
+soundfile==0.13.1        # без него Demucs не запишет результат
+stable-ts==2.19.1
+openai-whisper==20250625
+torch==2.8.0
+torchaudio==2.8.0
+numpy==2.0.2
+numba==0.60.0
+pillow==11.3.0
