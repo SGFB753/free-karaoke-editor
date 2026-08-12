@@ -181,7 +181,14 @@ def build(audio_path: str, lyrics, duration: float, envelope: List[float],
     tempo, conf = bpm(envelope, hop)
     quiet = quiet_stretches(envelope, hop)
     stats = text_stats(lyrics)
-    code = LG.resolve(language, lyrics.plain_text())
+    plain = lyrics.plain_text()
+    code = LG.resolve(language, plain)
+    auto = language in ("", "auto", None)
+    # A language chosen by hand outranks the text — but if the two are not even
+    # written in the same alphabet, the choice is a slip, and Whisper would time
+    # the song against the wrong language without a word of complaint.
+    wrong_script = (not auto and LG.text_script(plain)
+                    and LG.text_script(plain) != LG.script_of(code))
 
     # Text and song should be about the same length: too few lines for a long
     # song usually means the wrong text, or repeats left unwritten.
@@ -230,6 +237,18 @@ def build(audio_path: str, lyrics, duration: float, envelope: List[float],
         notes.append(tr("More than half the recording is silence. Perhaps the wrong "
                         "file was picked.",
                         "Больше половины записи — тишина. Возможно, взят не тот файл."))
+
+    if wrong_script:
+        looks = LG.detect(plain)
+        notes.append(tr(
+            f"The lyrics are not written in the alphabet of the chosen language "
+            f"({LG.label(code)}). They look like {LG.label(looks)}. Whisper times "
+            f"a song against the language it is given, so take “detect from the "
+            f"text” or pick {LG.label(looks)} by hand.",
+            f"Текст написан не тем алфавитом, что выбранный язык "
+            f"({LG.label(code)}). Похоже на «{LG.label(looks)}». Whisper "
+            f"размечает песню под тот язык, что ему дали, поэтому возьмите "
+            f"«определить по тексту» или выберите «{LG.label(looks)}» руками."))
 
     need = sysinfo.NEED_DEMUCS if separate else sysinfo.NEED_WHISPER.get(model, 2.2)
     free = sysinfo.available_gb()

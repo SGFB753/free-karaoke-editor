@@ -63,7 +63,7 @@ await sleep(60);
 ok('on a manual pick it names the language',
    /Язык задан вручную/.test($('modelNote').textContent), $('modelNote').textContent.slice(-50));
 
-console.log('\n--- the choice reaches the server and is remembered ---');
+console.log('\n--- the choice reaches the server, but not the next song ---');
 $('inAudio').value = process.env.KARAOKE_SONG;
 $('inLyrics').value = process.env.KARAOKE_TEXT;
 $('btnBuild').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
@@ -73,9 +73,16 @@ ok('the language was sent along with the rest', sent && sent.lang === 'en',
 ok('the other settings were not lost',
    sent && sent.model && typeof sent.separate === 'boolean' && sent.align,
    sent ? `${sent.align}/${sent.model}/${sent.separate}` : '');
+// A pick made for one song must not decide the next one: the window would
+// answer with the previous language instead of reading the text, and for a
+// song in another language that is exactly the wrong answer.
+$('btnAdd').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+await sleep(120);
+ok('the next song starts from the text again', $('selLang').value === 'auto',
+   $('selLang').value);
 let stored = null;
 try { stored = w.localStorage.getItem('karaoke.lang'); } catch(e){}
-ok('the choice is remembered for next time', stored === 'en', String(stored));
+ok('and nothing about the language is kept between songs', !stored, String(stored));
 
 ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');

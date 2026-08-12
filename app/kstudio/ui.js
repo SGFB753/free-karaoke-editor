@@ -628,7 +628,11 @@ function modelNote(){
 }
 // Whisper needs the language: with the wrong one the timing falls apart. The
 // window used to send Russian silently, with nowhere to choose.
-const LANG_KEY = "karaoke.lang";
+//
+// The choice is NOT carried over to the next song. It used to be, and that is
+// worse than it sounds: for a song in another language the window quietly
+// answered with the previous one instead of reading the text, and detection —
+// which is right almost every time — never ran at all.
 function fillLangs(){
   const sel = $("selLang"), names = caps.langs || {auto: T.detectByText};
   // Language names are written in the languages themselves and are not
@@ -643,9 +647,7 @@ function fillLangs(){
     o.value = code; o.textContent = code === "auto" ? T.detectByText : name;
     sel.appendChild(o);
   }
-  let saved = null;
-  try { saved = localStorage.getItem(LANG_KEY); } catch(e){}
-  sel.value = (saved && names[saved]) ? saved : "auto";
+  sel.value = "auto";
 }
 /* ---------- the report before building ----------
    Building takes minutes, and half the mistakes are visible beforehand: the
@@ -718,10 +720,7 @@ function humanTime(sec){
 ["selAlign","selModel","selLang","chkSep"].forEach(id =>
   $(id).addEventListener("change", askReport));
 
-$("selLang").addEventListener("change", () => {
-  try { localStorage.setItem(LANG_KEY, $("selLang").value); } catch(e){}
-  modelNote();
-});
+$("selLang").addEventListener("change", modelNote);
 $("selModel").addEventListener("change", modelNote);
 $("selAlign").addEventListener("change", modelNote);
 
@@ -729,6 +728,7 @@ $("btnAdd").addEventListener("click", () => {
   $("newWarn").textContent = caps.whisper ? "" :
     T.noStableWarn;
   $("selAlign").value = caps.whisper ? "auto" : "energy";
+  $("selLang").value = "auto";        // every song starts from its own text
   $("chkSep").checked = !!caps.demucs;
   fillLangs(); markModels(); modelNote();
   reportKey = ""; askReport();
@@ -2213,7 +2213,9 @@ async function realign(lyricsPath){
   }catch(e){ toast(e.message); }
 }
 function langOf(){
-  try { return localStorage.getItem(LANG_KEY) || "auto"; } catch(e){ return "auto"; }
+  // Re-timing has no picker of its own, and the language of a song belongs to
+  // the song, not to the window: read it off the text again.
+  return "auto";
 }
 $("btnLyrics").addEventListener("click", () => {
   if (!confirm(T.askLyrics)) return;

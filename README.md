@@ -7,7 +7,7 @@ lights up as it is sung, a slider brings the original voice back, and the whole
 thing is a single file you can open by double-clicking — no internet, no
 account, no subscription.
 
-*По-русски: [README.ru.md](README.ru.md)*
+*По-русски: [README.ru.md](README.ru.md)* · *what changed: [CHANGELOG.md](CHANGELOG.md)*
 
 ![Karaoke Studio: the editor with the lyrics stage, the summary and the timeline](app/docs/studio.png)
 
@@ -68,6 +68,7 @@ rebuilt.
 Install.bat  install.command    set up (once)
 Studio.bat   studio.command     open the program window
 README.md    README.ru.md       this text (English / Russian)
+CHANGELOG.md CHANGELOG.ru.md    what changed, newest first
 projects/                       your songs
 app/                            the program itself
 ```

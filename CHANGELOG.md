@@ -1,0 +1,77 @@
+# What changed
+
+Newest first. Each entry says what was wrong and what it means for you — the
+commits themselves are one click away in the history.
+
+*По-русски: [CHANGELOG.ru.md](CHANGELOG.ru.md)*
+
+---
+
+## 4.27.1
+
+**A song in another language kept the language of the previous one.**
+The window remembered the language picked last time and used it for the next
+song. If you had ever chosen “русский” by hand, an English text was handed to
+Whisper as Russian — and the timing came out badly split, with no hint as to
+why. Now every song starts from **“detect from the text”**; a choice made for
+one song no longer decides the next. Re-timing (“Time it again”) reads the
+language off the text too, instead of a remembered one.
+
+**The report warns when the alphabet does not match.** If you do pick a
+language by hand and the lyrics are not even written in its alphabet, the
+report says so before the long part starts: *“The lyrics are not written in the
+alphabet of the chosen language (русский). They look like english.”* Telling
+alphabets apart is never a guess, so this never cries wolf about a genuinely
+mixed text.
+
+**English words are split into syllables properly.** Word length is what
+spreads the time inside a line, and three endings used to lie: “lit-tle” and
+“peo-ple” counted as one syllable, “walked” and “danced” as two, “makes” as
+two. An English verse now lands much closer to how it is actually sung.
+
+## 4.27.0 — first public version
+
+The program as published: the Studio window, the standalone HTML page, the MP4
+render, two voices, your own instrumental, the container, and the checks.
+
+Fixed on the way to publishing:
+
+- **The voice did not match a backing track of your own.** An official
+  instrumental is mastered differently from the one under the vocal, so
+  subtracting it with a single volume level left part of the arrangement in the
+  “voice”. It is now subtracted per frequency band, over the spans without
+  singing.
+- **Both voices came out the same colour in the finished MP4** — the render
+  used hard-coded colours instead of the ones from the page.
+- **Pasted lines replaced the target instead of being inserted.** Now they are
+  always inserted below the selection, and nothing is overwritten.
+- **Several lines could not be selected at all** — dragging, Shift+click and
+  Ctrl+click did nothing. Selection marks also vanished whenever the timeline
+  was rebuilt.
+- **Cyrillic names in file paths.** Song folders and finished files are named in
+  Latin letters now (“Мамины Усы” → `maminy-usy`), so they open the same way on
+  any system.
+- **Nothing showed during the intro and the long interludes** — the slider moved
+  and the screen stayed empty. A countdown to the next line now runs at the top,
+  both in the Studio and in the video. Short pauses are not counted.
+- **No report before the long part**, and none before the video render either.
+- **Small type** everywhere: sizes are now in `rem` with `clamp`, so labels grow
+  with the window and stay readable on a big screen.
+- **A silent skip of the browser checks looked green.** With
+  `KARAOKE_REQUIRE_BROWSER=1` it is a failure — the point of running them on a
+  server is running them all.
+
+## The language of the program
+
+Published in English: the window, the finished page, the messages, the
+documentation, the comments in the code and the checks. Russian is a switch in
+the header (RU / EN) and [README.ru.md](README.ru.md); any other language is a
+file in `app/kstudio/messages/`, with no code to edit.
+
+## Checks
+
+Every push runs the whole suite on a clean Ubuntu — see
+[tests.yml](.github/workflows/tests.yml). Two differences from a working machine
+were caught the hard way and are now covered: a runner has **no neural nets
+installed** and an **empty model cache**, and the checks must be honest in both
+worlds.

@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/frdm666/free-karaoke-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/frdm666/free-karaoke-editor/actions/workflows/tests.yml)
 
-*In English: [README.md](README.md)*
+*In English: [README.md](README.md)* · *что менялось: [CHANGELOG.ru.md](CHANGELOG.ru.md)*
 
 ![Караоке-студия: сцена с текстом, сводка и дорожка](app/docs/studio.png)
 
@@ -36,6 +36,7 @@ python app/karaoke.py песня.mp3 текст.txt
 Install.bat  install.command    поставить (один раз)
 Studio.bat   studio.command     открыть окно программы
 README.md    README.ru.md       описание (английское / русское)
+CHANGELOG.md CHANGELOG.ru.md    что менялось, новое сверху
 projects/                       ваши песни
 app/                            сама программа
 ```

@@ -74,6 +74,32 @@ $('selLang').dispatchEvent(new w.Event('change',{bubbles:true}));
 await sleep(5000);
 ok('the manually picked language is shown', /english/i.test(text()), text().slice(0, 150));
 
+console.log('\n--- an English text with “русский” picked ---');
+// The very case that started this: the lyrics are English, the language says
+// Russian, and Whisper would time the song against Russian without a word.
+const fsm = await import('fs'), pathm = await import('path'), osm = await import('os');
+const engPath = pathm.join(osm.tmpdir(), 'karaoke-english-lyrics.txt');
+fsm.writeFileSync(engPath,
+  'I walked alone tonight\nThe city lights are cold\n' +
+  'You said you would wait for me\nBut all the words got old\n', 'utf8');
+$('inLyrics').value = engPath;
+$('inLyrics').dispatchEvent(new w.Event('input',{bubbles:true}));
+$('selLang').value = 'ru';
+$('selLang').dispatchEvent(new w.Event('change',{bubbles:true}));
+await sleep(6000);
+ok('the report says the alphabet does not match', /не тем алфавитом/.test(text()),
+   text().slice(-140));
+ok('and it names what the text looks like', /english/i.test(text()));
+$('selLang').value = 'auto';
+$('selLang').dispatchEvent(new w.Event('change',{bubbles:true}));
+await sleep(6000);
+ok('with “detect from the text” the language becomes english',
+   /english/i.test(text()) && !/не тем алфавитом/.test(text()), text().slice(0, 140));
+fsm.unlinkSync(engPath);
+$('inLyrics').value = process.env.KARAOKE_TEXT;
+$('inLyrics').dispatchEvent(new w.Event('input',{bubbles:true}));
+await sleep(4000);
+
 console.log('\n--- a foreign file does not break the window ---');
 $('inLyrics').value = '/no/such/file.txt';
 $('inLyrics').dispatchEvent(new w.Event('input',{bubbles:true}));

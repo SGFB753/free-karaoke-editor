@@ -71,11 +71,15 @@ def main():
     cyr = [n for n in os.listdir(HOME)
            if re.search("[А-Яа-яЁё]", n) and not n.startswith(".")]
     check("no Cyrillic left in the file names", not cyr, ", ".join(cyr))
-    # This is what the move was for: only what a person needs is in the root.
+    # This is what the move was for: only what a person needs is in the root —
+    # the two launchers, the two readmes, the two changelogs, the songs, the code.
     root_items = sorted(n for n in os.listdir(HOME)
                         if not n.startswith(".") and n not in ("node_modules", "__pycache__"))
-    check("no more than 8 names in the root", len(root_items) <= 8,
+    check("no more than 10 names in the root", len(root_items) <= 10,
           f"{len(root_items)}: " + ", ".join(root_items))
+    check("the history of changes is in plain sight",
+          os.path.isfile(os.path.join(HOME, "CHANGELOG.md"))
+          and os.path.isfile(os.path.join(HOME, "CHANGELOG.ru.md")))
     check("the internals are tucked into app/",
           all(os.path.isdir(os.path.join(HOME, "app", d)) for d in ("kstudio", "tools", "tests")))
     check("the songs folder is in plain sight", os.path.isdir(os.path.join(HOME, "projects"))

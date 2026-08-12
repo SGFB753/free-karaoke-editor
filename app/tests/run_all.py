@@ -222,6 +222,10 @@ def run_suite(path: str, env: dict) -> tuple:
     return last in ("All checks passed", "Все проверки пройдены"), out
 
 
+class SKIPPED:
+    returncode = 0
+
+
 def main() -> int:
     args = sys.argv[1:]
     if "--list" in args:
@@ -229,16 +233,28 @@ def main() -> int:
             say("  " + f)
         return 0
     quick = "--quick" in args
+    # --from 31: pick up the window suites at 31 and skip what already passed.
+    # Re-running the whole thing after a fix in one suite costs ten minutes.
+    start_at = ""
+    for i, a in enumerate(args):
+        if a == "--from" and i + 1 < len(args):
+            start_at = args[i + 1]
+        elif a.startswith("--from="):
+            start_at = a.split("=", 1)[1]
 
+    if start_at:
+        say(f"  --from {start_at}: the Python suites and the earlier window ones are skipped")
     head("1. Pipeline: the text, the timing, building the page")
-    r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_pipeline.py")],
-                       cwd=ROOT)
+    r = (SKIPPED if start_at else
+         subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_pipeline.py")],
+                        cwd=ROOT))
     if r.returncode != 0:
         say("\nFAILED on the pipeline checks — no point going further.")
         return 1
     head("1b. Delivery: launchers, file names, settings, console language, video")
-    r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_delivery.py")],
-                       cwd=ROOT)
+    r = (SKIPPED if start_at else
+         subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_delivery.py")],
+                        cwd=ROOT))
     if r.returncode != 0:
         say("\nFAILED on the delivery checks.")
         return 1
@@ -319,6 +335,8 @@ def main() -> int:
         for name in sorted(os.listdir(UI_DIR)):
             if not name.endswith(".mjs") or NEEDS_BROWSER(name):
                 continue      # it needs a real browser, it goes in the next step
+            if start_at and name < start_at:
+                continue
             ok, out = run_suite(os.path.join(UI_DIR, name), env)
             say(f"  {'ok   ' if ok else 'FAILED'}  {name}")
             if not ok:

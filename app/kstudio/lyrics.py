@@ -76,14 +76,31 @@ def count_syllables(word: str) -> int:
     n = sum(1 for ch in w if ch in VOWELS_RU)
     if n:
         return n
-    # English heuristic: a run of vowels is one syllable
+    # Latin script: a run of vowels is one syllable, then the endings that lie.
+    # Word length is what spreads the time inside a line, so “beautiful” and “I”
+    # must not come out the same — with these three rules an English verse lands
+    # close enough to how it is actually sung.
     n, prev_vowel = 0, False
     for ch in w:
         is_vowel = ch in VOWELS_EN
         if is_vowel and not prev_vowel:
             n += 1
         prev_vowel = is_vowel
-    if w.endswith("e") and n > 1:
+    # A consonant before the final “le” makes it a syllable of its own:
+    # “lit-tle”, “peo-ple”, “un-cle” — but not “smile” or “whole”.
+    if len(w) > 2 and w.endswith("le") and w[-3] not in VOWELS_EN:
+        pass                                     # that final e already counted
+    elif w.endswith("e") and n > 1:
+        n -= 1                                   # silent final e: “smile”, “gone”
+    # “-ed” is silent unless a t or a d comes before it: “walked” is one,
+    # “wanted” is two. After a vowel it is never silent: “agreed”.
+    elif (len(w) > 3 and w.endswith("ed") and n > 1
+          and w[-3] not in VOWELS_EN and w[-3] not in "td"):
+        n -= 1
+    # The same for a plural “-es” after most consonants: “makes”, not “mak-es”.
+    elif (len(w) > 3 and w.endswith("es") and n > 1
+          and w[-3] not in VOWELS_EN and w[-3] not in "sxz"
+          and not w.endswith(("ches", "shes"))):
         n -= 1
     return max(n, 1)
 

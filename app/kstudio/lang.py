@@ -62,8 +62,31 @@ _WORDS: Dict[str, Tuple[str, ...]] = {
 }
 
 
+# Which alphabet each language is written in. Telling the alphabets apart is
+# the one judgement about a text that is never a guess, so it is what we use to
+# warn a person that the language they picked cannot be the language they pasted.
+_SCRIPT = {"ru": "cyr", "uk": "cyr", "ja": "cjk", "ko": "cjk", "zh": "cjk"}
+
+
 def supported(code: str) -> bool:
     return code in NAMES
+
+
+def script_of(code: str) -> str:
+    """The alphabet a language is written in: cyr | cjk | lat."""
+    return _SCRIPT.get(code, "lat")
+
+
+def text_script(text: str) -> str:
+    """The alphabet the text is written in — by counting, not by guessing."""
+    t = (text or "").lower()
+    if re.search(r"[\u3040-\u30ff\uac00-\ud7af\u4e00-\u9fff]", t):
+        return "cjk"
+    cyr = len(re.findall(r"[а-яёіїєґ]", t))
+    lat = len(re.findall(r"[a-z\u00e0-\u00ff]", t))
+    if cyr == 0 and lat == 0:
+        return ""                                  # numbers, punctuation: no opinion
+    return "cyr" if cyr > lat else "lat"
 
 
 def detect(text: str) -> str:

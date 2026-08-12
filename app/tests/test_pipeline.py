@@ -179,6 +179,22 @@ def main():
     check("syllables: 'hello' = 2", L.count_syllables("hello") == 2)
     check("syllables: 'beautiful' = 3", L.count_syllables("beautiful") == 3)
     check("syllables: 'love' = 1 (silent -e)", L.count_syllables("love") == 1)
+    # The endings that lie, and they are what a sung line trips over: an even
+    # split gives “lit-tle” one beat and “walk-ed” two, both wrong.
+    check("syllables: a consonant before -le makes a syllable",
+          L.count_syllables("little") == 2 and L.count_syllables("people") == 2
+          and L.count_syllables("table") == 2,
+          f'little={L.count_syllables("little")} people={L.count_syllables("people")}')
+    check("syllables: -ed is silent, except after t and d",
+          L.count_syllables("walked") == 1 and L.count_syllables("danced") == 1
+          and L.count_syllables("wanted") == 2 and L.count_syllables("agreed") == 2,
+          f'walked={L.count_syllables("walked")} wanted={L.count_syllables("wanted")}')
+    check("syllables: a plural -es does not add a beat to “makes”",
+          L.count_syllables("makes") == 1 and L.count_syllables("houses") == 2
+          and L.count_syllables("watches") == 2,
+          f'makes={L.count_syllables("makes")} houses={L.count_syllables("houses")}')
+    check("syllables: a long word still outweighs a short one",
+          L.count_syllables("beautiful") > L.count_syllables("I") * 2)
     check("normalisation", L.normalize_token("«Всё!»") == "все")
 
     print("\nLines in brackets are backing vocals, not a heading")
@@ -674,6 +690,36 @@ def main():
           LG.resolve("en", songs["ru"]) == "en")
     check("every language has a human-readable name",
           all(LG.label(c) and LG.label(c) != c for c in LG.NAMES))
+    # Telling the alphabets apart is the one judgement about a text that is
+    # never a guess — it is what catches “English lyrics, Russian picked”.
+    check("the alphabet of a text is told apart",
+          LG.text_script(songs["en"]) == "lat" and LG.text_script(songs["ru"]) == "cyr"
+          and LG.text_script(songs["ja"]) == "cjk" and LG.text_script("123 …") == "",
+          LG.text_script(songs["en"]) + "/" + LG.text_script(songs["ru"]))
+    check("and the alphabet of a language too",
+          LG.script_of("ru") == "cyr" and LG.script_of("uk") == "cyr"
+          and LG.script_of("en") == "lat" and LG.script_of("zh") == "cjk")
+
+    print("\nA language picked by hand that the text contradicts")
+    from kstudio import report as REP
+    eng = L.parse("I walked alone tonight\nThe city lights are cold\n"
+                  "You said you would wait for me\nBut all the words got old")
+    def notes_for(language):
+        return REP.build("s.mp3", eng, 120.0, [0.5] * 600, 0.2, model="small",
+                         separate=False, whisper=True, language=language)["notes"]
+    said = " ".join(notes_for("ru"))
+    check("an English text with “русский” picked is called out",
+          "не тем алфавитом" in said, said[-120:] if said else "no notes at all")
+    check("and the note names what the text looks like", "english" in said)
+    check("the right language raises no such note",
+          "не тем алфавитом" not in " ".join(notes_for("en")))
+    check("“detect from the text” raises no such note either",
+          "не тем алфавитом" not in " ".join(notes_for("auto")))
+    check("a Russian text with “русский” picked is left alone",
+          "не тем алфавитом" not in " ".join(
+              REP.build("s.mp3", L.parse(songs["ru"]), 120.0, [0.5] * 600, 0.2,
+                        model="small", separate=False, whisper=True,
+                        language="ru")["notes"]))
 
     print("\nThe window and the log agree about the models")
     import tempfile as _tf
