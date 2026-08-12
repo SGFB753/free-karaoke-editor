@@ -1,191 +1,192 @@
-﻿КАРАОКЕ НА НОВОЙ ВИРТУАЛЬНОЙ МАШИНЕ — ПО ШАГАМ
+KARAOKE ON A NEW VIRTUAL MACHINE — STEP BY STEP
 
-Всё выполняется один раз. Занимает минут двадцать, из них
-пятнадцать — скачивание библиотек.
-
-
-ШАГ 0. КАКУЮ ВМ БРАТЬ
-=====================
-
-  Система   Ubuntu 22.04 или 24.04 (проще всего)
-  Память    16 ГБ — работает всё
-             8 ГБ — работает, кроме модели large-v3
-             4 ГБ — только без минусовки, ключ --light
-  Диск      20 ГБ
-  Ядра      4, лучше 8
-  Видеокарта не нужна; если есть NVIDIA — будет в 5-10 раз быстрее
-
-Память — единственное, обо что спотыкаются. Минусовке нужно
-около 4 ГБ, разметке small — около 2 ГБ.
+All of this is done once. It takes about twenty minutes, fifteen
+of which are the libraries downloading.
 
 
-ШАГ 1. ЗАЙТИ НА ВМ
-==================
+STEP 0. WHICH VM TO TAKE
+========================
 
-С Windows, в обычной командной строке (PowerShell):
+  System    Ubuntu 22.04 or 24.04 (the easiest)
+  Memory    16 GB — everything works
+             8 GB — everything but the large-v3 model
+             4 GB — only without the instrumental, the --light option
+  Disk      20 GB
+  Cores     4, better 8
+  Graphics  not needed; with an NVIDIA card it is 5-10 times faster
 
-    ssh пользователь@адрес-вм
-
-Если ssh не находится — включите его:
-Параметры -> Приложения -> Дополнительные компоненты ->
-Добавить компонент -> Клиент OpenSSH.
+Memory is the only thing people stumble over. The instrumental needs
+about 4 GB, timing with small about 2 GB.
 
 
-ШАГ 2. ПЕРЕНЕСТИ ПРОГРАММУ НА ВМ
-================================
+STEP 1. LOG IN TO THE VM
+========================
 
-Способ А. Скопировать с вашего компьютера.
-В PowerShell у СЕБЯ (не на ВМ):
+From Windows, in the ordinary command line (PowerShell):
 
-    scp -r D:\karaoke пользователь@адрес-вм:~/karaoke
+    ssh user@vm-address
 
-Способ Б. Если папки под рукой нет — распакуйте архив
-с программой прямо на ВМ:
+If ssh is not found — turn it on:
+Settings -> Apps -> Optional features ->
+Add a feature -> OpenSSH Client.
+
+
+STEP 2. COPY THE PROGRAM TO THE VM
+==================================
+
+Way A. Copy it from your computer.
+In PowerShell on YOUR machine (not on the VM):
+
+    scp -r D:\karaoke user@vm-address:~/karaoke
+
+Way B. If the folder is not at hand — unpack the archive with the
+program right on the VM:
 
     unzip karaoke.zip
 
-Папку "проекты" переносить не нужно, она пересоздаётся.
+The "projects" folder need not be copied, it is recreated.
 
 
-ШАГ 3. ЗАПУСТИТЬ УСТАНОВКУ
-==========================
+STEP 3. RUN THE INSTALLER
+=========================
 
-На ВМ:
+On the VM:
 
     cd ~/karaoke
     bash install-on-server.sh
 
-Скрипт сам поставит ffmpeg, Python, создаст отдельное окружение
-и подтянет библиотеки. Ключи:
+The script installs ffmpeg and Python itself, creates a separate
+environment and pulls in the libraries. The options:
 
-    bash install-on-server.sh --gpu     есть видеокарта NVIDIA
-    bash install-on-server.sh --light   без минусовки, экономно
-    bash install-on-server.sh --models  сразу скачать модели
+    bash install-on-server.sh --gpu     there is an NVIDIA card
+    bash install-on-server.sh --light   no instrumental, frugal
+    bash install-on-server.sh --models  download the models right away
 
-Ключ --models полезен, если хотите разом дождаться всех загрузок,
-а не ловить их при первой песне.
+The --models option is useful if you would rather wait through all the
+downloads at once than meet them on the first song.
 
-Скрипт можно запускать повторно — уже установленное не ломается.
+The script can be run again — what is already installed is not broken.
 
-В конце он сам проверит, что всё встало, и напечатает,
-что делать дальше. Если памяти мало — подскажет, как добавить
-файл подкачки.
-
-
-ШАГ 4. ЗАЛИТЬ ПЕСНЮ И ТЕКСТ
-===========================
-
-В PowerShell у СЕБЯ:
-
-    scp "D:\karaoke\песня.mp3" "D:\karaoke\песня.txt" пользователь@адрес-вм:~/karaoke/
+At the end it checks by itself that everything landed and prints what to
+do next. If memory is short — it tells you how to add a swap file.
 
 
-ШАГ 5. СОБРАТЬ
-==============
+STEP 4. UPLOAD A SONG AND ITS LYRICS
+====================================
 
-На ВМ:
+In PowerShell on YOUR machine:
+
+    scp "D:\karaoke\song.mp3" "D:\karaoke\song.txt" user@vm-address:~/karaoke/
+
+
+STEP 5. BUILD
+=============
+
+On the VM:
 
     cd ~/karaoke
     source .venv/bin/activate
-    python3 app/karaoke.py "песня.mp3" "песня.txt" -o "караоке.html"
+    python3 app/karaoke.py "song.mp3" "song.txt" -o "karaoke.html"
 
-Первый запуск дольше остальных: качается модель Whisper.
+The first run takes longer than the rest: the Whisper model is downloaded.
 
-Полезные ключи:
+Useful options:
 
-    --whisper-model medium   точнее, нужно ~4,5 ГБ памяти
-    --whisper-model large-v3 лучшая точность, нужно ~8 ГБ
-    --device cuda            считать на видеокарте
-    --no-separate            без минусовки, вдвое быстрее
+    --whisper-model medium   more accurate, needs ~4.5 GB of memory
+    --whisper-model large-v3 the best accuracy, needs ~8 GB
+    --device cuda            compute on the graphics card
+    --no-separate            no instrumental, twice as fast
 
-Видео:
+The video:
 
-    python3 app/tools/video.py "караоке.html"
+    python3 app/tools/video.py "karaoke.html"
 
-Много песен разом — положите их в одну папку, назвав файлы
-одинаково (Ветер.mp3 + Ветер.txt):
+Many songs at once — put them in one folder with matching names
+(Wind.mp3 + Wind.txt):
 
-    python3 tools/auto.py ~/karaoke/песни
+    python3 tools/auto.py ~/karaoke/songs
 
 
-ШАГ 6. ЗАБРАТЬ РЕЗУЛЬТАТ
+STEP 6. FETCH THE RESULT
 ========================
 
-В PowerShell у СЕБЯ:
+In PowerShell on YOUR machine:
 
-    scp пользователь@адрес-вм:~/karaoke/*.html D:\готовое\
-    scp пользователь@адрес-вм:~/karaoke/*.mp4  D:\готовое\
+    scp user@vm-address:~/karaoke/*.html D:\done\
+    scp user@vm-address:~/karaoke/*.mp4  D:\done\
 
 
-ЕСЛИ ХОЧЕТСЯ ОКНО СТУДИИ
-========================
+IF YOU WANT THE STUDIO WINDOW
+=============================
 
-Студия слушает только сама себя и наружу не торчит — это
-намеренно: паролей у неё нет, а файлы читать она умеет.
-Добираться до неё нужно через туннель.
+The studio listens to itself only and does not stick out — deliberately:
+it has no passwords, and it can read files. You reach it through a
+tunnel.
 
-В PowerShell у СЕБЯ:
+In PowerShell on YOUR machine:
 
-    ssh -L 8770:127.0.0.1:8770 пользователь@адрес-вм
+    ssh -L 8770:127.0.0.1:8770 user@vm-address
 
-В этом же окне, уже на ВМ:
+In the same window, on the VM now:
 
     cd ~/karaoke && source .venv/bin/activate && python3 app/studio.py
 
-Затем откройте у себя в браузере:  http://127.0.0.1:8770/
+Then open in your own browser:  http://127.0.0.1:8770/
 
-Порт студии в сеть НЕ открывайте.
-
-
-НЕ СКАЧИВАЮТСЯ МОДЕЛИ
-=====================
-
-Модели тянутся из интернета при первом запуске: Whisper 75 МБ - 3 ГБ,
-Demucs около 80 МБ. Программа скажет по-человечески, что именно
-не скачалось, и продолжит без минусовки, если дело в ней.
-
-Скачать заранее:   bash install-on-server.sh --models
-
-Кэш лежит в ~/.cache/whisper и ~/.cache/torch/hub/checkpoints —
-его можно перенести с другой машины и не качать снова.
-
-ВАЖНО ПРО МИНУСОВКУ: кроме demucs нужен пакет soundfile. Без него
-Demucs досчитает разделение и упадёт на записи результата. Скрипт
-установки ставит его сам; вручную —  pip install soundfile
+Do NOT open the studio port to the network.
 
 
-ЕСЛИ ЧТО-ТО ПОШЛО НЕ ТАК
-========================
+THE MODELS DO NOT DOWNLOAD
+==========================
 
-Не хватает памяти (WinError-подобные сообщения, "not enough
-memory", процесс убит) — добавьте файл подкачки:
+The models are pulled from the internet on the first run: Whisper 75 MB
+to 3 GB, Demucs about 80 MB. The program says in plain words what exactly
+failed to download, and goes on without the instrumental if that is what
+it was.
+
+Download in advance:   bash install-on-server.sh --models
+
+The cache lives in ~/.cache/whisper and ~/.cache/torch/hub/checkpoints —
+it can be carried over from another machine so nothing is downloaded twice.
+
+IMPORTANT ABOUT THE INSTRUMENTAL: besides demucs the soundfile package is
+needed. Without it Demucs finishes the separation and then fails while
+writing the result. The install script puts it in itself; by hand it is
+pip install soundfile
+
+
+IF SOMETHING WENT WRONG
+=======================
+
+Not enough memory (WinError-like messages, "not enough memory", the
+process killed) — add a swap file:
 
     sudo fallocate -l 8G /swapfile
     sudo chmod 600 /swapfile
     sudo mkswap /swapfile
     sudo swapon /swapfile
 
-Проверить, что цело:
+To check that everything is intact:
 
     cd ~/karaoke && source .venv/bin/activate
     python3 tests/test_pipeline.py
 
-Ждём "Все проверки пройдены".
+We expect "All checks passed".
 
-Проверить по кускам:
+To check piece by piece:
 
-    python3 -c "import stable_whisper; print('разметка ok')"
-    python3 -c "import demucs, soundfile; print('минусовка ok')"
-    python3 -c "from PIL import Image; print('видео ok')"
+    python3 -c "import stable_whisper; print('timing ok')"
+    python3 -c "import demucs, soundfile; print('instrumental ok')"
+    python3 -c "from PIL import Image; print('video ok')"
 
 
-СКОЛЬКО ЖДАТЬ
-=============
+HOW LONG TO WAIT
+================
 
-Песня 3,5 минуты:
+A 3.5-minute song:
 
-    4 ядра, без видеокарты     ~5 минут
-    8 ядер, без видеокарты     ~3 минуты
-    с NVIDIA                   меньше минуты
+    4 cores, no graphics card     ~5 minutes
+    8 cores, no graphics card     ~3 minutes
+    with NVIDIA                   under a minute
 
-С ключом --no-separate примерно вдвое быстрее.
+With the --no-separate option it is roughly twice as fast.

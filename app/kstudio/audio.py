@@ -77,9 +77,10 @@ _ON_PATH = False
 def ensure_on_path() -> None:
     """Make ffmpeg visible to third-party libraries that look it up by name.
 
-    imageio-ffmpeg кладёт бинарник внутрь пакета под именем вроде
-    ffmpeg-win64-v4.2.2.exe. Наш код его находит, а openai-whisper зовёт просто
-    «ffmpeg» через PATH и падает с WinError 2. Кладём рядом копию с нужным именем.
+    imageio-ffmpeg puts the binary inside the package under a name like
+    ffmpeg-win64-v4.2.2.exe. Our code finds it, but openai-whisper simply calls
+    “ffmpeg” through PATH and dies with WinError 2. So we put a copy with the
+    expected name next to it.
     """
     global _ON_PATH
     if _ON_PATH:
@@ -151,9 +152,9 @@ def to_wav(src: str, dst: str, sample_rate: int = 44100, mono: bool = False) -> 
 def encode(src: str, dst_base: str, codec: str = "mp3", sample_rate: int = 44100) -> Tuple[str, str]:
     """Compress for the web. Returns (path, mime).
 
-    Частоту дискретизации задаём явно: минусовка и вокал играют в браузере
-    двумя разными элементами, и если у них разойдётся частота, одна дорожка
-    поедет быстрее другой.
+    The sample rate is set explicitly: the instrumental and the vocal play in
+    the browser as two separate elements, and if their rates differ, one track
+    runs faster than the other.
     """
     if codec not in CODECS:
         raise AudioError(tr(f"Unknown codec {codec}. Available: {', '.join(CODECS)}",
@@ -163,8 +164,11 @@ def encode(src: str, dst_base: str, codec: str = "mp3", sample_rate: int = 44100
     p = _run([ffmpeg(), "-y", "-i", src, "-vn", "-ac", "2",
               "-ar", str(sample_rate), *args, dst])
     if p.returncode != 0:
-        raise AudioError(f"ffmpeg не смог закодировать {src} в {codec}:\n"
-                         f"{p.stderr.decode(errors='replace')[-800:]}")
+        raise AudioError(tr(
+            f"ffmpeg could not encode {src} to {codec}:\n"
+            f"{p.stderr.decode(errors='replace')[-800:]}",
+            f"ffmpeg не смог закодировать {src} в {codec}:\n"
+            f"{p.stderr.decode(errors='replace')[-800:]}"))
     return dst, mime
 
 

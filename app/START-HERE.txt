@@ -1,348 +1,356 @@
-﻿КАРАОКЕ ИЗ ПЕСНИ И ТЕКСТА
-Версия 4.27.0
+KARAOKE FROM A SONG AND ITS LYRICS
+Version 4.27.0
 
 
-ЧТО НУЖНО
-=========
+WHAT YOU NEED
+=============
 
-Python 3.8 или новее — скачать на https://python.org
-При установке ОБЯЗАТЕЛЬНО отметьте галочку "Add Python to PATH".
+Python 3.8 or newer — download it from https://python.org
+During the installation BE SURE to tick "Add Python to PATH".
 
-Больше ничего вручную ставить не нужно.
-
-
-1. УСТАНОВКА (один раз)
-=======================
-
-Запустите двойным щелчком:   Install.bat
-                            (на macOS: install.command)
-
-Он спросит по порядку:
-
-  1. ffmpeg      обязателен        -> жмите Enter, поставится сам
-  2. stable-ts   точная разметка   -> 1-2 ГБ, Enter = "нет"
-  3. demucs      минусовка         -> 1-2 ГБ, Enter = "нет"
-                 (вместе с ним ставится soundfile — без него
-                  минусовка досчитает и упадёт на записи)
-  4. pillow      видео для YouTube -> маленькая, жмите Enter
-  5. numpy       ускорение         -> маленькая, жмите Enter
-
-Без stable-ts и demucs программа работает, но разметка будет
-приблизительной и без минусовки. Доставить можно когда угодно.
+Nothing else has to be installed by hand.
 
 
-2. ТЕКСТ ПЕСНИ
-==============
+1. INSTALLING (once)
+====================
 
-Обычный .txt. Одна строка песни = одна строка файла.
-ВАЖНО: повторы выписывайте столько раз, сколько их поют.
+Double-click:   Install.bat
+                (on macOS: install.command)
 
-    title: Название
-    artist: Исполнитель
+It asks, in order:
 
-    [Куплет]
-    первая строка
-    вторая строка
+  1. ffmpeg      required          -> press Enter, it installs itself
+  2. stable-ts   accurate timing   -> 1-2 GB, Enter = "no"
+  3. demucs      the instrumental  -> 1-2 GB, Enter = "no"
+                 (soundfile comes with it — without soundfile the
+                  instrumental is computed and then fails on writing)
+  4. pillow      video for YouTube -> small, press Enter
+  5. numpy       speed-up          -> small, press Enter
 
-Шапка и [Куплет] необязательны. Строка в КВАДРАТНЫХ скобках —
-это метка раздела, она не поётся.
-
-Строка в КРУГЛЫХ скобках — обычная строка песни: так пишут подпевку
-и бэк-вокал. Она поётся, показывается мельче и курсивом и сразу
-считается ВТОРЫМ голосом (у него свой цвет). Исключение — названия
-разделов: (Припев), (Chorus 2) и подобные.
-
-КТО ПОЁТ И СКОЛЬКО РАЗ — можно задать прямо в тексте:
-
-    Эту строку поёт первый голос
-    2: а эту — второй
-
-    [голос 2]
-    дальше всё вторым,
-    [голос 1]
-    а здесь снова первым.
-
-    Припев x4        <- строка разложится на четыре повтора
-
-Понимает x4, ×4 и русское х4, в скобках тоже: (x4). Число от 2 до 99.
-
-Знаки препинания сами по себе (тире, многоточие) не теряются —
-они прилипают к соседнему слову и остаются на экране.
-
-Кодировка любая, программа разберётся.
+Without stable-ts and demucs the program still works, but the timing is
+approximate and there is no instrumental. They can be added at any time.
 
 
-3. СДЕЛАТЬ КАРАОКЕ
+2. THE LYRICS FILE
 ==================
 
-САМЫЙ УДОБНЫЙ СПОСОБ — СТУДИЯ.
+An ordinary .txt. One line of the song = one line of the file.
+IMPORTANT: write repeats out as many times as they are sung.
 
-Запустите:  Studio.bat
+    title: The title
+    artist: The artist
 
-Откроется окно программы.
+    [Verse]
+    the first line
+    the second line
 
-ПЕРЕТАЩИТЕ ПЕСНЮ И ТЕКСТ ПРЯМО В ЭТО ОКНО — оба файла сразу.
+The header and [Verse] are optional. A line in SQUARE brackets is a
+section label, it is not sung.
 
-Как только оба файла выбраны, появится ОТЧЁТ: длина, темп, сколько
-строк и слов, какой язык, что программа будет делать и сколько это
-примерно займёт. Если текст не от этой песни — он это заметит.
+A line in ROUND brackets is an ordinary line of the song: that is how
+backing vocals are written. It is sung, shown smaller and in italics, and
+is counted as the SECOND voice right away (which has its own colour). The
+exception is section names: (Chorus), (Chorus 2) and the like.
 
-Перед сборкой можно выбрать язык песни — он стоит рядом с моделью.
-По умолчанию язык определяется по самому тексту и называется в логе.
-Для песни не на русском это важно: с чужим языком разметка съезжает.
+WHO SINGS, AND HOW MANY TIMES — can be set right in the text:
 
-Дождитесь сборки и попадёте в редактор.
+    This line is sung by the first voice
+    2: and this one by the second
 
-Не хотите тащить — кнопка "Добавить песню" и выбор файлов вручную.
-Обзор открывается там, где вы были в прошлый раз; для песен и для
-текстов папки помнятся отдельно.
+    [voice 2]
+    everything from here in the second,
+    [voice 1]
+    and here in the first again.
 
-При выборе модели окно пишет, скачана она уже или нет: непокачанную
-придётся ждать (medium — полтора гигабайта). Пока идёт долгий шаг,
-в логе раз в 15-20 секунд видно, что процесс жив, и сколько прошло.
+    Chorus x4        <- the line unfolds into four repeats
 
-В студии:
-  - правки сохраняются САМИ, ничего пересобирать не надо;
-  - внизу дорожка с волной голоса: видно, где поют. Затенённые
-    места — там, где долго не поют: вступление, проигрыш, соло.
-    Строки туда попадать не должны;
-  - строки на дорожке можно двигать мышкой, они прилипают к началу фразы;
-  - под ними жёлтый ряд — слова выбранной строки. За середину слово
-    двигается целиком, за края задаётся его длина: внутри строки
-    поют неровно, и ровная раскладка врёт;
-  - у блока строки тоже два края: левый двигает начало, правый конец.
-    При этом меняется только крайнее слово — остальные остаются
-    ровно на своих местах;
-  - надпись у названия песни всегда показывает, сохранено или нет;
-  - НЕСКОЛЬКО СТРОК РАЗОМ: зажмите на строке и проведите по соседним
-    (либо Shift+щелчок, Ctrl+щелчок — добавить одну, Escape — снять).
-    Голос, «оригинал», удаление и вставка сработают по всей пачке;
-  - "⧉ Копировать" запоминает выделенное целиком, "⧉ Вставить строку"
-    ставит копии НИЖЕ выделенного, ничего не затирая, а "⧉ Вставить
-    ритм" накладывает только раскладку слов на строку с тем же числом
-    слов. Ctrl+D — дубль строки под оригиналом;
-  - "◑ Голос" переводит строку на второй вокал: на дорожке она уходит
-    на вторую полосу, на экране красится вторым цветом. Если два голоса
-    звучат одновременно, строки разводятся по сторонам, чтобы каждый
-    читал своё;
-  - "♪ Оригинал" оставляет на строке голос из записи: подпевка, речь,
-    важный для сюжета кусок. Петь её не надо, и это видно заранее;
-  - четыре квадратика на дорожке — цвета: пара «голоса» и пара
-    «фон и буквы». Буквы, сливающиеся с фоном, программа поправит сама;
-  - справа СВОДКА: длина, доля пения, строки и слова, места без пения
-    (по ним можно щёлкнуть), чем размечали, сколько строк у второго
-    голоса и сколько оставлено оригиналу;
-  - пока не поют, сверху идёт отсчёт до ближайшей строки — видно, что
-    песня не встала. Мелкие паузы не отсчитываются;
-  - справа список строк, которые стоит проверить;
-  - кнопки "Отдельный HTML" и "Видео MP4" — когда всё готово;
-  - "Разметить заново" — перечитывает ТОТ ЖЕ файл с текстом с диска.
-    Поправили txt (разбили строки иначе, исправили слова) — жмите эту
-    кнопку, выбирать ничего не надо;
-  - "Другой текст" — если новый текст лежит в другом файле;
-  - крестик на карточке песни убирает её из студии (исходники целы);
-  - "♪ Своя минусовка" — подставить настоящий инструментал от
-    исполнителя вместо разделённого. Кнопка вверху, рядом с
-    "Разметить заново". Порядок такой:
-        1. соберите песню как обычно (минусовка не обязательна);
-        2. откройте её в студии;
-        3. нажмите "♪ Своя минусовка" и выберите файл.
-    Разметка останется на месте. Если инструментал начинается
-    не там же, программа найдёт сдвиг и подвинет разметку следом
-    и напишет, на сколько.
+It understands x4, ×4 and the Cyrillic х4, in brackets too: (x4). A number
+from 2 to 99.
 
-ОШИБСЯ В САМОМ ТЕКСТЕ ПЕСНИ
-  - опечатка в строке: выберите строку и нажмите "✎ Текст строки"
-    (или двойной щелчок — по строке на сцене либо по её блоку
-    на дорожке). Исправьте, Enter.
-    Время строки останется, слова разложатся заново. Escape отменяет.
-  - забыли строку: выберите ту, ПОСЛЕ которой её вставить, и нажмите
-    "＋ строка" — сразу можно вписать текст.
-  - лишняя строка: выберите её и нажмите "－ строка".
+Punctuation standing on its own (a dash, an ellipsis) is not lost — it
+sticks to the neighbouring word and stays on the screen.
 
-Пересобирать песню при этом не надо, и разметка не теряется.
-Ошиблись — Ctrl+Z или кнопка "↶ Отменить" вернёт как было.
+Any encoding will do, the program works it out.
 
 
-Клавиши в студии:
-  Ctrl+Z     отменить последнюю правку
-  Пробел     пуск и пауза
-  Колесо     листать текст
-  Home/End   к началу и к концу текста
-  ← →        перемотка на 5 секунд
-  ↑ ↓        выбрать строку выше или ниже
-  [ ]        сдвинуть выбранную строку на 50 мс
-  Enter      поставить выбранную строку на текущую секунду
-  Delete     удалить выделенные строки
-  Ctrl+C     скопировать выделенное
-  Ctrl+V     вставить ритм в выбранную строку
-  Ctrl+Shift+V  вставить скопированные строки ниже
-  Ctrl+D     продублировать строку
-  Shift+↑ ↓  расширить выделение
+3. MAKING THE KARAOKE
+=====================
 
-Закрыть студию — закрыть чёрное окно консоли.
+THE EASIEST WAY IS THE STUDIO.
+
+Run:  Studio.bat
+
+The program window opens.
+
+DRAG THE SONG AND THE LYRICS RIGHT INTO THAT WINDOW — both files at once.
+
+As soon as both files are picked, a REPORT appears: the length, the tempo,
+how many lines and words, which language, what the program is going to do
+and roughly how long it will take. If the lyrics are not from this song, it
+notices.
+
+Before building you can choose the language of the song — it sits next to
+the model. By default the language is detected from the text itself and is
+named in the log. For a song in another language this matters: with the
+wrong language the timing drifts.
+
+Wait for the build and you land in the editor.
+
+Do not feel like dragging — the "Add a song" button and picking the files
+by hand. The browser opens where you were last time; the folders for songs
+and for lyrics are remembered separately.
+
+When you pick a model the window says whether it is already downloaded: an
+absent one has to be waited for (medium is a gigabyte and a half). While a
+long step runs, the log shows every 15-20 seconds that the process is alive
+and how much time has passed.
+
+In the studio:
+  - edits save THEMSELVES, nothing has to be rebuilt;
+  - at the bottom there is a timeline with the voice waveform: you can see
+    where the singing is. The shaded places are the ones with no singing
+    for a long while: the intro, an interlude, a solo. Lines should not
+    land there;
+  - lines on the timeline can be dragged with the mouse, they snap to the
+    beginning of a phrase;
+  - under them is a yellow row — the words of the selected line. By the
+    middle a word moves as a whole, by the edges its length is set: inside
+    a line the singing is uneven, and an even layout lies;
+  - the line block has two edges too: the left one moves the start, the
+    right one the end. Only the outermost word changes with it — the rest
+    stay exactly where they were;
+  - the note by the song title always shows whether it is saved or not;
+  - SEVERAL LINES AT ONCE: press on a line and drag across its neighbours
+    (or Shift+click, Ctrl+click to add one, Escape to clear). The voice,
+    "the original", deleting and pasting all work on the whole batch;
+  - "⧉ Copy" remembers the selection whole, "⧉ Paste line" puts the copies
+    BELOW the selection without overwriting anything, and "⧉ Paste rhythm"
+    lays only the word layout onto a line with the same number of words.
+    Ctrl+D — a duplicate of the line under the original;
+  - "◑ Voice" moves a line to the second vocal: on the timeline it goes to
+    the second lane, on screen it is painted in the second colour. If two
+    voices sound at the same time, the lines are split to the sides so each
+    person reads their own;
+  - "♪ Original" keeps the recorded voice on a line: a backing part, speech,
+    a piece that matters to the story. There is no need to sing it, and that
+    is visible in advance;
+  - the four swatches on the timeline are the colours: the "voices" pair and
+    the "background and letters" pair. Letters that blend into the
+    background are fixed by the program itself;
+  - on the right is the SUMMARY: the length, the share of singing, lines and
+    words, the places without singing (you can click them), what the timing
+    was made with, how many lines the second voice has and how many are left
+    to the original;
+  - while nobody sings, a countdown to the nearest line runs at the top — so
+    you can see the song has not stalled. Short pauses are not counted;
+  - on the right is the list of lines worth checking;
+  - the "Standalone HTML" and "MP4 video" buttons — when everything is ready;
+  - "Time it again" — re-reads THE SAME lyrics file from disk. Fixed the txt
+    (split the lines differently, corrected words) — press this button, there
+    is nothing to pick;
+  - "Other lyrics" — if the new text is in a different file;
+  - the cross on a song card removes it from the studio (the sources are
+    intact);
+  - "♪ Own backing track" — put the artist's real instrumental in place of
+    the separated one. The button is at the top, next to "Time it again".
+    The order is:
+        1. build the song as usual (the instrumental is not required);
+        2. open it in the studio;
+        3. press "♪ Own backing track" and pick the file.
+    The timing stays in place. If the instrumental starts elsewhere, the
+    program finds the shift, moves the timing along and says by how much.
+
+A MISTAKE IN THE LYRICS THEMSELVES
+  - a typo in a line: select the line and press "✎ Line text" (or double
+    click — on the line on stage or on its block on the timeline). Fix it,
+    Enter.
+    The time of the line stays, the words are laid out anew. Escape cancels.
+  - a forgotten line: select the one AFTER which to insert it and press
+    "＋ line" — the text can be typed straight away.
+  - a stray line: select it and press "－ line".
+
+None of this needs the song rebuilt, and the timing is not lost.
+Made a mistake — Ctrl+Z or the "↶ Undo" button puts it back.
 
 
-СТАРЫЙ СПОСОБ, БЕЗ ОКНА
-=======================
+Keys in the studio:
+  Ctrl+Z     undo the last edit
+  Space      play and pause
+  Wheel      scroll the text
+  Home/End   to the start and to the end of the text
+  ← →        seek by 5 seconds
+  ↑ ↓        select the line above or below
+  [ ]        move the selected line by 50 ms
+  Enter      put the selected line on the current second
+  Delete     delete the selected lines
+  Ctrl+C     copy the selection
+  Ctrl+V     paste the rhythm into the selected line
+  Ctrl+Shift+V  paste the copied lines below
+  Ctrl+D     duplicate the line
+  Shift+↑ ↓  extend the selection
 
-Выделите мышкой песню и текст, перетащите оба файла на значок:
+To close the studio — close the black console window.
+
+
+THE OLD WAY, WITHOUT THE WINDOW
+===============================
+
+Select the song and the lyrics with the mouse and drag both files onto:
 
     app\Make-karaoke.bat
 
-Рядом с песней появится ..._karaoke.html — открывайте двойным
-щелчком. Интернет не нужен, файл работает на любом компьютере.
+Next to the song a ..._karaoke.html appears — open it with a double click.
+No internet is needed, the file works on any computer.
 
-Целую папку разом:  app\Whole-folder.bat
-Файлы должны называться одинаково:  Ветер.mp3 + Ветер.txt
+A whole folder at once:  app\Whole-folder.bat
+The files must be named alike:  Wind.mp3 + Wind.txt
 
 
-4. НАСТРОЙКИ
-============
+4. SETTINGS
+===========
 
-Файл app\settings.ini, меняйте значения справа от "=".
-Ключи английские, русские тоже понимаются.
+The file app\settings.ini, change the values to the right of "=".
+The keys are English, the Russian ones are understood too.
 
     align = auto        auto | whisper | energy
     model = small       tiny | base | small | medium | large-v3
     language = auto     auto | ru | uk | en | de | fr | es | it | pl …
-    colors = #4de1ff,#ff8ad1      цвета голосов
-    theme  = #0a0b14,#e8ebf5      фон и цвет букв
-    ui-lang = auto      язык надписей: auto | en | ru
-
-Чем крупнее модель, тем точнее разметка и тем больше нужно памяти:
-small ~2 ГБ, medium ~4,5 ГБ, large-v3 ~8 ГБ. Если памяти меньше,
-чем нужно модели, считать она будет не «дольше», а в разы дольше —
-система начнёт перекладывать данные на диск. Студия пишет рядом
-с моделью «тяжёлая для этой машины», когда это про вас.
+    colors = #4de1ff,#ff8ad1      the voice colours
+    theme  = #0a0b14,#e8ebf5      the background and the letters
+    ui-lang = auto      the language of the labels: auto | en | ru
     instrumental = yes  yes | no
 
-Поставили stable-ts и demucs — оставьте как есть.
-Не ставили — пропишите:  align = energy   и   instrumental = no
+The bigger the model, the more accurate the timing and the more memory it
+needs: small ~2 GB, medium ~4.5 GB, large-v3 ~8 GB. If there is less memory
+than the model needs, it will not be "slower" but many times slower — the
+system starts moving data to the disk. The studio writes "heavy for this
+machine" next to a model when that is your case.
+
+Installed stable-ts and demucs — leave it as it is.
+Did not — write:  align = energy   and   instrumental = no
 
 
-5. ВИДЕО ДЛЯ YOUTUBE
+5. VIDEO FOR YOUTUBE
 ====================
 
-Перетащите готовый ..._karaoke.html на значок:
+Drag a finished ..._karaoke.html onto:
 
     app\Make-video.bat
 
-Рядом появится MP4 1920x1080, готовый к заливке.
-Сначала имеет смысл снять пробник на 15 секунд:
+An MP4 1920x1080 appears next to it, ready to upload.
+It makes sense to render a 15-second sample first:
 
-    py app\tools\video.py "файл_karaoke.html" --start 45 --seconds 15
+    py app\tools\video.py "file_karaoke.html" --start 45 --seconds 15
 
-Перед отрисовкой ролик печатает свой отчёт (песня, длина, строки,
-где поют вдвоём, цвета, число кадров), а во вступлении и в долгих
-проигрышах показывает сверху отсчёт до ближайшей строки. Цвета и
-оформление берутся из самой страницы. Когда файл готов, открывается
-папка, где он лежит.
-
-
-ЕСЛИ РАЗМЕТКА СЪЕХАЛА
-=====================
-
-Удобнее всего — в Студии (см. пункт 3).
-
-В отдельном HTML тоже можно, там одно главное действие:
-
-  1. Щёлкните нужную строку — она подчеркнётся и закрепится:
-     песня играет дальше, а правится по-прежнему она.
-     Кнопка "не эту" рядом снимает выбор.
-  2. Доиграйте до места, где её начинают петь.
-  3. Нажмите "Начало строки — сюда".
-
-Флажок "и все следующие" двигает заодно весь остаток песни —
-это для случая, когда после соло уехало всё.
-
-Точная подгонка — клавиши [ и ] по 50 мс.
-Весь текст сразу двигает ползунок "Сдвиг".
-
-Испортить нельзя: "Отменить" возвращает по шагу назад,
-"Сбросить всё" — к исходной разметке.
-
-ЧТОБЫ ПРАВКИ ПОПАЛИ В ВИДЕО, нажмите "Сохранить страницу
-с правками" и делайте видео уже из сохранённого файла.
+Before rendering, the video prints its own report (the song, the length, the
+lines, where two sing together, the colours, the number of frames), and in
+the intro and in long interludes it shows a countdown to the nearest line at
+the top. The colours and the styling are taken from the page itself. When the
+file is ready, the folder it is in opens.
 
 
-НЕ ХВАТАЕТ ПАМЯТИ
+IF THE TIMING HAS DRIFTED
+=========================
+
+The most convenient place is the Studio (see point 3).
+
+It can be done in the standalone HTML too, where there is one main action:
+
+  1. Click the line you need — it gets underlined and pinned: the song plays
+     on while that line is still the one being edited.
+     The "not this one" button next to it clears the choice.
+  2. Play up to the place where it starts being sung.
+  3. Press "Line starts here".
+
+The "and all the following" checkbox moves the whole rest of the song along —
+that is for when everything drifted after a solo.
+
+Fine tuning — the [ and ] keys, 50 ms at a time.
+The whole text at once is moved by the "Offset" slider.
+
+Nothing can be ruined: "Undo" goes back one step, "Reset all" returns to the
+original timing.
+
+TO GET YOUR EDITS INTO THE VIDEO, press "Save the page with the edits" and
+make the video from the saved file.
+
+
+NOT ENOUGH MEMORY
 =================
 
-Если в выводе мелькает "Файл подкачки слишком мал", WinError 1455
-или "not enough memory" — машине не хватило памяти. Demucs и Whisper
-прожорливые: минусовке нужно около 4 ГБ, модели small — около 2 ГБ.
+If "The paging file is too small", WinError 1455 or "not enough memory" flash
+by in the output — the machine ran out of memory. Demucs and Whisper are
+hungry: the instrumental needs about 4 GB, the small model about 2 GB.
 
-Что помогает, по убыванию действенности:
+What helps, most effective first:
 
-  1. Увеличить файл подкачки Windows:
-     Параметры -> Система -> О системе -> Дополнительные параметры
-     системы -> Быстродействие -> Параметры -> Дополнительно ->
-     Виртуальная память -> Изменить.
-     Поставьте "Размер по выбору системы" или вручную 16384 МБ.
-     Это решает проблему чаще всего.
+  1. Increase the Windows paging file:
+     Settings -> System -> About -> Advanced system settings ->
+     Performance -> Settings -> Advanced -> Virtual memory -> Change.
+     Choose "System managed size" or set 16384 MB by hand.
+     This solves it most of the time.
 
-  2. Закрыть браузер и другие тяжёлые программы.
+  2. Close the browser and other heavy programs.
 
-  3. Отключить минусовку:  минусовка = нет  в settings.ini
+  3. Turn the instrumental off:  instrumental = no  in settings.ini
 
-  4. Взять модель поменьше:  small -> base -> tiny
+  4. Take a smaller model:  small -> base -> tiny
 
-Программа предупредит заранее, если свободной памяти мало.
+The program warns in advance when free memory is short.
 
 
-ЧТО-ТО НЕ ТАК
-=============
+SOMETHING IS WRONG
+==================
 
-Проверить готовую страницу и увидеть, что не сошлось:
+To check a finished page and see what does not add up:
 
-    py app\tools\diagnose.py "файл_karaoke.html"
+    py app\tools\diagnose.py "file_karaoke.html"
 
-Поправить время строки вручную:
+To fix the time of a line by hand:
 
     py app\tools\fix_line.py "timings.json" --list
     py app\tools\fix_line.py "timings.json" --line 34 --start 2:30.81
 
-Пересобрать песню со своими таймингами:
+To rebuild the song with your own timings:
 
-    py app\karaoke.py "песня.mp3" "текст.txt" --timings "timings.json"
+    py app\karaoke.py "song.mp3" "lyrics.txt" --timings "timings.json"
 
 
-ПОДРОБНОСТИ
+THE DETAILS
 ===========
 
-README.ru.md (в корне) — все ключи командной строки и как это устроено внутри.
-README.md — то же самое по-английски.
+README.md (in the root) — every command-line option and how it works inside.
+README.ru.md — the same in Russian.
 
 
-ЧТО ГДЕ ЛЕЖИТ
+WHAT IS WHERE
 =============
 
-В корне только нужное:
+Only what is needed is in the root:
 
-    Install.bat  install.command    поставить (один раз)
-    Studio.bat   studio.command     открыть окно
-    README.md    README.ru.md       описание
-    projects\                       ваши песни
-    app\                            сама программа
+    Install.bat  install.command    install (once)
+    Studio.bat   studio.command     open the window
+    README.md    README.ru.md       the description
+    projects\                       your songs
+    app\                            the program itself
 
-Всё остальное — внутри app: settings.ini, эта инструкция,
-Make-karaoke.bat и Make-video.bat, проверки, Dockerfile.
-Папки песен называются латиницей: «Мамины Усы» -> maminy-usy.
-
-
-ЯЗЫК ОКНА
-=========
-
-Кнопка RU / EN в шапке окна и на готовой странице. Выбор запоминается.
-Новый язык — это файл app\kstudio\messages\<код>.json, пример рядом:
-template.json. Пустые значения берутся из английского.
+Everything else is inside app: settings.ini, this guide,
+Make-karaoke.bat and Make-video.bat, the tests, the Dockerfile.
+Song folders are named in Latin letters: “Мамины Усы” -> maminy-usy.
 
 
-В КОНТЕЙНЕРЕ (если не хочется ставить питон и модели себе)
-==========================================================
+THE LANGUAGE OF THE WINDOW
+==========================
+
+The RU / EN button in the header of the window and on the finished page. The
+choice is remembered. A new language is a file app\kstudio\messages\<code>.json,
+with an example next to it: template.json. Empty values fall back to English.
+
+
+IN A CONTAINER (if you would rather not install Python and the models)
+======================================================================
 
     cd app && docker compose up --build
 
-Потом откройте http://127.0.0.1:8770/ — окно то же самое.
-Песни останутся в projects, музыка для импорта кладётся в music.
+Then open http://127.0.0.1:8770/ — the same window. The songs stay in
+projects, music for importing goes into music.

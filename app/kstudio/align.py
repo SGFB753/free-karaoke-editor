@@ -220,11 +220,17 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
         need = sysinfo.NEED_WHISPER.get(model_name, 2.2)
         with Heartbeat(log, M.step_label(model_name), every=10.0,
                        slow_after=90.0,
-                       slow_note=(f"дольше обычного. Модели «{model_name}» нужно около "
-                                  f"{need:.0f} ГБ памяти; если её мало, система "
-                                  f"перекладывает данные на диск, и шаг растягивается "
-                                  f"в разы. Помогает модель поменьше: "
-                                  f"medium → small → base.")):
+                       slow_note=tr(
+                           f"longer than usual. The “{model_name}” model needs about "
+                           f"{need:.0f} GB of memory; when there is less, the system "
+                           f"moves data to the disk and the step stretches out many "
+                           f"times over. A smaller model helps: "
+                           f"medium → small → base.",
+                           f"дольше обычного. Модели «{model_name}» нужно около "
+                           f"{need:.0f} ГБ памяти; если её мало, система "
+                           f"перекладывает данные на диск, и шаг растягивается "
+                           f"в разы. Помогает модель поменьше: "
+                           f"medium → small → base.")):
             model = stable_whisper.load_model(model_name, device=device)
     except Exception as e:
         # Catch a failed download separately: “Connection refused” explains
@@ -233,14 +239,19 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
         net = ("urlopen", "connection", "getaddrinfo", "timed out", "ssl",
                "max retries", "name resolution", "unreachable", "httperror")
         if any(k in low for k in net):
-            raise RuntimeError(
+            raise RuntimeError(tr(
+                f"could not download the Whisper model “{model_name}”. "
+                f"Check the internet on this machine — the model downloads once "
+                f"and then lives in ~/.cache/whisper. The original error: {e}",
                 f"не удалось скачать модель Whisper «{model_name}». "
                 f"Проверьте интернет на этой машине — модель качается один раз "
-                f"и потом лежит в ~/.cache/whisper. Исходная ошибка: {e}")
+                f"и потом лежит в ~/.cache/whisper. Исходная ошибка: {e}"))
         if "checksum" in low or "sha256" in low:
-            raise RuntimeError(
+            raise RuntimeError(tr(
+                f"the “{model_name}” model file was damaged while downloading. "
+                f"Delete ~/.cache/whisper and try again. The original error: {e}",
                 f"файл модели «{model_name}» побился при загрузке. Удалите "
-                f"~/.cache/whisper и повторите. Исходная ошибка: {e}")
+                f"~/.cache/whisper и повторите. Исходная ошибка: {e}"))
         raise
 
     # Given a file path, Whisper calls `ffmpeg` by name through PATH. When
@@ -264,11 +275,16 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
         # The longest step after the instrumental. stable-ts can report how many
         # seconds it has processed — send that to the log rather than to a
         # console progress bar, which the studio window never shows anyway.
-        with Heartbeat(log, "выравнивание", slow_after=600.0,
-                       slow_note=("идёт долго. На процессоре medium считает примерно "
-                                  "впятеро дольше small, а при нехватке памяти — ещё "
-                                  "дольше. Прервать можно, разметка пересчитается "
-                                  "с другой моделью.")) as hb:
+        with Heartbeat(log, tr("alignment", "выравнивание"), slow_after=600.0,
+                       slow_note=tr(
+                           "is taking a while. On a CPU medium is about five times "
+                           "slower than small, and with little memory slower still. "
+                           "It can be interrupted, the timing will be recomputed "
+                           "with another model.",
+                           "идёт долго. На процессоре medium считает примерно "
+                           "впятеро дольше small, а при нехватке памяти — ещё "
+                           "дольше. Прервать можно, разметка пересчитается "
+                           "с другой моделью.")) as hb:
             try:
                 result = model.align(audio_input, lyrics.plain_text(),
                                      language=language, original_split=True,
@@ -279,10 +295,11 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                 result = model.align(audio_input, lyrics.plain_text(),
                                      language=language, original_split=True)
     except FileNotFoundError as e:
-        raise RuntimeError(
+        raise RuntimeError(tr(
+            f"Whisper could not start ffmpeg ({e}). Install it into the system: "
+            f"winget install Gyan.FFmpeg — and restart the command line.",
             f"Whisper не смог запустить ffmpeg ({e}). Поставьте его в систему: "
-            f"winget install Gyan.FFmpeg — и перезапустите командную строку."
-        )
+            f"winget install Gyan.FFmpeg — и перезапустите командную строку."))
 
     rec: List[tuple] = []
     probs: List[float] = []

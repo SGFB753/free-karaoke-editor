@@ -1,4 +1,4 @@
-# Песни и всё, что программа делает сама
+# Songs and everything the program makes on its own
 projects/
 music/
 *.mp4
@@ -6,17 +6,17 @@ music/
 
 karaoke.zip
 
-# Питон
+# Python
 __pycache__/
 *.py[cod]
 .venv/
 venv/
 
-# Проверки
+# Tests
 app/node_modules/
 node_modules/
 
-# Мелочи систем
+# Bits and pieces from the systems
 .DS_Store
 Thumbs.db
 desktop.ini

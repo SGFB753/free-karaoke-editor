@@ -1,11 +1,12 @@
 """Signs of life during long steps.
 
-Demucs и Whisper молчат минутами: модель грузится, разделение считается, а в
-логе последняя строка так и висит. Со стороны это неотличимо от зависания —
-человек не знает, ждать ему или закрывать окно.
+Demucs and Whisper stay silent for minutes: the model loads, the separation is
+computed, and the last line of the log just hangs there. From outside that is
+indistinguishable from a freeze — a person does not know whether to wait or to
+close the window.
 
-Здесь один инструмент: раз в несколько секунд сказать «идёт, прошло столько-то»
-и, если шаг умеет считать себя, добавить долю сделанного.
+There is one tool here: every few seconds say “running, this much has passed”
+and, if the step can measure itself, add the share that is done.
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ from __future__ import annotations
 import threading
 import time
 from typing import Callable, Optional
+
+from .i18n import tr
 
 Log = Callable[[str], None]
 
@@ -26,10 +29,10 @@ class Heartbeat:
     """A context manager: while inside, every `every` seconds it reports that
     the step is still running.
 
-        with Heartbeat(log, "выравнивание") as hb:
+        with Heartbeat(log, "alignment") as hb:
             model.align(..., progress_callback=hb.progress)
 
-    Шаг, который считать себя не умеет, всё равно получит отсчёт времени.
+    A step that cannot measure itself still gets the elapsed time.
     """
 
     def __init__(self, log: Log, what: str, every: float = 15.0,
@@ -65,11 +68,11 @@ class Heartbeat:
     def _line(self) -> str:
         with self._lock:
             done, total, extra = self._done, self._total, self._extra
-        s = f"  …{self._what}: идёт {mmss(time.time() - self._t0)}"
+        s = "  …" + self._what + tr(": running ", ": идёт ") + mmss(time.time() - self._t0)
         # Show the fraction only when it means something: a counter at zero or
         # at the very end says no more than no counter at all.
         if total > 0 and 0 < done < total:
-            s += f", готово {done / total * 100:.0f}%"
+            s += tr(", done ", ", готово ") + f"{done / total * 100:.0f}%"
         if extra:
             s += f" ({extra})"
         return s

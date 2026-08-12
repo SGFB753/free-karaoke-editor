@@ -1,8 +1,9 @@
 """The report before building: what the song is, what the text is, what to expect.
 
-Сборка занимает минуты, а половина промахов видна заранее: текст не от этой
-песни, строк вдвое меньше, чем куплетов, язык определился не тот, памяти не
-хватит на выбранную модель. Дешевле сказать это до, чем после.
+Building takes minutes, and half the mistakes can be seen beforehand: the
+lyrics are not from this song, there are half as many lines as there are
+verses, the language came out wrong, the memory will not hold the chosen model.
+Saying it before is cheaper than saying it after.
 """
 
 from __future__ import annotations
@@ -27,10 +28,11 @@ def _onset_strength(env: List[float]) -> List[float]:
 def bpm(env: List[float], dt: float) -> Tuple[Optional[float], float]:
     """Tempo from the loudness envelope. → (beats per minute, confidence 0..1).
 
-    Считаем автокорреляцию нарастаний громкости и ищем период доли гребёнкой:
-    настоящая доля отзывается и на своём периоде, и на всех кратных, а такт —
-    только на половине из них. Без этого автокорреляция уверенно выдаёт темп
-    вдвое медленнее, что и происходило на 140 ударах.
+    We take the autocorrelation of the loudness rises and look for the beat
+    period with a comb: a real beat answers both at its own period and at every
+    multiple, while a bar answers only at half of them. Without that the
+    autocorrelation confidently reports a tempo twice as slow, which is exactly
+    what happened at 140 beats.
     """
     if not env or dt <= 0 or len(env) < 200:
         return None, 0.0
@@ -90,10 +92,10 @@ def bpm(env: List[float], dt: float) -> Tuple[Optional[float], float]:
 def quiet_stretches(env: List[float], dt: float, least: float = 5.0) -> List[Dict]:
     """Long stretches without singing: intro, interlude, solo, tail.
 
-    Для караоке это важнее темпа: там текст молчит, и туда не надо тащить
-    строки. Считаем по громкости — до разделения дорожек мы слышим весь микс,
-    поэтому «тихо» означает «заметно тише песни в среднем», а не абсолютную
-    тишину.
+    For karaoke this matters more than the tempo: the text is silent there,
+    and no lines should be dragged into it. We measure by loudness — before the
+    tracks are separated we hear the whole mix, so “quiet” means “noticeably
+    quieter than the song on average”, not absolute silence.
     """
     if not env or dt <= 0:
         return []
@@ -208,11 +210,15 @@ def build(audio_path: str, lyrics, duration: float, envelope: List[float],
             "выпишите его столько раз, сколько поют."))
     if quiet:
         longest = max(quiet, key=lambda q: q["end"] - q["start"])
-        notes.append(
+        notes.append(tr(
+            f"Places without singing: {len(quiet)}, "
+            f"{sum(q['end'] - q['start'] for q in quiet):.0f} s in total. The longest "
+            f"is {_mmss(longest['start'])}–{_mmss(longest['end'])}. "
+            "No lines should land there.",
             f"Мест без пения: {len(quiet)}, всего "
             f"{sum(q['end'] - q['start'] for q in quiet):.0f} с. Самое длинное — "
             f"{_mmss(longest['start'])}–{_mmss(longest['end'])}. "
-            f"Строки туда попадать не должны.")
+            f"Строки туда попадать не должны."))
     loud = loudness(envelope)
     if loud.get("clipping", 0) > 0.02:
         notes.append(tr(

@@ -1,51 +1,52 @@
-# Перенос на другой компьютер или сервер
+# Moving to another computer or a server
 
-Всё, что нужно, чтобы поднять обработку на машине помощнее.
+Everything needed to bring the processing up on a stronger machine.
 
-Все версии ниже проверены: связка собрана и прогнана целиком —
-минусовка, разметка Whisper и сборка страницы.
+Every version below has been checked: the whole chain was built and run
+end to end — the instrumental, the Whisper timing and the page.
 
 ---
 
-## Требования к железу
+## Hardware
 
-| Что | Минимум | Разумно |
+| What | Minimum | Sensible |
 |---|---|---|
-| Оперативная память | 6 ГБ | **16 ГБ** |
-| Диск | 8 ГБ | 15 ГБ |
-| Процессор | 4 ядра | 8 ядер |
-| Видеокарта | не нужна | NVIDIA — ускорит в 5–10 раз |
+| RAM | 6 GB | **16 GB** |
+| Disk | 8 GB | 15 GB |
+| CPU | 4 cores | 8 cores |
+| Graphics card | not needed | NVIDIA — 5–10 times faster |
 
-Память — главное. Именно её нехватка ломает обработку. Расход по шагам:
+Memory is the main thing. A shortage of it is what breaks the processing.
+Step by step:
 
-| Шаг | Пиковая память |
+| Step | Peak memory |
 |---|---|
-| Минусовка (Demucs htdemucs) | ~4 ГБ |
-| Whisper `tiny` | ~1,0 ГБ |
-| Whisper `base` | ~1,3 ГБ |
-| Whisper `small` | ~2,2 ГБ |
-| Whisper `medium` | ~4,5 ГБ |
-| Whisper `large-v3` | ~8,0 ГБ |
+| Instrumental (Demucs htdemucs) | ~4 GB |
+| Whisper `tiny` | ~1.0 GB |
+| Whisper `base` | ~1.3 GB |
+| Whisper `small` | ~2.2 GB |
+| Whisper `medium` | ~4.5 GB |
+| Whisper `large-v3` | ~8.0 GB |
 
-Шаги идут по очереди, поэтому нужен максимум из двух, а не сумма. На 16 ГБ
-спокойно работает `large-v3` вместе с минусовкой.
+The steps run one after another, so what you need is the larger of the two, not
+the sum. On 16 GB `large-v3` runs comfortably together with the instrumental.
 
-Диск: модели скачиваются один раз и остаются в кэше — Whisper до 3 ГБ
-(`~/.cache/whisper`), Demucs около 80 МБ (`~/.cache/torch`).
+Disk: the models are downloaded once and stay in the cache — Whisper up to 3 GB
+(`~/.cache/whisper`), Demucs about 80 MB (`~/.cache/torch`).
 
 ---
 
-## Системные пакеты
+## System packages
 
-Обязателен **ffmpeg**. Проверено на 7.0.2, подойдёт любой не старше 4.4.
+**ffmpeg** is required. Checked on 7.0.2; anything not older than 4.4 will do.
 
 ```bash
 sudo apt update && sudo apt install -y ffmpeg python3 python3-pip python3-venv
 ```
 
-Для Fedora/RHEL — `sudo dnf install ffmpeg python3 python3-pip`.
+For Fedora/RHEL — `sudo dnf install ffmpeg python3 python3-pip`.
 
-Шрифт с кириллицей — нужен только для рендера видео:
+A font with Cyrillic — needed only for rendering the video:
 
 ```bash
 sudo apt install -y fonts-dejavu-core
@@ -53,9 +54,9 @@ sudo apt install -y fonts-dejavu-core
 
 ---
 
-## Python и библиотеки
+## Python and the libraries
 
-**Python 3.9 и новее.** Проверено на 3.9.21.
+**Python 3.9 and newer.** Checked on 3.9.21.
 
 ```bash
 python3 -m venv ~/karaoke-venv
@@ -63,174 +64,177 @@ source ~/karaoke-venv/bin/activate
 pip install --upgrade pip
 ```
 
-Рабочий набор версий:
+The set of versions that works:
 
 ```
-stable-ts==2.19.1        проверено
-openai-whisper==20250625 проверено
-torch==2.8.0             проверено
-torchaudio==2.8.0        проверено
-numpy==2.0.2             проверено
-numba==0.60.0            проверено
-pillow==11.3.0           проверено
-demucs==4.1.0            проверено
-soundfile==0.13.1        проверено, ОБЯЗАТЕЛЕН для минусовки
+stable-ts==2.19.1        checked
+openai-whisper==20250625 checked
+torch==2.8.0             checked
+torchaudio==2.8.0        checked
+numpy==2.0.2             checked
+numba==0.60.0            checked
+pillow==11.3.0           checked
+demucs==4.1.0            checked
+soundfile==0.13.1        checked, REQUIRED for the instrumental
 ```
 
-**Про soundfile.** Без него минусовка ломается неочевидно: Demucs честно
-досчитает разделение, а потом упадёт на записи результата с сообщением
-`Couldn't find appropriate backend`. Причина в том, что torchaudio начиная
-с версии 2.x не умеет писать WAV сам, а Demucs эту зависимость за собой
-не тянет. Проверено: без soundfile минусовка не выходит, с ним — выходит.
+**About soundfile.** Without it the instrumental breaks in a non-obvious way:
+Demucs honestly finishes the separation and then fails while writing the result,
+with `Couldn't find appropriate backend`. The reason is that torchaudio from
+version 2.x on cannot write WAV itself, and Demucs does not pull that dependency
+in. Checked: without soundfile there is no instrumental, with it there is.
 
-Одной командой:
+In one command:
 
 ```bash
 pip install "demucs==4.1.0" "soundfile==0.13.1" "stable-ts==2.19.1" "pillow==11.3.0"
 ```
 
-Порядок не случаен: Demucs строже всех к версии torch, пусть выбирает первым.
+The order is not accidental: Demucs is the pickiest about the torch version, so
+let it choose first.
 
-Остальное подтянется как зависимости. Без видеокарты можно поставить
-процессорный вариант torch — он вчетверо легче:
+The rest comes in as dependencies. Without a graphics card you can install the
+CPU build of torch — it is four times lighter:
 
 ```bash
 pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cpu
 ```
 
-С видеокартой NVIDIA ставьте обычный torch и добавляйте `--device cuda`.
+With an NVIDIA card install the ordinary torch and add `--device cuda`.
 
 ---
 
-## Что перенести
+## What to copy over
 
-Достаточно папки с программой — она самодостаточна:
+The program folder is enough — it is self-contained:
 
 ```
 karaoke/
-  karaoke.py          сборка из командной строки
-  studio.py           оконный режим
-  kstudio/            движок
-  tools/              видео, диагностика, ручная правка
+  karaoke.py          building from the command line
+  studio.py           the window
+  kstudio/            the engine
+  tools/              video, diagnostics, editing a single line
 ```
 
-Проекты (`karaoke/проекты/`) переносить не нужно — они пересоздаются.
+The projects (`karaoke/projects/`) need not be copied — they are recreated.
 
 ---
 
-## Запуск без окна
+## Running without the window
 
-Основной способ на сервере:
+The main way on a server:
 
 ```bash
-python3 app/karaoke.py "песня.mp3" "текст.txt" -o "караоке.html" \
+python3 app/karaoke.py "song.mp3" "lyrics.txt" -o "karaoke.html" \
     --align whisper --whisper-model medium
 ```
 
-Ключи, которые пригодятся:
+Options that come in handy:
 
-| Ключ | Зачем |
+| Option | What for |
 |---|---|
-| `--whisper-model large-v3` | лучшая точность, нужно ~8 ГБ |
-| `--device cuda` | считать на видеокарте |
-| `--no-separate` | без минусовки, вдвое быстрее и легче |
-| `--timings t.json` | взять готовую разметку, пропустить Whisper |
+| `--whisper-model large-v3` | the best accuracy, needs ~8 GB |
+| `--device cuda` | compute on the graphics card |
+| `--no-separate` | no instrumental, twice as fast and light |
+| `--timings t.json` | take ready timings, skip Whisper |
 
-Видео тем же путём:
-
-```bash
-python3 app/tools/video.py "караоке.html" -o "клип.mp4"
-```
-
-Пачкой по папке:
+The video the same way:
 
 ```bash
-python3 tools/auto.py /путь/к/папке
+python3 app/tools/video.py "karaoke.html" -o "clip.mp4"
 ```
 
-Файлы должны называться одинаково: `Ветер.mp3` + `Ветер.txt`.
+A whole folder in one go:
+
+```bash
+python3 tools/auto.py /path/to/the/folder
+```
+
+The files must be named alike: `Wind.mp3` + `Wind.txt`.
 
 ---
 
-## Студия на удалённой машине
+## The studio on a remote machine
 
-Студия слушает только `127.0.0.1` — это сделано намеренно, чтобы её нельзя было
-открыть снаружи. Правильный способ добраться до неё с ноутбука — туннель SSH:
+The studio listens on `127.0.0.1` only — deliberately, so that it cannot be
+opened from outside. The right way to reach it from your laptop is an SSH
+tunnel:
 
 ```bash
-ssh -L 8770:127.0.0.1:8770 пользователь@сервер
+ssh -L 8770:127.0.0.1:8770 user@server
 ```
 
-В этой же сессии на сервере:
+In the same session, on the server:
 
 ```bash
 python3 app/studio.py
 ```
 
-Дальше на своём компьютере открываете `http://127.0.0.1:8770/`. Трафик идёт
-внутри SSH, наружу ничего не торчит.
+Then open `http://127.0.0.1:8770/` on your own computer. The traffic goes inside
+SSH, nothing sticks out.
 
-Не открывайте порт студии в сеть напрямую: у неё нет ни паролей, ни разграничения
-доступа, и она умеет читать файлы и запускать обработку.
+Do not open the studio port to the network directly: it has neither passwords
+nor access control, and it can read files and start processing.
 
 ---
 
-## Проверка, что всё встало
+## Checking that it all landed
 
 ```bash
 python3 tests/test_pipeline.py
 ```
 
-Должно закончиться строкой «Все проверки пройдены». Нейросети при этом не
-задействуются — проверяется сам конвейер и ffmpeg.
+It must end with the line “All checks passed”. No neural nets are involved —
+what is checked is the pipeline itself and ffmpeg.
 
-Отдельно убедиться, что тяжёлые библиотеки живы:
+Separately, to make sure the heavy libraries are alive:
 
 ```bash
-python3 -c "import stable_whisper, torch; print('разметка ok:', torch.__version__)"
-python3 -c "import demucs, soundfile; print('минусовка ok')"
-python3 -c "import torch; print('видеокарта:', torch.cuda.is_available())"
-python3 -c "from PIL import Image; print('видео ok')"
+python3 -c "import stable_whisper, torch; print('timing ok:', torch.__version__)"
+python3 -c "import demucs, soundfile; print('instrumental ok')"
+python3 -c "import torch; print('graphics card:', torch.cuda.is_available())"
+python3 -c "from PIL import Image; print('video ok')"
 ```
 
-Каждая строка проверяет свой кусок: если упадёт вторая, не будет минусовки,
-если четвёртая — не соберётся видео. Остальное продолжит работать.
+Each line checks its own piece: if the second one fails there will be no
+instrumental, if the fourth one does no video will be built. The rest keeps
+working.
 
 ---
 
-## Если что-то не скачивается
+## If something does not download
 
-Модели тянутся из сети при первом запуске: Whisper — от 75 МБ до 3 ГБ
-в зависимости от выбранной, Demucs — около 80 МБ.
+The models are pulled from the network on the first run: Whisper from 75 MB to
+3 GB depending on the one chosen, Demucs about 80 MB.
 
-Программа различает причины и говорит по-русски, а не кодами:
+The program tells the reasons apart and says them in plain words, not in codes:
 
-| Что видно | Что делать |
+| What you see | What to do |
 |---|---|
-| «не удалось скачать модель Whisper» | проверить интернет, повторить |
-| «не удалось скачать модель Demucs» | то же; без неё сборка продолжится без минусовки |
-| «файл модели побился при загрузке» | удалить кэш и повторить |
-| «нет пакета для записи звука» | `pip install soundfile` |
+| “could not download the Whisper model” | check the internet, try again |
+| “could not download the Demucs model” | the same; without it the build goes on with no instrumental |
+| “the model file was damaged while downloading” | delete the cache and try again |
+| “no package for writing audio” | `pip install soundfile` |
 
-Скачать модели заранее, чтобы потом не ждать:
+To download the models in advance and not wait later:
 
 ```bash
 bash install-on-server.sh --models
 ```
 
-Кэш моделей лежит в `~/.cache/whisper` и `~/.cache/torch/hub/checkpoints`.
-Его можно скопировать на другую машину и не качать повторно.
+The model cache lives in `~/.cache/whisper` and `~/.cache/torch/hub/checkpoints`.
+It can be copied to another machine so nothing is downloaded twice.
 
 ---
 
-## Сколько это считает
+## How long it takes
 
-Ориентиры для песни на 3,5 минуты:
+Rough numbers for a 3.5-minute song:
 
-| Машина | Минусовка | Разметка `small` | Итого |
+| Machine | Instrumental | Timing with `small` | Total |
 |---|---|---|---|
-| 4 ядра, без видеокарты | ~4 мин | ~1 мин | ~5 мин |
-| 8 ядер, без видеокарты | ~2 мин | ~40 с | ~3 мин |
-| С NVIDIA | ~20 с | ~15 с | под минуту |
+| 4 cores, no graphics card | ~4 min | ~1 min | ~5 min |
+| 8 cores, no graphics card | ~2 min | ~40 s | ~3 min |
+| With NVIDIA | ~20 s | ~15 s | under a minute |
 
-С `--no-separate` время сокращается примерно вдвое.
+With `--no-separate` the time is roughly halved.

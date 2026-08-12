@@ -253,8 +253,9 @@ def decode_envelope(env: Dict) -> List[float]:
 def quiet_spans(data: Dict) -> List[Dict]:
     """Where nobody sings for a while — from the same envelope that draws the wave.
 
-    Это вступление, проигрыши и соло. Видеть их на дорожке важно: строки туда
-    попадать не должны, а разметка по громкости именно там и промахивается.
+    These are the intro, the interludes and the solos. Seeing them on the
+    timeline matters: no lines should land there, and loudness-based timing is
+    exactly what misses in those places.
     """
     from . import report as R
     env = decode_envelope(data.get("envelope") or {})

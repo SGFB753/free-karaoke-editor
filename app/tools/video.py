@@ -222,7 +222,8 @@ def extract_audio(payload: dict, html_path: str, tmp: str, mode: str) -> str:
 
     if instr and voc:
         level = "1.0" if mode == "original" else "0.35"
-        print(f"Звук ролика: минусовка + вокал ({float(level)*100:.0f}%)")
+        print(tr(f"Clip audio: instrumental + vocal ({float(level)*100:.0f}%)",
+                 f"Звук ролика: минусовка + вокал ({float(level)*100:.0f}%)"))
         p = subprocess.run(
             [AU.ffmpeg(), "-y", "-v", "error", "-i", instr, "-i", voc,
              "-filter_complex", f"[1:a]volume={level}[v];[0:a][v]amix=inputs=2:normalize=0[a]",
@@ -354,10 +355,11 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
     t_start = args.start
     if t_start >= duration:
-        raise SystemExit(
+        raise SystemExit(tr(
+            f"--start {t_start:g} s is past the end of the song "
+            f"({int(duration//60)}:{duration%60:05.2f}) — there is nothing to render.",
             f"--start {t_start:g} с выходит за конец песни "
-            f"({int(duration//60)}:{duration%60:05.2f}) — рендерить нечего."
-        )
+            f"({int(duration//60)}:{duration%60:05.2f}) — рендерить нечего."))
     t_end = min(duration, t_start + args.seconds) if args.seconds else duration
     total_frames = max(int((t_end - t_start) * args.fps), 1)
 
@@ -493,8 +495,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 done = (n + 1) / total_frames
                 el = time.time() - t0
                 eta = el / done - el if done > 0.01 else 0
-                msg = (f"кадр {n+1}/{total_frames}  {done*100:5.1f}%  "
-                       f"осталось ~{int(eta)//60}:{int(eta)%60:02d}")
+                msg = (tr("frame ", "кадр ") + f"{n+1}/{total_frames}  {done*100:5.1f}%  "
+                       + tr("left ~", "осталось ~")
+                       + f"{int(eta)//60}:{int(eta)%60:02d}")
                 if on_progress:
                     on_progress(msg)
                 else:
@@ -536,7 +539,8 @@ def list_pages(folder: str) -> list:
     except OSError:
         return []
     pages = [os.path.join(folder, n) for n in names if n.lower().endswith(".html")]
-    pages.sort(key=lambda p: (0 if "караоке" in os.path.basename(p).lower() else 1,
+    pages.sort(key=lambda p: (0 if ("karaoke" in os.path.basename(p).lower()
+                                    or "караоке" in os.path.basename(p).lower()) else 1,
                               os.path.basename(p).lower()))
     return pages
 
@@ -568,7 +572,8 @@ def pick_pages() -> list:
         print(f"  {i:2}. {os.path.basename(p)}  ({mb:.1f} " + tr("MB", "МБ") + ")")
     print(tr("\n   0. all of them", "\n   0. все сразу"))
     try:
-        ans = input("\nНомер (Enter — первая): ").strip()
+        ans = input(tr("\nNumber (Enter — the first one): ",
+                       "\nНомер (Enter — первая): ")).strip()
     except EOFError:
         return pages[:1]
     if not ans:
@@ -613,23 +618,23 @@ def _try_timings(payload: dict, path: str) -> bool:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(
-        prog="video.py", description="Караоке-ролик MP4 из готовой HTML-страницы.",
+        prog="video.py", description="An MP4 karaoke clip from a finished HTML page.",
         formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     p.add_argument("html", nargs="*",
-                   help="страницы или папка с ними; без аргументов — выбор из списка")
-    p.add_argument("-o", "--output", help="куда сохранить MP4")
+                   help="pages, or a folder with them; with no arguments — pick from a list")
+    p.add_argument("-o", "--output", help="where to save the MP4")
     p.add_argument("--audio", choices=["minus", "guide", "original"], default="minus",
-                   help="minus — минусовка (по умолчанию), guide — с тихим вокалом, "
-                        "original — как в записи")
-    p.add_argument("--timings", help="JSON с правками разметки из плеера")
+                   help="minus — the instrumental (default), guide — with a quiet vocal, "
+                        "original — as recorded")
+    p.add_argument("--timings", help="a JSON with timing edits from the player")
     p.add_argument("--width", type=int, default=1920)
     p.add_argument("--height", type=int, default=1080)
     p.add_argument("--fps", type=int, default=30)
-    p.add_argument("--crf", type=int, default=20, help="качество: меньше — лучше (18–24)")
-    p.add_argument("--preset", default="medium", help="скорость кодирования x264")
-    p.add_argument("--font", help="путь к .ttf")
-    p.add_argument("--start", type=float, default=0.0, help="начать с секунды")
-    p.add_argument("--seconds", type=float, default=0.0, help="снять только N секунд (пробник)")
+    p.add_argument("--crf", type=int, default=20, help="quality: lower is better (18–24)")
+    p.add_argument("--preset", default="medium", help="x264 encoding speed")
+    p.add_argument("--font", help="path to a .ttf")
+    p.add_argument("--start", type=float, default=0.0, help="start from this second")
+    p.add_argument("--seconds", type=float, default=0.0, help="render only N seconds (a sample)")
     args = p.parse_args(argv)
 
     try:
@@ -673,9 +678,9 @@ def main(argv=None) -> int:
 def video_report(payload, args, song: float, want: float) -> str:
     """What the song is and what will happen to it — before the long drawing.
 
-    Перед сборкой страницы такой отчёт есть, а перед роликом его не было:
-    ошибку — не тот звук, не те цвета, забытые пометки — видно было только на
-    готовом файле, через десяток минут.
+    There is such a report before a page is built, but there was none before a
+    clip: a mistake — the wrong audio, the wrong colours, forgotten marks —
+    could only be seen on the finished file, ten minutes later.
     """
     D = payload.get("data") or {}
     lines = D.get("lines") or []

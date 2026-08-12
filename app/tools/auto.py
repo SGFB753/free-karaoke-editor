@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Automatic mode: drop files onto the .bat, or point at a folder.
 
-    python tools/auto.py песня.mp3 текст.txt     # одна песня
-    python tools/auto.py D:\\Музыка              # вся папка парами имён
-    python tools/auto.py D:\\Музыка --watch      # следить за папкой и делать новые
+    python tools/auto.py song.mp3 lyrics.txt     # one song
+    python tools/auto.py D:\\Music               # a whole folder, matched by name
+    python tools/auto.py D:\\Music --watch        # watch the folder and build new ones
 
-Пары ищутся по имени: «Ветер.mp3» + «Ветер.txt» → «Ветер_karaoke.html».
-Настройки берутся из settings.ini рядом с karaoke.py, если он есть.
+Pairs are found by name: “Wind.mp3” + “Wind.txt” → “Wind_karaoke.html”.
+The settings come from settings.ini next to karaoke.py, if there is one.
 """
 
 from __future__ import annotations

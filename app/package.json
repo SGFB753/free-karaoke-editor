@@ -1,7 +1,7 @@
 {
   "name": "karaoke-studio-tests",
   "private": true,
-  "description": "Проверки интерфейса: наборы для jsdom и настоящего браузера",
+  "description": "Interface tests: suites for jsdom and for a real browser",
   "type": "module",
   "scripts": {
     "test": "python3 tests/run_all.py"

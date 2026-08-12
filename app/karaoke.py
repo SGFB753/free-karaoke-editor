@@ -58,7 +58,7 @@ def parse_args(argv=None):
         prog="karaoke.py",
         description="Builds a standalone karaoke page from a song and its lyrics.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""примеры:
+        epilog="""examples:
   python karaoke.py song.mp3 lyrics.txt
   python karaoke.py song.mp3 lyrics.txt -o out.html --align whisper --whisper-model medium
   python karaoke.py song.mp3 lyrics.txt --no-separate          # fast, no instrumental
@@ -68,7 +68,7 @@ def parse_args(argv=None):
     p.add_argument("lyrics", help="the lyrics as a text file (UTF-8)")
     p.add_argument("-o", "--output", help="where to save the HTML (next to the audio by default)")
 
-    g = p.add_argument_group("разметка")
+    g = p.add_argument_group("timing")
     g.add_argument("--align", choices=["auto", "whisper", "energy", "none"], default="auto",
                    help="alignment engine (auto by default)")
     g.add_argument("--whisper-model", default="medium",
@@ -85,14 +85,14 @@ def parse_args(argv=None):
     g.add_argument("--device", default=None, help="cuda | cpu (detected automatically)")
     g.add_argument("--timings", help="take ready timings from a JSON exported by the player")
 
-    g = p.add_argument_group("звук")
+    g = p.add_argument_group("audio")
     g.add_argument("--no-separate", action="store_true",
                    help="do not separate the vocal (faster, but no instrumental)")
     g.add_argument("--demucs-model", default="htdemucs", help="Demucs model")
     g.add_argument("--codec", choices=list(AU.CODECS), default="mp3",
                    help="codec for the embedded audio (mp3 — widest compatibility)")
 
-    g = p.add_argument_group("вывод")
+    g = p.add_argument_group("output")
     g.add_argument("--no-embed", action="store_true",
                    help="do not embed the audio, put the files next to the page")
     g.add_argument("--lrc", action="store_true", help="also save an .lrc")

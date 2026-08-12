@@ -87,10 +87,10 @@ def contrast(a: str, b: str) -> float:
 def readable(bg: str, text: str, need: float = 4.5):
     """Nudge the text colour so it does not blend into the background.
 
-    Менять цвет человеку никто не запрещает, но буквы, которые не читаются на
-    своём фоне, — это не оформление, а испорченная страница. Поэтому оттенок
-    оставляем как выбрали, а светлоту двигаем в сторону от фона, пока текст
-    не станет различим.
+    Nobody forbids a person to change the colour, but letters that cannot be
+    read against their own background are not styling, they are a spoiled page.
+    So the hue stays as chosen while the lightness is moved away from the
+    background until the text can be told apart.
     """
     rgb_t, rgb_b = _rgb(text), _rgb(bg)
     if not rgb_t or not rgb_b:
@@ -185,7 +185,9 @@ def read_payload(html_path: str) -> dict:
     with open(html_path, encoding="utf-8") as f:
         m = _PAYLOAD_RE.search(f.read())
     if not m:
-        raise SystemExit(f"{html_path} — не похоже на страницу, собранную этой программой.")
+        raise SystemExit(tr(
+            f"{html_path} — this does not look like a page built by this program.",
+            f"{html_path} — не похоже на страницу, собранную этой программой."))
     raw = (m.group(1).replace("\\u003c", "<").replace("\\u003e", ">")
            .replace("\\u0026", "&"))
     return json.loads(raw)
@@ -205,10 +207,11 @@ def apply_timings(lyrics: Lyrics, path: str, verbose: bool = True) -> Lyrics:
         data = json.load(f)
     src = data.get("lines", data if isinstance(data, list) else [])
     if len(src) != len(lyrics.lines):
-        raise SystemExit(
+        raise SystemExit(tr(
+            f"{path} has {len(src)} lines while the text has {len(lyrics.lines)}. "
+            "Take the same lyrics file the timing was made from.",
             f"В {path} {len(src)} строк, а в тексте {len(lyrics.lines)}. "
-            "Возьмите тот же файл с текстом, из которого делали разметку."
-        )
+            "Возьмите тот же файл с текстом, из которого делали разметку."))
     for ln, s in zip(lyrics.lines, src):
         ln.start, ln.end = float(s.get("start", 0)), float(s.get("end", 0))
         ws = s.get("words") or []

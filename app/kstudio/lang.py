@@ -1,9 +1,10 @@
 """Language of the lyrics: the supported list and detection from the text.
 
-Whisper выравнивает текст по звуку с оглядкой на язык, и ошибка тут стоит
-дорого — разметка расползается. Спрашивать язык у человека каждый раз незачем:
-по буквам он виден почти всегда. Поэтому по умолчанию определяем сами, а выбор
-руками остаётся на случай, когда мы ошиблись или язык смешанный.
+Whisper aligns the text to the sound with the language in mind, and a mistake
+here is expensive — the timing falls apart. There is no need to ask a person
+every time: the letters almost always give the language away. So by default we
+work it out ourselves, and the manual choice stays for when we got it wrong or
+the language is mixed.
 """
 
 from __future__ import annotations

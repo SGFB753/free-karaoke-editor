@@ -22,9 +22,9 @@ def available() -> bool:
 def explain_failure(out: str) -> List[str]:
     """Turn a Demucs crash into a plain reason and a piece of advice.
 
-    Три беды встречаются чаще всего: нет пакета для записи звука, не скачалась
-    модель, не хватило памяти. Во всех трёх случаях Demucs выдаёт трассировку,
-    по которой обычному человеку ничего не понять.
+    Three troubles are the common ones: no package for writing audio, the
+    model did not download, there was not enough memory. In all three cases
+    Demucs prints a traceback that means nothing to an ordinary person.
     """
     from . import sysinfo
     low = (out or "").lower()
@@ -87,10 +87,11 @@ class _Done:
 def _run_with_pulse(cmd: List[str], log: Log) -> "_Done":
     """Run Demucs while showing that it is alive.
 
-    Demucs рисует собственный прогрессбар возвратом каретки. В консоли это
-    выглядит нормально, а в окне студии не видно вообще ничего: несколько минут
-    тишины после «это самая долгая часть». Читаем его вывод по мере поступления,
-    вытаскиваем последний процент и отдаём в лог через отсчёт времени.
+    Demucs draws its own progress bar with carriage returns. In a console that
+    looks fine, but in the studio window nothing shows at all: several minutes
+    of silence after “this is the longest part”. We read its output as it
+    arrives, pull the last percentage out and pass it to the log along with the
+    elapsed time.
     """
     import re
 

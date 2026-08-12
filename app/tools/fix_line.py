@@ -3,16 +3,16 @@
 
     py tools\\fix_line.py timings.json --list
     py tools\\fix_line.py timings.json --line 34 --start 150.0
-    py tools\\fix_line.py timings.json --find "Присесть" --near 135 --start 150.0
+    py tools\\fix_line.py timings.json --find "sit down" --near 135 --start 150.0
     py tools\\fix_line.py timings.json --line 34 --shift +14.9 --and-after
 
-Если под --find подходит несколько строк (припев повторяется), программа
-покажет их все с номерами и временем и не станет угадывать: уточните
-номером --line, ближайшим временем --near или порядковым номером --nth.
+If several lines match --find (a chorus repeats), the program shows them all
+with their numbers and times and refuses to guess: narrow it down with the
+line number --line, the nearest time --near or the ordinal --nth.
 
-Слова строки едут вместе с ней, промежутки между ними сохраняются, поэтому
-заливка остаётся плавной. Файл переписывается на месте, рядом кладётся
-резервная копия с расширением .bak.
+The words of the line travel with it and the gaps between them are kept, so the
+fill stays smooth. The file is rewritten in place, with a backup put next to it
+under the .bak extension.
 """
 
 from __future__ import annotations
@@ -22,6 +22,11 @@ import json
 import os
 import shutil
 import sys
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+
+from kstudio.i18n import tr  # noqa: E402
 
 
 def mmss(t) -> str:
@@ -39,14 +44,15 @@ def parse_time(s: str) -> float:
     if len(parts) == 3:                       # М:СС:ддд — доли после второго двоеточия
         frac = parts[2]
         return int(parts[0]) * 60 + int(parts[1]) + float("0." + frac)
-    raise SystemExit(f"Не понял время «{s}». Пишите 150.81 или 2:30.81")
+    raise SystemExit(tr(f"Could not read the time “{s}”. Write 150.81 or 2:30.81",
+                        f"Не понял время «{s}». Пишите 150.81 или 2:30.81"))
 
 
 def tidy_line(line: dict, max_gap: float = 1.2) -> bool:
     """Put back together a line whose words drifted apart in time.
 
-    Та же логика, что при сборке страницы: внутри спетой строки многосекундных
-    провалов не бывает. Отбившиеся слова подтягиваем к основному скоплению.
+    The same logic as when a page is built: inside a sung line there are no
+    gaps of several seconds. Stray words are pulled back to the main cluster.
     """
     ws = line.get("words") or []
     if len(ws) < 2:
@@ -93,7 +99,8 @@ def load(path: str) -> dict:
     with open(path, encoding="utf-8-sig") as f:
         data = json.load(f)
     if not isinstance(data, dict) or "lines" not in data:
-        raise SystemExit(f"{path} — не похоже на файл таймингов из плеера.")
+        raise SystemExit(tr(f"{path} — this does not look like a timings file from the player.",
+                            f"{path} — не похоже на файл таймингов из плеера."))
     return data
 
 
@@ -102,36 +109,47 @@ def pick(data: dict, args) -> int:
     if args.line is not None:
         i = args.line - 1
         if not 0 <= i < len(lines):
-            raise SystemExit(f"В файле {len(lines)} строк, а запрошена {args.line}.")
+            raise SystemExit(tr(
+                f"The file has {len(lines)} lines, and line {args.line} was asked for.",
+                f"В файле {len(lines)} строк, а запрошена {args.line}."))
         return i
 
     needle = args.find.lower()
     hits = [i for i, l in enumerate(lines) if needle in (l.get("text") or "").lower()]
     if not hits:
-        raise SystemExit(f"Строк со словами «{args.find}» не нашлось.")
+        raise SystemExit(tr(f"No lines with the words “{args.find}” were found.",
+                            f"Строк со словами «{args.find}» не нашлось."))
     if len(hits) == 1:
         return hits[0]
 
     # Repeated lines are normal in a song, so we ask instead of guessing.
     if args.near is not None:
         i = min(hits, key=lambda k: abs(lines[k]["start"] - args.near))
-        print(f"Из {len(hits)} совпадений взял ближайшее к {mmss(args.near)}: "
-              f"строка {i+1} на {mmss(lines[i]['start'])}")
+        print(tr(f"Of {len(hits)} matches took the one nearest to {mmss(args.near)}: "
+                 f"line {i+1} at {mmss(lines[i]['start'])}",
+                 f"Из {len(hits)} совпадений взял ближайшее к {mmss(args.near)}: "
+                 f"строка {i+1} на {mmss(lines[i]['start'])}"))
         return i
     if args.nth is not None:
         if not 1 <= args.nth <= len(hits):
-            raise SystemExit(f"Совпадений {len(hits)}, а запрошено {args.nth}-е.")
+            raise SystemExit(tr(f"There are {len(hits)} matches, and no. {args.nth} was asked for.",
+                                f"Совпадений {len(hits)}, а запрошено {args.nth}-е."))
         return hits[args.nth - 1]
 
-    print(f"Под «{args.find}» подходит несколько строк:")
+    print(tr(f"Several lines match “{args.find}”:", f"Под «{args.find}» подходит несколько строк:"))
     for k, i in enumerate(hits, 1):
         print(f"  {i+1:3}. [{mmss(lines[i]['start'])} — {mmss(lines[i]['end'])}]"
-              f"  {lines[i]['text']}     (это {k}-е совпадение)")
-    raise SystemExit(
+              f"  {lines[i]['text']}     "
+              + tr(f"(match no. {k})", f"(это {k}-е совпадение)"))
+    raise SystemExit(tr(
+        "Narrow it down in any of these ways:\n"
+        f"    --line {hits[0]+1}          — the exact line number\n"
+        f"    --near {lines[hits[0]]['start']:.0f}          — the one now standing near this second\n"
+        f"    --nth 1              — the first match in order",
         "Уточните любым из способов:\n"
         f"    --line {hits[0]+1}          — точный номер строки\n"
         f"    --near {lines[hits[0]]['start']:.0f}          — та, что сейчас стоит около этой секунды\n"
-        f"    --nth 1              — первое совпадение по порядку")
+        f"    --nth 1              — первое совпадение по порядку"))
 
 
 def shift_line(line: dict, dt: float) -> None:
@@ -143,29 +161,29 @@ def shift_line(line: dict, dt: float) -> None:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(
-        prog="fix_line.py", description="Подвинуть строку в timings.json вручную.",
+        prog="fix_line.py", description="Move a line in timings.json by hand.",
         formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
-    p.add_argument("json", help="файл таймингов, скачанный из плеера")
-    p.add_argument("--list", action="store_true", help="показать все строки с временами")
-    p.add_argument("--line", type=int, help="номер строки (как в --list)")
-    p.add_argument("--find", help="кусок текста строки")
-    p.add_argument("--near", type=parse_time, metavar="ВРЕМЯ",
-                   help="если совпадений несколько — взять ту, что стоит около этого времени")
+    p.add_argument("json", help="the timings file downloaded from the player")
+    p.add_argument("--list", action="store_true", help="show every line with its times")
+    p.add_argument("--line", type=int, help="line number (as in --list)")
+    p.add_argument("--find", help="a piece of the line's text")
+    p.add_argument("--near", type=parse_time, metavar="TIME",
+                   help="on several matches — take the one standing near this time")
     p.add_argument("--nth", type=int, metavar="N",
-                   help="если совпадений несколько — взять N-е по порядку")
-    p.add_argument("--start", type=parse_time, metavar="ВРЕМЯ",
-                   help="поставить начало строки сюда: 150.81 или 2:30.81")
-    p.add_argument("--shift", type=float, metavar="СЕК",
-                   help="сдвинуть на столько секунд (можно минус)")
+                   help="on several matches — take the Nth in order")
+    p.add_argument("--start", type=parse_time, metavar="TIME",
+                   help="put the start of the line here: 150.81 or 2:30.81")
+    p.add_argument("--shift", type=float, metavar="SEC",
+                   help="move by this many seconds (a minus is allowed)")
     p.add_argument("--and-after", action="store_true",
-                   help="сдвинуть заодно все следующие строки на столько же")
+                   help="move all the following lines by the same amount too")
     p.add_argument("--no-tidy", action="store_true",
-                   help="не собирать разъехавшиеся слова внутри строки")
-    p.add_argument("-o", "--output", help="записать в другой файл")
+                   help="do not gather the drifted words inside the line")
+    p.add_argument("-o", "--output", help="write to another file")
     args = p.parse_args(argv)
 
     if not os.path.isfile(args.json):
-        print(f"Не найден файл: {args.json}", file=sys.stderr)
+        print(tr(f"File not found: {args.json}", f"Не найден файл: {args.json}"), file=sys.stderr)
         return 2
     data = load(args.json)
     lines = data["lines"]
@@ -176,50 +194,60 @@ def main(argv=None) -> int:
         return 0
 
     if args.line is None and not args.find:
-        print("Укажите строку: --line N или --find \"кусок текста\". "
-              "Список — с ключом --list.", file=sys.stderr)
+        print(tr("Name the line: --line N or --find \"a piece of text\". "
+                 "The list comes with --list.",
+                 "Укажите строку: --line N или --find \"кусок текста\". "
+                 "Список — с ключом --list."), file=sys.stderr)
         return 2
     if args.start is None and args.shift is None:
-        print("Укажите, что сделать: --start СЕКУНДА или --shift СЕКУНД.", file=sys.stderr)
+        print(tr("Say what to do: --start SECOND or --shift SECONDS.",
+                 "Укажите, что сделать: --start СЕКУНДА или --shift СЕКУНД."), file=sys.stderr)
         return 2
 
     i = pick(data, args)
     line = lines[i]
     dt = (args.start - line["start"]) if args.start is not None else args.shift
 
-    print(f"Строка {i+1}: {line['text']}")
-    print(f"  было : {mmss(line['start'])} — {mmss(line['end'])}")
+    print(tr("Line ", "Строка ") + f"{i+1}: {line['text']}")
+    print(tr("  was  : ", "  было : ") + f"{mmss(line['start'])} — {mmss(line['end'])}")
 
     targets = lines[i:] if args.and_after else [line]
     for l in targets:
         shift_line(l, dt)
 
     if not args.no_tidy and tidy_line(line):
-        print("  собрал разъехавшиеся слова строки в одно место")
+        print(tr("  gathered the drifted words of the line into one place",
+                 "  собрал разъехавшиеся слова строки в одно место"))
         if args.start is not None and abs(line["start"] - args.start) > 0.001:
-            shift_line(line, args.start - line["start"])   # держим заданное начало
+            shift_line(line, args.start - line["start"])   # keep the start we were given
 
-    print(f"  стало: {mmss(line['start'])} — {mmss(line['end'])}"
-          f"   (сдвиг {dt:+.3f} с)")
+    print(tr("  now  : ", "  стало: ") + f"{mmss(line['start'])} — {mmss(line['end'])}"
+          + tr(f"   (shift {dt:+.3f} s)", f"   (сдвиг {dt:+.3f} с)"))
     if args.and_after and len(targets) > 1:
-        print(f"  вместе с ней сдвинуто строк: {len(targets)}")
+        print(tr(f"  lines moved along with it: {len(targets)}",
+                 f"  вместе с ней сдвинуто строк: {len(targets)}"))
 
     # warn if the line now overlaps its neighbours — never break things quietly
     if i and lines[i-1]["end"] > line["start"]:
-        print(f"  ВНИМАНИЕ: налезает на предыдущую строку "
-              f"(она кончается в {mmss(lines[i-1]['end'])})")
+        print(tr(f"  WARNING: it runs into the previous line "
+                 f"(that one ends at {mmss(lines[i-1]['end'])})",
+                 f"  ВНИМАНИЕ: налезает на предыдущую строку "
+                 f"(она кончается в {mmss(lines[i-1]['end'])})"))
     if i + 1 < len(lines) and line["end"] > lines[i+1]["start"]:
-        print(f"  ВНИМАНИЕ: налезает на следующую строку "
-              f"(она начинается в {mmss(lines[i+1]['start'])})")
+        print(tr(f"  WARNING: it runs into the next line "
+                 f"(that one starts at {mmss(lines[i+1]['start'])})",
+                 f"  ВНИМАНИЕ: налезает на следующую строку "
+                 f"(она начинается в {mmss(lines[i+1]['start'])})"))
 
     out = args.output or args.json
     if out == args.json:
         shutil.copy2(args.json, args.json + ".bak")
-        print(f"  резервная копия: {os.path.basename(args.json)}.bak")
+        print(tr("  backup: ", "  резервная копия: ") + os.path.basename(args.json) + ".bak")
     with open(out, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=1)
-    print(f"\nЗаписано: {out}")
-    print("Теперь пересоберите песню с этим файлом через --timings.")
+    print(tr("\nWritten: ", "\nЗаписано: ") + str(out))
+    print(tr("Now rebuild the song with this file through --timings.",
+             "Теперь пересоберите песню с этим файлом через --timings."))
     return 0
 
 

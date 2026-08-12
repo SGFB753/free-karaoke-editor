@@ -26,13 +26,15 @@ def pip_install(*pkgs) -> bool:
 
 
 def ask(question: str, default_yes: bool = True) -> bool:
-    hint = "[Enter = да, н = нет]" if default_yes else "[д = да, Enter = нет]"
+    hint = (tr("[Enter = yes, n = no]", "[Enter = да, н = нет]") if default_yes
+            else tr("[y = yes, Enter = no]", "[д = да, Enter = нет]"))
     try:
         ans = input(f"{question} {hint}: ").strip().lower()
     except EOFError:
         return default_yes
     if not ans:
         return default_yes
+    # Both alphabets answer: y/yes and д/да, plus a bare 1.
     return ans[0] in "yдd1"
 
 
@@ -53,7 +55,8 @@ def main() -> int:
         print(tr(f"   Found: {AU.ffmpeg()}", f"   Нашёл: {AU.ffmpeg()}"))
     except AU.AudioError:
         print(tr("   Not found.", "   Не найден."))
-        if ask("   Поставить ffmpeg через pip (не требует прав администратора)?"):
+        if ask(tr("   Install ffmpeg with pip (no administrator rights needed)?",
+                  "   Поставить ffmpeg через pip (не требует прав администратора)?")):
             if pip_install("imageio-ffmpeg"):
                 AU._FFMPEG = None
                 try:
@@ -81,7 +84,7 @@ def main() -> int:
                       "   плюс при первом запуске качается модель (от 140 МБ до 1,5 ГБ)."))
         print(tr("   It works without it, but the timing will be by lines, not by words.",
                       "   Без неё программа работает, но разметка будет по строкам, не по словам."))
-        if ask("   Поставить?", default_yes=False):
+        if ask(tr("   Install it?", "   Поставить?"), default_yes=False):
             pip_install("stable-ts")
 
     print(tr("\n3. The instrumental — separating the vocal (demucs)",
@@ -95,13 +98,13 @@ def main() -> int:
             print(tr("   Demucs is there but soundfile is missing — without it the "
                       "instrumental crashes.",
                       "   Demucs стоит, но не хватает soundfile — без него минусовка падает."))
-            if ask("   Доставить soundfile?"):
+            if ask(tr("   Add soundfile?", "   Доставить soundfile?")):
                 pip_install("soundfile")
     except ImportError:
         print(tr("   Not installed. Without it there is no “Voice” slider and no "
                       "instrumental.",
                       "   Не установлен. Без него не будет регулятора «Голос» и минусовки."))
-        if ask("   Поставить?", default_yes=False):
+        if ask(tr("   Install it?", "   Поставить?"), default_yes=False):
             # soundfile is required: without it Demucs runs and then dies on write
             pip_install("demucs", "soundfile")
 
@@ -113,7 +116,7 @@ def main() -> int:
     except ImportError:
         print(tr("   Not installed. Only needed for tools/video.py, and it is small.",
                       "   Не установлена. Нужна только для tools/video.py, весит немного."))
-        if ask("   Поставить?"):
+        if ask(tr("   Install it?", "   Поставить?")):
             pip_install("pillow")
 
     print(tr("\n5. Faster loudness analysis (numpy)",
@@ -122,7 +125,8 @@ def main() -> int:
         import numpy  # noqa: F401
         print(tr("   Already installed.", "   Уже стоит."))
     except ImportError:
-        if ask("   Поставить numpy (небольшой, заметно ускоряет)?"):
+        if ask(tr("   Install numpy (small, and noticeably faster)?",
+                  "   Поставить numpy (небольшой, заметно ускоряет)?")):
             pip_install("numpy")
 
     print("\n" + "=" * 60)

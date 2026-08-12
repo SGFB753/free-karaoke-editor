@@ -492,6 +492,8 @@ function applyLang(root){
     if (typeof v === "string") e.placeholder = v;
   });
   document.documentElement.lang = LANG;
+  // The tab title is part of the window too — it must not stay in one language.
+  if (typeof T.appTitle === "string") document.title = T.appTitle;
 }
 const clamp = (v,a,b) => v<a?a:(v>b?b:v);
 const fmt = s => { s=Math.max(0,s|0); return (s/60|0)+":"+String(s%60).padStart(2,"0"); };

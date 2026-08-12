@@ -1,7 +1,7 @@
 """How much memory is free — to warn in advance instead of dying halfway.
 
-Demucs и Whisper — прожорливые. На машине с малым файлом подкачки они валятся
-с системными кодами вроде WinError 1455, по которым непонятно, что делать.
+Demucs and Whisper are hungry. On a machine with a small paging file they fall
+over with system codes like WinError 1455, which say nothing about what to do.
 """
 
 from __future__ import annotations

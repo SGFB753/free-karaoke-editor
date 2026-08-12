@@ -73,7 +73,7 @@ def start_job(title: str, fn) -> str:
             if sysinfo.is_memory_error(e):
                 msg = sysinfo.memory_advice(sysinfo.NEED_DEMUCS, sysinfo.available_gb())
             else:
-                msg = f"Ошибка: {e}"
+                msg = tr(f"Error: {e}", f"Ошибка: {e}")
                 traceback.print_exc()
             for line in msg.splitlines():
                 log(line)
@@ -89,8 +89,8 @@ def start_job(title: str, fn) -> str:
 def dec_path(p: str) -> str:
     """Bring a path from a request into a sane shape.
 
-    http.server разбирает строку запроса как latin-1, поэтому русские имена
-    приезжают мусором. Разворачиваем %XX в байты и читаем их как UTF-8.
+    http.server parses the request line as latin-1, so non-Latin names arrive
+    as garbage. We unfold %XX back into bytes and read them as UTF-8.
     """
     s = unquote(p, encoding="latin-1", errors="replace")
     try:
@@ -218,9 +218,10 @@ def make_report(audio: str, lyrics_path: str, opts: dict) -> dict:
 def downloaded_models() -> dict:
     """Which Whisper models are already on disk.
 
-    Иначе выбор выглядит равноценным: «medium — 1,5 ГБ» ничем не отличается от
-    уже скачанной small, а разница между ними — несколько минут молчания перед
-    первой разметкой. Считает то же самое, что потом пишет лог сборки.
+    Otherwise the choice looks even: “medium — 1.5 GB” is no different from an
+    already downloaded small, while the difference between them is several
+    minutes of silence before the first timing pass. It counts the same thing
+    the build log later reports.
     """
     from kstudio import models as M
     return M.whisper_all()
@@ -315,8 +316,8 @@ class Handler(BaseHTTPRequestHandler):
     def _pick_lang(self):
         """The window language is chosen in the browser, the messages are built here.
 
-        Без этого в английском окне панель «Проверить» и лог сборки оставались
-        русскими: сервер про выбор в окне ничего не знал.
+        Without this the “Check” panel and the build log stayed Russian in an
+        English window: the server knew nothing about the choice made there.
         """
         want = (self.headers.get("X-Karaoke-Lang") or "").strip().lower()
         if want in ("en", "ru"):
@@ -398,8 +399,9 @@ class Handler(BaseHTTPRequestHandler):
         except FileNotFoundError as e:
             # Not every missing file means a missing project: any such error
             # used to say “song not found”, leaving nowhere to look.
-            self._err(404, tr("song not found", "проект не найден") if "проект" in str(e).lower()
-                      or not str(e) else f"не найдено: {e}")
+            self._err(404, tr("song not found", "проект не найден")
+                      if "проект" in str(e).lower() or not str(e)
+                      else tr(f"not found: {e}", f"не найдено: {e}"))
         except Exception as e:
             traceback.print_exc()
             self._err(500, str(e))
@@ -407,13 +409,13 @@ class Handler(BaseHTTPRequestHandler):
     def _upload(self, q):
         """A file dropped into the window. The browser gives no path, only the
         contents, so the bytes are taken and put next to the projects."""
-        raw = (q.get("name", [""])[0] or "файл")
+        raw = (q.get("name", [""])[0] or "file")
         try:
             raw = raw.encode("latin-1").decode("utf-8")
         except (UnicodeEncodeError, UnicodeDecodeError):
             pass
         name = os.path.basename(raw.replace("\\", "/"))
-        name = re.sub(r'[<>:"|?*\x00-\x1f]', "_", name).strip() or "файл"
+        name = re.sub(r'[<>:"|?*\x00-\x1f]', "_", name).strip() or "file"
 
         size = int(self.headers.get("Content-Length") or 0)
         if size <= 0:
@@ -494,7 +496,7 @@ class Handler(BaseHTTPRequestHandler):
                             whisper_model=body.get("model", "small"),
                             language=body.get("lang", "auto"),
                             separate=bool(body.get("separate", True)))
-                jid = start_job("Собираю песню", lambda log: os.path.basename(
+                jid = start_job(tr("Building the song", "Собираю песню"), lambda log: os.path.basename(
                     P.create(audio, lyrics, PROJECTS, log=log, **opts)))
                 return self._json({"job": jid})
 
@@ -519,14 +521,14 @@ class Handler(BaseHTTPRequestHandler):
                 src = body.get("path", "")
                 kind = body.get("track", "instrumental")
                 shift = bool(body.get("shift", True))
-                jid = start_job("Меняю дорожку",
+                jid = start_job(tr("Swapping the track", "Меняю дорожку"),
                                 lambda log: replace_track(folder, src, kind, shift, log))
                 return self._json({"job": jid})
 
             m = re.match(r"^/api/project/([^/]+)/realign$", path)
             if m:
                 folder = project_dir(m.group(1))
-                jid = start_job("Пересчитываю разметку",
+                jid = start_job(tr("Recomputing the timing", "Пересчитываю разметку"),
                                 lambda log: realign(folder, body, log))
                 return self._json({"job": jid})
 
@@ -534,7 +536,7 @@ class Handler(BaseHTTPRequestHandler):
             if m:
                 folder = project_dir(m.group(1))
                 kind = body.get("kind", "html")
-                jid = start_job("Экспорт " + kind,
+                jid = start_job(tr("Export ", "Экспорт ") + kind,
                                 lambda log: export(folder, kind, body, log))
                 return self._json({"job": jid})
 
@@ -542,8 +544,9 @@ class Handler(BaseHTTPRequestHandler):
         except FileNotFoundError as e:
             # Not every missing file means a missing project: any such error
             # used to say “song not found”, leaving nowhere to look.
-            self._err(404, tr("song not found", "проект не найден") if "проект" in str(e).lower()
-                      or not str(e) else f"не найдено: {e}")
+            self._err(404, tr("song not found", "проект не найден")
+                      if "проект" in str(e).lower() or not str(e)
+                      else tr(f"not found: {e}", f"не найдено: {e}"))
         except Exception as e:
             traceback.print_exc()
             self._err(500, str(e))
@@ -615,9 +618,11 @@ def realign(folder: str, opts: dict, log) -> dict:
     else:
         src = data.get("source_lyrics")
         if not src or not os.path.isfile(src):
-            raise FileNotFoundError(
+            raise FileNotFoundError(tr(
+                "the source lyrics file was not found: " + str(src) +
+                ". Pick a file with the “Other lyrics” button.",
                 "исходный файл с текстом не найден: " + str(src) +
-                ". Выберите файл кнопкой «Заменить текст».")
+                ". Выберите файл кнопкой «Заменить текст»."))
     lyr = L.load(src)
     was = len(data.get("lines") or [])
     if len(lyr.lines) != was:
@@ -652,15 +657,15 @@ def realign(folder: str, opts: dict, log) -> dict:
 def offset_between(a: list, b: list, hop: float, limit: float = 12.0) -> float:
     """How far the second recording is shifted against the first, in seconds.
 
-    Официальный инструментал почти всегда начинается не там же, где сведённая
-    песня: другой отсчёт, другая пауза перед вступлением.
+    An official instrumental almost always starts somewhere else than the
+    mixed song: a different count-in, a different pause before the intro.
 
-    Две тонкости, на которых прямолинейный поиск ошибается:
-      • музыка повторяется, и совпадений много — на такте, на куплете. Из
-        равных по качеству выбираем БЛИЖАЙШЕЕ к нулю, а не первое попавшееся:
-        мы ищем несовпадение начала, а не место припева.
-      • шаг огибающей грубее, чем слышно. Сначала ищем грубо и быстро, потом
-        уточняем рядом и доводим вершину параболой.
+    Two subtleties a straightforward search gets wrong:
+      • music repeats, so there are many matches — at a bar, at a verse. Among
+        equally good ones we take the one CLOSEST to zero, not the first found:
+        we are looking for a mismatch of the start, not for the chorus.
+      • the envelope step is coarser than the ear. First we search coarsely and
+        fast, then refine nearby and finish the peak off with a parabola.
     """
     if not a or not b:
         return 0.0
@@ -726,10 +731,10 @@ def shift_audio(path: str, seconds: float, tmp: str) -> str:
 def _best_gain(mix: str, instr: str, spans: list) -> float:
     """By how much to scale the instrumental so it cancels the original best.
 
-    Считаем по настоящим отсчётам, а не по огибающей: огибающая нормирована
-    на собственный максимум каждой записи, и отношение по ней ничего не значит.
-    Решение простое: k = <микс·инструментал> / <инструментал·инструментал> —
-    та величина, при которой разность самая тихая.
+    Computed on the real samples, not on the envelope: the envelope is
+    normalised to each recording's own maximum, so a ratio taken from it means
+    nothing. The solution is simple: k = <mix·instrumental> /
+    <instrumental·instrumental> — the value at which the difference is quietest.
     """
     sr = 16000
     a = AU.read_pcm_mono(mix, sr)
@@ -766,15 +771,17 @@ def _rms_at(path: str, spans: list) -> float:
 def _spectral_vocals(mix: str, instr: str, spans: list, out: str, log) -> Optional[str]:
     """Subtract the instrumental per frequency band, not by one volume level.
 
-    Официальный инструментал почти никогда не совпадает с тем, что лежит под
-    голосом в песне: другой мастеринг, другая эквализация, другой уровень.
-    Одним множителем такое не гасится — часть аранжировки остаётся в «голосе»
-    и звучит рядом с минусовкой как вторая, чужая запись.
+    An official instrumental hardly ever matches the one sitting under the
+    voice in the song: different mastering, different equalisation, different
+    level. One multiplier cannot cancel that — part of the arrangement stays in
+    the “voice” and plays next to the backing track like a second, foreign
+    recording.
 
-    Поэтому множитель ищем свой для каждой частоты. По кускам без пения, где
-    обе дорожки должны быть одинаковыми, считаем H(f) = <M·conj(I)> / <|I|²> —
-    то самое усиление и сдвиг фазы, которыми инструментал превращается в свою
-    же копию из песни. Дальше вычитаем уже исправленный инструментал.
+    So the multiplier is found per frequency. Over the spans without singing,
+    where both tracks ought to be the same, we compute
+    H(f) = <M·conj(I)> / <|I|²> — exactly the gain and phase shift that turn the
+    instrumental into its own copy from the song. Then the corrected
+    instrumental is what gets subtracted.
     """
     try:
         import numpy as np
@@ -847,12 +854,13 @@ def extract_vocals(mix: str, instr: str, off: float, quiet: list, tmp: str,
                    log) -> Optional[str]:
     """Voice ≈ the original minus the instrumental.
 
-    Когда инструментал взят у того же исполнителя и от той же записи, разница
-    двух дорожек — это и есть вокал. Иначе «голосом» остаётся весь оригинал,
-    и поверх нового минуса играет вторая аранжировка: именно это и слышно как
-    «голос не совпадает».
+    When the instrumental comes from the same artist and the same recording,
+    the difference between the two tracks is the vocal. Otherwise the whole
+    original stays as “the voice”, and a second arrangement plays on top of the
+    new backing track: that is exactly what is heard as “the voice does not
+    match”.
 
-    Возвращает путь к дорожке или None, если вычитание не сработало.
+    Returns the path to the track, or None if the subtraction did not work.
     """
     # 1. Bring the original into the same time frame as the new instrumental.
     aligned = mix if abs(off) < 0.005 else shift_audio(mix, off, tmp)
@@ -910,9 +918,9 @@ def extract_vocals(mix: str, instr: str, off: float, quiet: list, tmp: str,
 def replace_track(folder: str, src: str, kind: str, shift: bool, log) -> dict:
     """Swap a track in a finished project, leaving the timing in place.
 
-    Смысл: разметка уже выверена руками, а минусовку хочется настоящую —
-    ту, что выпустил исполнитель. Пересчитывать ничего не надо, меняется
-    только звук.
+    The point: the timing is already tuned by hand, and what is wanted is the
+    real backing track — the one the artist released. Nothing has to be
+    recomputed, only the audio changes.
     """
     if kind not in ("instrumental", "vocals", "mix"):
         raise ValueError(tr(f"unknown track: {kind}", f"неизвестная дорожка: {kind}"))
@@ -1061,7 +1069,7 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
         tracks[name] = (path, mime)
 
     out_dir = os.path.dirname(data.get("source_audio") or folder) or folder
-    base = P.slugify(data.get("title") or "караоке")
+    base = P.slugify(data.get("title") or "karaoke")
 
     if kind == "html":
         # A Latin name: the file travels to people where Cyrillic in file names
