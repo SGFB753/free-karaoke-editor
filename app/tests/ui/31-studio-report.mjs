@@ -55,13 +55,17 @@ ok('there is a time estimate, marked as rough', /займёт/.test(t) && /гр�
    t.slice(-90));
 
 console.log('\n--- the report is recomputed when settings change ---');
+// Without stable-ts installed “auto” already means loudness, so the text has
+// nothing to change into. The report must still name the engine that was picked.
+const caps = (await (await fetch(API + "/api/state")).json()).caps || {};
 const before = text();
 $('selAlign').value = 'energy';
 $('selAlign').dispatchEvent(new w.Event('change',{bubbles:true}));
 await sleep(5000);
 const after = text();
-ok('the plan changed along with the choice', before !== after &&
-   /по энергии/.test(after), after.slice(-110));
+ok('the plan changed along with the choice',
+   /по энергии/.test(after) && (caps.whisper ? before !== after : /по энергии/.test(before)),
+   after.slice(-110));
 
 console.log('\n--- the picked language reaches the report ---');
 $('selAlign').value = 'auto';

@@ -137,9 +137,17 @@ try {
     model: document.getElementById('selModel').selectedOptions[0].textContent,
     note: document.getElementById('modelNote').textContent.trim(),
     noteVisible: !!document.getElementById('modelNote').offsetParent,
+    warn: document.getElementById('newWarn').textContent.trim(),
   }));
+  // ui.js keeps caps in a module-scope binding, so we ask the server instead.
+  add.whisper = !!(await page.evaluate(async () =>
+    ((await (await fetch('/api/state')).json()).caps || {}).whisper));
   ok('the model shows a note about downloading', /уже скачана|скачается/.test(add.model), add.model);
-  ok('the hint under the picker is shown', add.noteVisible && add.note.length > 10, add.note.slice(0, 50));
+  // Without stable-ts there is nothing to say about a model download — the
+  // window switches to timing by loudness and explains that instead.
+  ok('the hint under the picker is shown',
+     add.whisper ? (add.noteVisible && add.note.length > 10) : add.warn.length > 10,
+     (add.note || add.warn).slice(0, 50));
 
   /* ---- the editor ---- */
   console.log('\n=== the editor: the main working screen ===');
