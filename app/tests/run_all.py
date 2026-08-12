@@ -166,10 +166,29 @@ def two_tracks(dst: str, src_a: str, src_b: str) -> None:
     open(dst, "w", encoding="utf-8").write(s[:m.start(2)] + out + s[m.end(2):])
 
 
+def fake_model_cache(root: str) -> str:
+    """A model cache of our own: “tiny” on disk, the rest not.
+
+    What the window says about a model depends on what lies in the cache, and
+    that differs from machine to machine — on a CI runner it is empty. The stand
+    gets its own XDG_CACHE_HOME so both answers are checked everywhere, and the
+    real cache of whoever runs this is left alone. Nothing loads the file: the
+    stand only ever times by loudness.
+    """
+    cache = os.path.join(root, "cache")
+    os.makedirs(os.path.join(cache, "whisper"), exist_ok=True)
+    stub = os.path.join(cache, "whisper", "tiny.pt")
+    if not os.path.isfile(stub):
+        with open(stub, "wb") as f:
+            f.write(b"\0" * 1_200_000)      # above the “half-downloaded” threshold
+    return cache
+
+
 def start_studio(port: int, projects: str):
     # The studio window is bilingual now; the suites were written against the
     # Russian labels, so the stand runs in Russian. English has its own suite.
-    env = dict(os.environ, KARAOKE_PROJECTS=projects, KARAOKE_UI_LANG="ru")
+    env = dict(os.environ, KARAOKE_PROJECTS=projects, KARAOKE_UI_LANG="ru",
+               XDG_CACHE_HOME=fake_model_cache(os.path.dirname(projects)))
     return subprocess.Popen(
         [sys.executable, os.path.join(ROOT, "studio.py"),
          "--port", str(port), "--no-browser"],

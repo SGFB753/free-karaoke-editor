@@ -36,6 +36,9 @@ const have = st.caps.models;
 ok('all five models are in the list',
    ['tiny','base','small','medium','large-v3'].every(k => k in have),
    Object.keys(have).join(', '));
+// The stand runs with a model cache of its own (see fake_model_cache in
+// run_all.py): “tiny” lies there, the rest do not. So both answers are checked
+// on any machine, including a CI runner with an empty cache.
 ok('the downloaded ones are marked correctly', have.tiny === true && have['large-v3'] === false,
    'tiny='+have.tiny+' large-v3='+have['large-v3']);
 
