@@ -352,8 +352,30 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     # yet, and the repairs would compare emptiness with emptiness.
     _fill_lines(lyrics, duration)
     repair_lines(lyrics, log=log)      # Whisper sometimes drops a word far away
+    # …and sometimes drops a dozen of them in one spot. Looking at the audio is
+    # only worth it once we know there is a pile to spread.
+    if pile_runs(lyrics.lines):
+        repair_piles(lyrics, duration, log=log, floor=first_sound(audio_path))
     repair_order(lyrics, log=log)
     _fill_lines(lyrics, duration)      # after repairs the bounds may exceed the track
+
+    # What could not be spread stays a pile, and a pile is not a timing: those
+    # lines fly past in a blink. Better to name them than to hand over a page
+    # that looks finished and is not.
+    left = pile_share(lyrics)
+    if left > 0.02:
+        stuck = [i + 1 for a, b in pile_runs(lyrics.lines) for i in range(a, b + 1)]
+        spot = lyrics.lines[stuck[0] - 1].start if stuck else 0.0
+        log(tr(f"  NOTE: {len(stuck)} of {len(lyrics.lines)} lines could not be timed — "
+               f"they are piled at {spot // 60:.0f}:{spot % 60:04.1f} (lines "
+               f"{stuck[0]}–{stuck[-1]}). Whisper heard no words there: a quiet or "
+               f"whispered patch. Drag them into place in the studio, or press "
+               f"“Re-time” with the loudness engine.",
+               f"  ВНИМАНИЕ: {len(stuck)} строк из {len(lyrics.lines)} разметить не вышло — "
+               f"они свалены в кучу на {spot // 60:.0f}:{spot % 60:04.1f} (строки "
+               f"{stuck[0]}–{stuck[-1]}). Whisper не расслышал там слов: тихое или "
+               f"шёпотом спетое место. Растащите их в студии мышкой или нажмите "
+               f"«Разметить заново» с движком по энергии."))
     return lyrics
 
 
@@ -497,6 +519,120 @@ def _spread(words: List[Word], start: float, end: float) -> None:
         w.start = start + span * acc / total
         acc += w.syllables
         w.end = start + span * acc / total
+
+
+# The shortest a syllable can honestly be sung. Below this the timing is not
+# fast singing, it is a pile: the aligner gave up and dropped the words where
+# it stopped looking.
+_MIN_PER_SYLLABLE = 0.07
+
+
+def _syl(ln) -> int:
+    return sum(w.syllables for w in ln.words) or 1
+
+
+def pile_runs(lines) -> List[tuple]:
+    """Runs of lines dumped at one instant, as (first, last) indexes.
+
+    A pile is judged by the run as a whole, not line by line: the aligner drops
+    a whole stretch of text at one moment, and the odd line inside it may look
+    plausible on its own. A run counts as a pile when several lines together
+    take less time than their syllables could possibly be sung in.
+    """
+    runs = []
+    n = len(lines)
+    i = 0
+    while i < n:
+        if lines[i].start is None or lines[i].end is None or not lines[i].words:
+            i += 1
+            continue
+        syl = _syl(lines[i])
+        best = i
+        j = i + 1
+        while j < n and lines[j].start is not None and lines[j].end is not None and lines[j].words:
+            syl += _syl(lines[j])
+            if (lines[j].end - lines[i].start) < _MIN_PER_SYLLABLE * syl:
+                best = j
+            elif best > i:
+                break                              # the pile has ended
+            j += 1
+        if best > i:
+            runs.append((i, best))
+            i = best + 1
+        else:
+            i += 1
+    return runs
+
+
+def pile_share(lyrics: Lyrics) -> float:
+    """What share of the lines is stuck in piles. 0 when the timing is sound."""
+    lines = lyrics.lines
+    if not lines:
+        return 0.0
+    return sum(b - a + 1 for a, b in pile_runs(lines)) / len(lines)
+
+
+def first_sound(audio_path: str) -> float:
+    """When the singing starts — so a pile at the head is not spread over silence."""
+    try:
+        from . import audio as AU
+        from . import report as R
+        env, hop = AU.rms_envelope(audio_path)
+        quiet = R.quiet_stretches(env, hop)
+    except Exception:
+        return 0.0
+    for q in quiet:
+        if q["start"] <= 0.2:                    # a silence the song opens with
+            return float(q["end"])
+    return 0.0
+
+
+def repair_piles(lyrics: Lyrics, duration: float, log: Log = _noop,
+                 floor: float = 0.0) -> int:
+    """Spread out the lines an aligner piled up in one spot.
+
+    On a quiet intro, a long instrumental or a whispered verse Whisper finds
+    nothing to hold on to and returns a whole stretch of text at the single
+    moment where it did hear something. On screen that is a pile: a dozen lines
+    inside a fraction of a second, and the karaoke leaps through half the lyrics
+    in one blink.
+
+    The words are lost either way — but their ORDER is not, and neither is the
+    free time around the pile. Spreading the run across that free time is much
+    closer to the truth than one instant, and every line stays draggable.
+
+    Only the room between the neighbouring sound lines is used. When the
+    neighbours themselves contradict each other, the pile is left alone: moving
+    it would just stack lines on top of a line that IS timed right.
+    """
+    lines = lyrics.lines
+    fixed = 0
+    for a, b in pile_runs(lines):
+        run = lines[a:b + 1]
+        lo = lines[a - 1].end if a and lines[a - 1].end is not None else floor
+        hi = lines[b + 1].start if b + 1 < len(lines) and lines[b + 1].start is not None \
+            else duration
+        lo = max(0.0, min(lo, duration))
+        hi = max(0.0, min(hi, duration))
+        need = sum(_syl(ln) for ln in run) * _MIN_PER_SYLLABLE
+        was = (run[-1].end or 0.0) - (run[0].start or 0.0)
+        if hi <= lo or (hi - lo) <= max(need, was) + 0.05:
+            continue                               # nowhere to spread it
+        total = sum(_syl(ln) for ln in run)
+        span = hi - lo
+        acc = 0.0
+        for ln in run:
+            t0 = lo + span * acc / total
+            acc += _syl(ln)
+            t1 = lo + span * acc / total
+            _spread(ln.words, t0, max(t1 - 0.05, t0 + 0.05))
+            ln.start, ln.end = ln.words[0].start, ln.words[-1].end
+        fixed += len(run)
+
+    if fixed:
+        log(tr(f"  lines the aligner piled in one spot, spread out: {fixed}",
+               f"  разложил строк, сваленных разметчиком в одну точку: {fixed}"))
+    return fixed
 
 
 def repair_order(lyrics: Lyrics, log: Log = _noop) -> int:

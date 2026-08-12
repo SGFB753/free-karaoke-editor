@@ -18,6 +18,16 @@ commits themselves are one click away in the history.
 longer overwrite what you chose, and with no settings file at all the program
 uses its defaults.
 
+**A dozen lines dumped at one instant, and the karaoke leapt through half the
+lyrics.** On a quiet intro or a whispered verse Whisper finds nothing to hold on
+to and returns a whole stretch of text at the single moment where it did hear
+something — seven lines inside a fifth of a second. The program now sees such a
+pile, spreads it over the free time between the lines around it (starting where
+the singing actually starts, not over the silent intro), and leaves the lines
+that are timed right exactly where they are. What cannot be spread — when the
+neighbouring lines contradict each other — is left alone and named out loud in
+the log: which lines, at what second, and what to do about them.
+
 **A song in another language kept the language of the previous one.**
 The window remembered the language picked last time and used it for the next
 song. If you had ever chosen “русский” by hand, an English text was handed to

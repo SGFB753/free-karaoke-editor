@@ -700,6 +700,68 @@ def main():
           LG.script_of("ru") == "cyr" and LG.script_of("uk") == "cyr"
           and LG.script_of("en") == "lat" and LG.script_of("zh") == "cjk")
 
+    print("\nLines the aligner piled in one spot")
+    # Straight from a real project: Bjork — Unravel, a quiet intro. Whisper found
+    # nothing to hold on to and dropped seven lines at 0:16.7 and six more at
+    # 0:39.2 — a fifth of a second for the lot. In the player the karaoke leapt
+    # through half the lyrics in a blink.
+    rows = [("While you are away", 16.24, 17.06), ("My heart comes undone", 16.74, 17.06),
+            ("Slowly unravels", 16.74, 17.22), ("In a ball of yarn", 16.74, 16.90),
+            ("The devil collects it", 16.74, 16.90), ("With a grin", 16.74, 16.90),
+            ("Our love", 16.74, 16.90), ("In a ball of yarn", 38.00, 39.40),
+            ("He'll never return it", 39.24, 39.40), ("So, when you come back", 39.24, 39.40),
+            ("We'll have to make new love", 39.24, 39.40),
+            ("While you are away", 39.24, 43.66), ("My heart comes undone", 45.20, 47.80),
+            ("Slowly unravels", 48.84, 53.54), ("In a ball of yarn", 54.44, 56.84)]
+    piled = L.parse("\n".join(t for t, _, _ in rows))
+    for ln, (_, a_, b_) in zip(piled.lines, rows):
+        A._spread(ln.words, a_, b_)
+        ln.start, ln.end = a_, b_
+
+    runs = A.pile_runs(piled.lines)
+    check("a pile is seen as a run, not line by line", len(runs) == 2, str(runs))
+    check("the first run is the seven lines at 0:16", runs[0] == (0, 6), str(runs[0]))
+    check("a sound line is not called a pile",
+          all(not (a_ <= 12 <= b_) for a_, b_ in runs), str(runs))
+    check("the share of piled lines is counted", 0.6 < A.pile_share(piled) < 0.95,
+          f"{A.pile_share(piled):.0%}")
+
+    words_before = [w.text for w in piled.words]
+    said = []
+    # The singing starts at 0:11 — the pile must not be spread over the silence
+    # before it, and must not touch the lines that are timed right.
+    A.repair_piles(piled, 200.02, log=said.append, floor=11.0)
+    first = piled.lines[:7]
+    check("the pile was spread out", said and "7" in said[0], said[0] if said else "silence")
+    check("it starts where the singing does, not at zero",
+          abs(first[0].start - 11.0) < 0.01, f"{first[0].start:.2f}")
+    check("and it stops before the next sound line",
+          first[-1].end <= 38.0 + 1e-6, f"{first[-1].end:.2f}")
+    check("every line got a singable length",
+          all((ln.end - ln.start) / (sum(w.syllables for w in ln.words) or 1) > 0.07
+              for ln in first),
+          min(f"{(ln.end - ln.start):.2f}" for ln in first))
+    check("the order of the lines is intact",
+          all(b_.start >= a_.start for a_, b_ in zip(piled.lines, piled.lines[1:])))
+    check("the words are still the same words", [w.text for w in piled.words] == words_before)
+    check("the lines that were timed right are untouched",
+          abs(piled.lines[12].start - 45.20) < 1e-9 and abs(piled.lines[13].start - 48.84) < 1e-9)
+    # Its neighbours contradict each other — line 8 ends at 39.40 while line 12
+    # starts at 39.24. Moving that pile would stack it on a line that IS right.
+    check("a pile with nowhere to go is left alone, not forced",
+          any(abs(piled.lines[i].start - 39.24) < 1e-9 for i in (8, 9, 10)))
+    check("and it is still reported as a pile", A.pile_share(piled) > 0.1,
+          f"{A.pile_share(piled):.0%}")
+
+    clean = L.parse("one two three\nfour five six\nseven eight nine")
+    for i, ln in enumerate(clean.lines):
+        A._spread(ln.words, 10.0 + i * 4, 13.0 + i * 4)
+        ln.start, ln.end = 10.0 + i * 4, 13.0 + i * 4
+    check("sound timing has no piles at all", A.pile_runs(clean.lines) == [],
+          str(A.pile_runs(clean.lines)))
+    check("and nothing is moved in it",
+          A.repair_piles(clean, 100.0) == 0 and abs(clean.lines[0].start - 10.0) < 1e-9)
+
     print("\nA language picked by hand that the text contradicts")
     from kstudio import report as REP
     eng = L.parse("I walked alone tonight\nThe city lights are cold\n"
