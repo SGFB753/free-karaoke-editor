@@ -1,5 +1,5 @@
-// Опечатка в тексте песни: правится двойным щелчком по строке, без пересборки
-// и без потери разметки.
+// A typo in the lyrics: fixed by double-clicking the line, without rebuilding
+// and without losing the timing.
 const { JSDOM } = await import('jsdom');
 const API = process.env.KARAOKE_API;
 const html = await (await fetch(API + "/")).text();
@@ -38,7 +38,7 @@ const srv = async () => (await (await fetch(API+"/api/project/"+encodeURICompone
 
 doc.querySelectorAll('.card')[0].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(1200);
-ok('редактор открылся', !$('scrEdit').classList.contains('hide'));
+ok('the editor opened', !$('scrEdit').classList.contains('hide'));
 
 const before = await srv();
 const I = 2;
@@ -46,50 +46,50 @@ const dbl = el => el.dispatchEvent(new w.MouseEvent('dblclick',{bubbles:true}));
 const keyOn = (el,key) => el.dispatchEvent(new w.KeyboardEvent('keydown',
   {key, bubbles:true, cancelable:true}));
 
-console.log('\n--- двойной щелчок открывает правку ---');
+console.log('\n--- a double click opens the editor ---');
 dbl(doc.querySelectorAll('#scroll .ln')[I]);
 await sleep(80);
 let inp = doc.querySelector('.lnedit');
-ok('появилось поле ввода', !!inp);
-ok('в нём текущий текст строки', inp && inp.value === before[I].text,
+ok('an input field appeared', !!inp);
+ok('with the current text of the line', inp && inp.value === before[I].text,
    inp ? `«${inp.value}» / «${before[I].text}»` : '');
 
-console.log('\n--- Enter сохраняет ---');
+console.log('\n--- Enter saves ---');
 const NEW = "исправленный текст этой строки";
 inp.value = NEW;
 keyOn(inp, 'Enter');
 await sleep(900);
 const after = await srv();
-ok('текст на сервере изменился', after[I].text === NEW, after[I].text);
-ok('поле ввода убралось', !doc.querySelector('.lnedit'));
-ok('строка на сцене показывает новый текст',
+ok('the text on the server changed', after[I].text === NEW, after[I].text);
+ok('the input field went away', !doc.querySelector('.lnedit'));
+ok('the line on stage shows the new text',
    doc.querySelectorAll('#scroll .ln')[I].textContent.replace(/\s+/g,' ').trim()
      .includes('исправленный'),
    doc.querySelectorAll('#scroll .ln')[I].textContent.trim().slice(0,40));
-ok('подпись на дорожке обновилась',
+ok('the label on the timeline updated',
    doc.querySelectorAll('.blk')[I].textContent.includes('исправленный'),
    doc.querySelectorAll('.blk')[I].textContent.slice(0,40));
 
-console.log('\n--- разметка строки не потерялась ---');
-ok('время строки на месте',
+console.log('\n--- the timing of the line survived ---');
+ok('the line time is in place',
    Math.abs(after[I].start - before[I].start) < 1e-6 &&
    Math.abs(after[I].end - before[I].end) < 1e-6,
    `${before[I].start}–${before[I].end} → ${after[I].start}–${after[I].end}`);
-ok('слов столько же, сколько в новом тексте', after[I].words.length === NEW.split(' ').length,
-   after[I].words.length + ' слов');
+ok('as many words as in the new text', after[I].words.length === NEW.split(' ').length,
+   after[I].words.length + ' words');
 const ws = after[I].words;
-ok('слова разложены внутри строки по порядку',
+ok('the words are laid out inside the line in order',
    ws.every((x,k)=> k===0 || x.t >= ws[k-1].t - 1e-9) &&
    ws[0].t >= after[I].start - 1e-6 &&
    ws[ws.length-1].t + ws[ws.length-1].d <= after[I].end + 1e-6,
    `${ws[0].t.toFixed(2)} … ${(ws[ws.length-1].t+ws[ws.length-1].d).toFixed(2)}`);
-ok('длинному слову досталось больше времени, чем короткому',
+ok('a long word got more time than a short one',
    (() => { const a = ws.find(x=>x.w==='исправленный'), b = ws.find(x=>x.w==='и');
             return !a || !b ? true : a.d > b.d; })());
-ok('соседние строки не тронуты',
+ok('the neighbouring lines were not touched',
    after[I-1].text === before[I-1].text && after[I+1].text === before[I+1].text);
 
-console.log('\n--- Escape отменяет ---');
+console.log('\n--- Escape cancels ---');
 dbl(doc.querySelectorAll('#scroll .ln')[I]);
 await sleep(80);
 inp = doc.querySelector('.lnedit');
@@ -97,9 +97,9 @@ inp.value = "это не должно сохраниться";
 keyOn(inp, 'Escape');
 await sleep(700);
 const after2 = await srv();
-ok('текст остался прежним', after2[I].text === NEW, after2[I].text);
+ok('the text stayed as it was', after2[I].text === NEW, after2[I].text);
 
-console.log('\n--- пустую строку не принимаем ---');
+console.log('\n--- an empty line is refused ---');
 dbl(doc.querySelectorAll('#scroll .ln')[I]);
 await sleep(80);
 inp = doc.querySelector('.lnedit');
@@ -107,48 +107,48 @@ inp.value = "   ";
 keyOn(inp, 'Enter');
 await sleep(700);
 const after3 = await srv();
-ok('пустой текст не затёр строку', after3[I].text === NEW, after3[I].text);
-ok('число строк не изменилось', after3.length === before.length,
+ok('empty text did not wipe the line', after3[I].text === NEW, after3[I].text);
+ok('the number of lines did not change', after3.length === before.length,
    `${before.length} → ${after3.length}`);
 
-console.log('\n--- правку текста можно найти, не зная про двойной щелчок ---');
+console.log('\n--- editing can be found without knowing about the double click ---');
 const click = id => $(id).dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 doc.querySelectorAll('#scroll .ln')[3].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(80);
-ok('кнопка «Текст строки» есть и подписана понятно',
+ok('the “Line text” button exists and is labelled plainly',
    !!$('btnText') && /Текст/.test($('btnText').textContent), ($('btnText')||{}).textContent);
 click('btnText'); await sleep(120);
-ok('она открывает то же поле ввода', !!doc.querySelector('.lnedit'));
-ok('и правит именно выбранную строку',
+ok('it opens the same input field', !!doc.querySelector('.lnedit'));
+ok('and edits exactly the selected line',
    doc.querySelector('.lnedit').value === (await srv())[3].text,
    doc.querySelector('.lnedit').value);
 doc.querySelector('.lnedit').dispatchEvent(new w.KeyboardEvent('keydown',
   {key:'Escape',bubbles:true,cancelable:true}));
 await sleep(300);
 
-console.log('\n--- и двойным щелчком по блоку на дорожке ---');
+console.log('\n--- and by double-clicking the block on the timeline ---');
 doc.querySelectorAll('.blk')[4].dispatchEvent(new w.MouseEvent('dblclick',{bubbles:true}));
 await sleep(150);
-ok('двойной щелчок по блоку открывает правку', !!doc.querySelector('.lnedit'));
-ok('правится строка этого блока',
+ok('a double click on a block opens the editor', !!doc.querySelector('.lnedit'));
+ok("that block's line is the one edited",
    doc.querySelector('.lnedit').value === (await srv())[4].text,
    doc.querySelector('.lnedit').value);
 doc.querySelector('.lnedit').dispatchEvent(new w.KeyboardEvent('keydown',
   {key:'Escape',bubbles:true,cancelable:true}));
 await sleep(300);
 
-// Прибираем за собой: проект в стенде общий, и накопленные правки съедают
-// запас времени внутри строк — следующий прогон падал бы на пустом месте.
-console.log('\n--- возвращаем проект как было ---');
+// Cleaning up after ourselves: the project on the stand is shared, and the
+// edits eat the slack inside the lines — the next run would fail for nothing.
+console.log('\n--- putting the project back ---');
 let __g = 0;
 while (!$('btnUndo').disabled && __g++ < 100){
   $('btnUndo').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
   await sleep(90);
 }
 await sleep(900);
-ok('история отмены исчерпана', $('btnUndo').disabled, 'шагов ' + __g);
+ok('the undo history is used up', $('btnUndo').disabled, 'steps ' + __g);
 
-ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
+ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

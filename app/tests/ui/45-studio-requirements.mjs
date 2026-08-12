@@ -1,5 +1,5 @@
-// Требования, которые видно только на настоящей вёрстке: ничего не наезжает
-// друг на друга, надписи читаемого размера и растут вместе с окном.
+// The requirements only a real layout can show: nothing overlaps anything else,
+// the labels are of a readable size and grow along with the window.
 import puppeteer from 'puppeteer';
 
 const API = process.env.KARAOKE_API;
@@ -12,14 +12,14 @@ const proj = async () => (await (await fetch(API+'/api/project/'+encodeURICompon
 const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disable-dev-shm-usage']});
 const p = await b.newPage();
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
-// Удаление строки спрашивает подтверждение — родное окно браузера иначе
-// подвесит всю проверку.
+// Deleting a line asks for confirmation — the browser's own dialog would
+// otherwise hang the whole check.
 p.on('dialog', d => d.accept());
 await p.setViewport({width:1366, height:768});
 await p.goto(API+'/', {waitUntil:'networkidle0'});
 await sleep(700);
 
-console.log('--- надписи читаемого размера ---');
+console.log('--- labels of a readable size ---');
 const sizes = async () => p.evaluate(() => {
   const px = el => el ? parseFloat(getComputedStyle(el).fontSize) : 0;
   return {root: parseFloat(getComputedStyle(document.documentElement).fontSize),
@@ -27,19 +27,19 @@ const sizes = async () => p.evaluate(() => {
           card: px(document.querySelector('.card .badge'))};
 });
 const small = await sizes();
-ok('кнопки не мельче 13px', small.button >= 13, small.button + 'px');
-ok('мелкие подписи не мельче 12px', small.card >= 12, small.card + 'px');
+ok('the buttons are no smaller than 13px', small.button >= 13, small.button + 'px');
+ok('the small labels are no smaller than 12px', small.card >= 12, small.card + 'px');
 
 await p.setViewport({width:2560, height:1440});
 await sleep(400);
 const big = await sizes();
-ok('на широком экране надписи крупнее', big.root > small.root + 1,
+ok('on a wide screen the labels are bigger', big.root > small.root + 1,
    `${small.root} → ${big.root}`);
-ok('и это не бесконечный рост', big.root <= 24, big.root + 'px');
+ok('and the growth is not endless', big.root <= 24, big.root + 'px');
 
-console.log('\n--- редактор: ничего не наезжает ---');
-// В тестовой песне вступление 2 с, а отсчёт показывается от 5 с. Раздвигаем
-// разметку на диске, открываем окно заново и в конце возвращаем как было.
+console.log('\n--- the editor: nothing overlaps ---');
+// In the test song the intro is 2 s, while the countdown shows from 5 s. We
+// stretch the timing on disk, reopen the window and put it all back at the end.
 const original = (await proj()).lines;
 const shifted = JSON.parse(JSON.stringify(original)).map(l => {
   l.start += 14; l.end += 14; l.words.forEach(w => { w.t += 14; });
@@ -68,14 +68,14 @@ const overlap = await p.evaluate(() => {
   return {hidden:false, hits, opacity: +getComputedStyle(wait).opacity,
           num: parseFloat(getComputedStyle(document.getElementById('waitNum')).fontSize)};
 });
-ok('отсчёт во вступлении показан', !overlap.hidden);
+ok('the intro countdown is shown', !overlap.hidden);
 if (!overlap.hidden){
-  ok('он не наезжает на строки песни', overlap.hits.length === 0, overlap.hits.join(' | '));
-  ok('он не затенён', overlap.opacity > 0.95, String(overlap.opacity));
-  ok('число в нём крупное', overlap.num >= 18, overlap.num + 'px');
+  ok('it does not overlap the lines of the song', overlap.hits.length === 0, overlap.hits.join(' | '));
+  ok('it is not dimmed', overlap.opacity > 0.95, String(overlap.opacity));
+  ok('the number in it is large', overlap.num >= 18, overlap.num + 'px');
 }
 
-console.log('\n--- панель дорожки помещается и подписана ---');
+console.log('\n--- the timeline panel fits and is labelled ---');
 const head = await p.evaluate(() => {
   const h = document.querySelector('.tlhead');
   const picks = [...document.querySelectorAll('.pick')];
@@ -83,23 +83,23 @@ const head = await p.evaluate(() => {
           labels: picks.map(x => (x.querySelector('b')||{}).textContent || ''),
           titled: [...document.querySelectorAll('.pick input')].every(i => i.title.length > 2)};
 });
-ok('панель не уезжает за край', head.fits);
-ok('обе пары цветов подписаны', head.labels.length === 2 && head.labels.every(t => t.length > 2),
+ok('the panel does not run off the edge', head.fits);
+ok('both colour pairs are labelled', head.labels.length === 2 && head.labels.every(t => t.length > 2),
    head.labels.join(' | '));
-ok('у каждого квадратика своя подсказка', head.titled);
+ok('each swatch has its own tooltip', head.titled);
 
-console.log('\n--- сводка на месте и читается ---');
+console.log('\n--- the summary is in place and readable ---');
 const sum = await p.evaluate(() => {
   const cells = [...document.querySelectorAll('.sum .c')];
   const b = cells[0] && cells[0].querySelector('b');
   return {n: cells.length, size: b ? parseFloat(getComputedStyle(b).fontSize) : 0,
           text: cells.map(c => c.textContent).join(' | ').slice(0, 80)};
 });
-ok('в сводке есть клетки', sum.n >= 4, String(sum.n));
-ok('числа в ней крупные', sum.size >= 16, sum.size + 'px');
+ok('the summary has cells', sum.n >= 4, String(sum.n));
+ok('the numbers in it are large', sum.size >= 16, sum.size + 'px');
 
-console.log('\n--- Delete удаляет выбранную строку ---');
-await put(original);                    // стенд обратно, дальше работаем на нём
+console.log('\n--- Delete removes the selected line ---');
+await put(original);                    // the stand back, we work on it from here
 await p.reload({waitUntil:'networkidle0'});
 await sleep(700);
 await p.click('.card');
@@ -110,12 +110,12 @@ await sleep(200);
 await p.keyboard.press('Delete');
 await sleep(900);
 const now = (await proj()).lines.length;
-ok('строк стало меньше', now === was - 1, `${was} → ${now}`);
+ok('there are fewer lines', now === was - 1, `${was} → ${now}`);
 await p.evaluate(() => document.getElementById('btnUndo').click());
 await sleep(900);
-ok('и Ctrl+Z всё вернул', (await proj()).lines.length === was);
+ok('and Ctrl+Z brought it all back', (await proj()).lines.length === was);
 
-ok('ошибок JS нет', errs.length === 0, errs.slice(0,2).join(' | '));
+ok('no JS errors', errs.length === 0, errs.slice(0,2).join(' | '));
 await b.close();
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

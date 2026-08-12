@@ -1,4 +1,4 @@
-// Забытая или лишняя строка в тексте: добавляется и удаляется прямо в студии.
+// A forgotten or a stray line: added and removed right inside the studio.
 const { JSDOM } = await import('jsdom');
 const API = process.env.KARAOKE_API;
 const html = await (await fetch(API + "/")).text();
@@ -42,77 +42,77 @@ doc.querySelectorAll('.card')[0].dispatchEvent(new w.MouseEvent('click',{bubbles
 await sleep(1200);
 const before = await srv();
 
-console.log('--- вставка забытой строки ---');
+console.log('--- inserting a forgotten line ---');
 doc.querySelectorAll('#scroll .ln')[1].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(80);
 click('btnAddLine');
 await sleep(120);
 const inp = doc.querySelector('.lnedit');
-ok('сразу открылось поле для текста', !!inp);
+ok('the text field opened right away', !!inp);
 inp.value = "забытая строка припева";
 inp.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
 await sleep(900);
 
 const after = await srv();
-ok('строк стало на одну больше', after.length === before.length + 1,
+ok('there is one more line', after.length === before.length + 1,
    `${before.length} → ${after.length}`);
-ok('новая строка встала сразу после выбранной', after[2].text === "забытая строка припева",
+ok('the new line went right after the selected one', after[2].text === "забытая строка припева",
    after[2].text);
-ok('соседи по тексту не сдвинулись',
+ok('the neighbouring lines did not move',
    after[1].text === before[1].text && after[3].text === before[2].text);
-ok('начинается там, где кончилась предыдущая',
+ok('it starts where the previous one ended',
    Math.abs(after[2].start - after[1].end) < 1e-6,
    `${after[1].end.toFixed(2)} / ${after[2].start.toFixed(2)}`);
 const room = after[3].start - after[2].start;
-ok('длится разумно и не залезает в следующую, если есть куда',
+ok('it lasts sensibly and does not run into the next one when there is room',
    after[2].end > after[2].start &&
    after[2].end - after[2].start <= 2 + 1e-6 &&
    (room <= 0.4 || after[2].end <= after[3].start + 1e-6),
-   `окно ${room.toFixed(2)} с, строка ${(after[2].end-after[2].start).toFixed(2)} с`);
-ok('слова разложены внутри неё', after[2].words.length === 3 &&
+   `room ${room.toFixed(2)} s, line ${(after[2].end-after[2].start).toFixed(2)} s`);
+ok('the words are laid out inside it', after[2].words.length === 3 &&
    after[2].words[0].t >= after[2].start - 1e-6,
-   after[2].words.length + ' слов');
-ok('заголовок раздела не задвоился', !after[2].section, String(after[2].section));
-ok('блок появился на дорожке', doc.querySelectorAll('.blk').length === after.length,
-   doc.querySelectorAll('.blk').length + ' блоков');
+   after[2].words.length + ' words');
+ok('the section heading was not duplicated', !after[2].section, String(after[2].section));
+ok('a block appeared on the timeline', doc.querySelectorAll('.blk').length === after.length,
+   doc.querySelectorAll('.blk').length + ' blocks');
 
-console.log('\n--- удаление лишней строки ---');
+console.log('\n--- deleting a stray line ---');
 doc.querySelectorAll('#scroll .ln')[2].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(80);
 confirmAnswer = false;
 click('btnDelLine');
 await sleep(700);
 let now = await srv();
-ok('без подтверждения ничего не удаляет', now.length === after.length,
+ok('nothing is deleted without confirmation', now.length === after.length,
    `${after.length} → ${now.length}`);
-ok('и спрашивает по-человечески', /Удалить строку/.test(w.__asked.join(' ')),
+ok('and it asks in plain words', /Удалить строку/.test(w.__asked.join(' ')),
    w.__asked[w.__asked.length-1]);
 
 confirmAnswer = true;
 click('btnDelLine');
 await sleep(900);
 now = await srv();
-ok('строка удалена', now.length === before.length, `${after.length} → ${now.length}`);
-ok('удалилась именно она', !now.some(l => l.text === "забытая строка припева"));
-ok('остальной текст цел',
+ok('the line was deleted', now.length === before.length, `${after.length} → ${now.length}`);
+ok('that is the one that went', !now.some(l => l.text === "забытая строка припева"));
+ok('the rest of the text is intact',
    now.map(l=>l.text).join('|') === before.map(l=>l.text).join('|'));
-ok('блоков на дорожке столько же, сколько строк',
+ok('the timeline has as many blocks as there are lines',
    doc.querySelectorAll('.blk').length === now.length,
    doc.querySelectorAll('.blk').length + ' / ' + now.length);
 
-console.log('\n--- без выбранной строки не ломается ---');
-// Прибираем за собой: проект в стенде общий, и накопленные правки съедают
-// запас времени внутри строк — следующий прогон падал бы на пустом месте.
-console.log('\n--- возвращаем проект как было ---');
+console.log('\n--- with no line selected nothing breaks ---');
+// Cleaning up after ourselves: the project on the stand is shared, and the
+// edits eat the slack inside the lines — the next run would fail for nothing.
+console.log('\n--- putting the project back ---');
 let __g = 0;
 while (!$('btnUndo').disabled && __g++ < 100){
   $('btnUndo').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
   await sleep(90);
 }
 await sleep(900);
-ok('история отмены исчерпана', $('btnUndo').disabled, 'шагов ' + __g);
+ok('the undo history is used up', $('btnUndo').disabled, 'steps ' + __g);
 
-ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
+ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

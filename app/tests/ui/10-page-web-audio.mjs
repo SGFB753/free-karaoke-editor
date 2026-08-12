@@ -1,11 +1,11 @@
-// Web Audio: один тактовый генератор на обе дорожки.
+// Web Audio: a single clock for both tracks.
 const { JSDOM } = await import('jsdom');
 import fs from 'fs';
 const dom = new JSDOM(fs.readFileSync(process.env.KARAOKE_PAGE_STEMS, 'utf8'), {
   runScripts:'dangerously', pretendToBeVisual:true, url:'https://local.test/',
   beforeParse(w){
-    w.__now = 0;                       // часы AudioContext, секунды
-    w.__started = [];                  // что и когда запускали
+    w.__now = 0;                       // the AudioContext clock, seconds
+    w.__started = [];                  // what was started and when
     w.__inst = [];
     class Gain{ constructor(){ this.gain={value:1, setTargetAtTime(v){this.value=v;}}; } connect(){} }
     class Src{
@@ -40,58 +40,58 @@ await sleep(300);
 let fail=0; const ok=(n,c,e='')=>{console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c)fail++;};
 const tick = async sec => { w.__now += sec; await sleep(60); };
 
-ok('движок — Web Audio, элементы не создавались', w.__inst.length===0, 'элементов '+w.__inst.length);
-ok('длительность взята из декодированного звука', $('tDur').textContent==='0:26', $('tDur').textContent);
-ok('бейджа больше нет', !$('mBadge'));
-ok('заголовок на месте', $('mTitle').textContent==='Тестовая песня');
+ok('the engine is Web Audio, no media elements were created', w.__inst.length===0, 'elements '+w.__inst.length);
+ok('the length came from the decoded audio', $('tDur').textContent==='0:26', $('tDur').textContent);
+ok('the badge is gone', !$('mBadge'));
+ok('the title is there', $('mTitle').textContent==='Тестовая песня');
 
-console.log('\n--- запуск ---');
+console.log('\n--- starting ---');
 $('btnPlay').click(); await sleep(60);
-ok('запущены обе дорожки', w.__started.length===2, 'запусков '+w.__started.length);
+ok('both tracks were started', w.__started.length===2, 'starts '+w.__started.length);
 const [a,b] = w.__started.slice(-2);
-ok('обе стартуют в один и тот же момент', a.at===b.at, `${a.at} и ${b.at}`);
-ok('и с одинаковой позиции', a.off===b.off, `${a.off} и ${b.off}`);
+ok('both start at the very same moment', a.at===b.at, `${a.at} and ${b.at}`);
+ok('and from the same position', a.off===b.off, `${a.off} and ${b.off}`);
 
 await tick(5);
-ok('время идёт', Math.abs(+$('tCur').textContent.split(':')[1] - 5) <= 1, $('tCur').textContent);
+ok('the clock runs', Math.abs(+$('tCur').textContent.split(':')[1] - 5) <= 1, $('tCur').textContent);
 
-console.log('\n--- громкость ---');
+console.log('\n--- volume ---');
 $('rVocal').value='50'; $('rVocal').dispatchEvent(new w.Event('input'));
 await sleep(30);
-const g = w.__started[1].src;  // источник вокала подключён ко второму gain
-ok('регулятор голоса меняет усиление', $('vVocal').textContent==='50%');
-$('btnPlay').click(); await sleep(30);       // пауза
-$('btnPlay').click(); await sleep(60);       // снова
-ok('после паузы уровень сохранился', $('vVocal').textContent==='50%');
+const g = w.__started[1].src;  // the vocal source is wired to the second gain
+ok('the voice slider changes the gain', $('vVocal').textContent==='50%');
+$('btnPlay').click(); await sleep(30);       // pause
+$('btnPlay').click(); await sleep(60);       // and again
+ok('the level survived the pause', $('vVocal').textContent==='50%');
 const pair = w.__started.slice(-2);
-ok('после паузы обе снова стартуют вместе',
+ok('after the pause both start together again',
    pair[0].at===pair[1].at && pair[0].off===pair[1].off,
    `at ${pair[0].at}=${pair[1].at}, off ${pair[0].off.toFixed(2)}=${pair[1].off.toFixed(2)}`);
-ok('позиция после паузы не потерялась', pair[0].off > 4.5, 'off='+pair[0].off.toFixed(2));
+ok('the position survived the pause', pair[0].off > 4.5, 'off='+pair[0].off.toFixed(2));
 
-console.log('\n--- перемотка ---');
+console.log('\n--- seeking ---');
 doc.dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
 await sleep(60);
 const s2 = w.__started.slice(-2);
-ok('перемотка стартует обе в один момент', s2[0].at===s2[1].at && s2[0].off===s2[1].off,
+ok('a seek starts both at one moment', s2[0].at===s2[1].at && s2[0].off===s2[1].off,
    `off ${s2[0].off.toFixed(2)}`);
-ok('перемотка сдвинула на +5 с', Math.abs(s2[0].off - (pair[0].off+5)) < 0.3,
+ok('the seek moved by +5 s', Math.abs(s2[0].off - (pair[0].off+5)) < 0.3,
    `${pair[0].off.toFixed(2)} → ${s2[0].off.toFixed(2)}`);
 
-console.log('\n--- пауза во время перемотки ---');
+console.log('\n--- pausing during a seek ---');
 doc.dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
 $('btnPlay').click(); await sleep(60);
 const cnt = w.__started.length;
 await tick(2);
-ok('после паузы ничего не запускается', w.__started.length===cnt);
-ok('иконка показывает паузу', $('icPlay').style.display==='');
+ok('after a pause nothing starts on its own', w.__started.length===cnt);
+ok('the icon shows pause', $('icPlay').style.display==='');
 
-console.log('\n--- расхождения быть не может ---');
+console.log('\n--- drift is impossible here ---');
 $('btnPlay').click(); await sleep(60);
 for (let i=0;i<12;i++){ await tick(1); }
 const last = w.__started.slice(-2);
-ok('обе дорожки живут от одного момента старта', last[0].at===last[1].at);
-ok('и от одного смещения', last[0].off===last[1].off);
-ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(';'));
+ok('both tracks live off one start moment', last[0].at===last[1].at);
+ok('and off one offset', last[0].off===last[1].off);
+ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(';'));
 console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

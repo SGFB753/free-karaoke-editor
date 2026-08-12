@@ -1,5 +1,5 @@
-// Вокалы внахлёст: строка второго голоса уходит на вторую полосу дорожки и
-// остаётся хватаемой мышью. Настоящий браузер — jsdom верстку не считает.
+// Overlapping vocals: a second-voice line moves to the second lane of the
+// timeline and stays grabbable. A real browser — jsdom does not do layout.
 import puppeteer from 'puppeteer';
 
 const API = process.env.KARAOKE_API;
@@ -25,13 +25,13 @@ const lane = i => p.evaluate(k => {
 const wrapH = () => p.evaluate(() =>
   document.getElementById('tlwrap').getBoundingClientRect().height);
 
-console.log('--- пока второго голоса нет ---');
+console.log('--- while there is no second voice ---');
 const h0 = await wrapH();
 const top0 = await lane(1);
-ok('дорожка в одну полосу', !(await p.evaluate(() =>
+ok('the timeline is a single lane', !(await p.evaluate(() =>
    document.getElementById('tlwrap').classList.contains('twolane'))));
 
-console.log('\n--- назначаем строке второй голос ---');
+console.log('\n--- giving a line the second voice ---');
 await p.evaluate(() => document.querySelectorAll('#scroll .ln')[1].click());
 await sleep(200);
 await p.click('#btnVoice');
@@ -40,15 +40,15 @@ await sleep(400);
 const h1 = await wrapH();
 const top1 = await lane(1);
 const topMain = await lane(0);
-ok('дорожка стала выше', h1 > h0, `${h0} → ${h1}`);
-// Дорожка выросла и сдвинула вёрстку, поэтому сравниваем блоки между собой,
-// а не с их же прежними координатами на экране.
-ok('блок второго голоса ниже блоков основного', top1 > topMain + 20,
-   `основной ${topMain}, второй ${top1}`);
-ok('до второго голоса блоки шли одной полосой', Math.abs(top0 - topMain) < 40,
+ok('the timeline got taller', h1 > h0, `${h0} → ${h1}`);
+// The timeline grew and shifted the layout, so we compare the blocks with each
+// other, not with their own former coordinates on screen.
+ok('the second-voice block sits below the main ones', top1 > topMain + 20,
+   `main ${topMain}, second ${top1}`);
+ok('before the second voice the blocks ran in one lane', Math.abs(top0 - topMain) < 40,
    `${top0} vs ${topMain}`);
 
-console.log('\n--- блок второго голоса по-прежнему хватается мышью ---');
+console.log('\n--- the second-voice block can still be grabbed with the mouse ---');
 const box = await p.evaluate(() => {
   const e = document.querySelectorAll('#blocks .blk')[1];
   const r = e.getBoundingClientRect();
@@ -58,7 +58,7 @@ const hit = await p.evaluate(({x,y}) => {
   const e = document.elementFromPoint(x, y);
   return !!(e && e.closest('.blk') === document.querySelectorAll('#blocks .blk')[1]);
 }, box);
-ok('под курсором именно этот блок', hit);
+ok('that very block is under the cursor', hit);
 const was = (await proj()).lines[1].start;
 await p.mouse.move(box.x, box.y);
 await p.mouse.down();
@@ -66,20 +66,20 @@ await p.mouse.move(box.x + 60, box.y, {steps: 8});
 await p.mouse.up();
 await sleep(900);
 const now = (await proj()).lines[1].start;
-ok('строку второго голоса удалось подвинуть', now > was + 0.05,
+ok('the second-voice line could be moved', now > was + 0.05,
    `${was.toFixed(2)} → ${now.toFixed(2)}`);
 
-console.log('\n--- и слова этой строки видны под дорожкой ---');
+console.log('\n--- and the words of that line show under the timeline ---');
 const wordsBelow = await p.evaluate(() => {
   const w = document.querySelector('#words .wrd');
   const blk = document.querySelectorAll('#blocks .blk')[1];
   if (!w || !blk) return null;
   return w.getBoundingClientRect().top - blk.getBoundingClientRect().bottom;
 });
-ok('ряд слов ниже второй полосы, а не поверх неё', wordsBelow !== null && wordsBelow > 0,
+ok('the word row is below the second lane, not on top of it', wordsBelow !== null && wordsBelow > 0,
    String(wordsBelow));
 
-// возвращаем как было, чтобы стенд остался чистым для соседних наборов
+// put it back so the stand stays clean for the neighbouring suites
 await p.click('#btnVoice');
 await sleep(200);
 await p.evaluate(t => {
@@ -88,7 +88,7 @@ await p.evaluate(t => {
 }, 0);
 await sleep(600);
 
-ok('ошибок JS нет', errs.length === 0, errs.slice(0,2).join(' | '));
+ok('no JS errors', errs.length === 0, errs.slice(0,2).join(' | '));
 await b.close();
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

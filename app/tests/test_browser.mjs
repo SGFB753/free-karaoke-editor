@@ -1,15 +1,15 @@
-// Настоящий браузер, а не jsdom: тот ничего не рисует, поэтому беды «при
-// открытии» — съехавшая вёрстка, невидимая кнопка, лишняя полоса прокрутки,
-// не тот размер шрифта — сквозь него проходят незамеченными.
+// A real browser, not jsdom: jsdom draws nothing, so the troubles you meet “on
+// opening” — a broken layout, an invisible button, a stray scrollbar, the wrong
+// font size — pass straight through it unnoticed.
 //
-// Что нужно один раз:
+// What is needed once:
 //   npm install puppeteer && npx puppeteer browsers install chrome
 //
-// Как гонять (студия должна быть запущена на 8770, рядом — собранная страница
-// karaoke.html; путь к ней можно передать вторым способом ниже):
+// How to run it (the studio must be up on 8770, with a built page next to it,
+// karaoke.html; the path to it can also be passed the second way below):
 //   node tests/test_browser.mjs
-//   node tests/test_browser.mjs --shots      ещё и снимки экрана в shots/
-//   PAGE=/путь/к/песне_караоке.html node tests/test_browser.mjs
+//   node tests/test_browser.mjs --shots      screenshots into shots/ as well
+//   PAGE=/path/to/song_karaoke.html node tests/test_browser.mjs
 import puppeteer from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
@@ -24,14 +24,14 @@ let fail = 0;
 const ok = (n, c, e = '') => { console.log((c ? '  ✓ ' : '  ✗ ') + n + (e ? ' — ' + e : '')); if (!c) fail++; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-// Общие беды первого экрана, одинаковые для любой страницы.
+// The common troubles of the first screen, the same for any page.
 async function firstScreen(page, name, errs){
   const r = await page.evaluate(() => {
     const el = document.documentElement;
     const over = [];
-    // Элементы, вылезшие за правый край окна — самый заметный вид «хрени».
-    // Обрезанные предком с overflow:hidden не считаются: дорожка времени
-    // намеренно шире экрана, её блоки просто уезжают за край и клипятся.
+    // Elements sticking out past the right edge — the most visible kind of mess.
+    // Those clipped by an overflow:hidden ancestor do not count: the timeline is
+    // deliberately wider than the screen, its blocks simply run off and get clipped.
     const clippedByParent = e => {
       for (let p = e.parentElement; p; p = p.parentElement){
         const st = getComputedStyle(p);
@@ -46,7 +46,7 @@ async function firstScreen(page, name, errs){
       if (b.width && b.right > innerWidth + 1 && !clippedByParent(e))
         over.push(e.id || e.className || e.tagName);
     }
-    // текст, не поместившийся в свою коробку по вертикали
+    // text that did not fit its box vertically
     const clipped = [];
     for (const e of document.querySelectorAll('button, .howto, .hint, h1, h2, h3')){
       if (!e.offsetParent) continue;
@@ -57,26 +57,26 @@ async function firstScreen(page, name, errs){
       scrollX: el.scrollWidth > el.clientWidth,
       over: over.slice(0, 5),
       clipped: clipped.slice(0, 5),
-      // фон может быть и градиентом — тогда цвет прозрачный, а картинка есть
+      // the background may be a gradient — then the colour is transparent but an image is there
       bodyBg: getComputedStyle(document.body).backgroundColor,
       bodyImg: getComputedStyle(document.body).backgroundImage,
       title: document.title,
     };
   });
-  ok(`${name}: нет боковой прокрутки`, !r.scrollX);
-  ok(`${name}: ничего не вылезло за край окна`, r.over.length === 0, r.over.join(', '));
-  ok(`${name}: подписи помещаются в кнопки`, r.clipped.length === 0, r.clipped.join(' | '));
+  ok(`${name}: no sideways scrolling`, !r.scrollX);
+  ok(`${name}: nothing ran off the window edge`, r.over.length === 0, r.over.join(', '));
+  ok(`${name}: the labels fit inside the buttons`, r.clipped.length === 0, r.clipped.join(' | '));
   const painted = (r.bodyImg && r.bodyImg !== 'none') ||
                   (r.bodyBg !== 'rgba(0, 0, 0, 0)' && r.bodyBg !== 'rgb(255, 255, 255)');
-  ok(`${name}: фон отрисован, а не белый по умолчанию`, painted,
+  ok(`${name}: the background is painted, not the default white`, painted,
      r.bodyBg + ' / ' + (r.bodyImg || '').slice(0, 40));
-  ok(`${name}: ошибок в консоли нет`, errs.length === 0, errs.slice(0, 3).join(' | '));
+  ok(`${name}: no errors in the console`, errs.length === 0, errs.slice(0, 3).join(' | '));
   return r;
 }
 
 
-// Видно ли текст песни на сцене: не уехал ли он за края и близко ли к центру.
-// Ровно это и ломалось — отступы в долях окна на сцене, которая ниже окна.
+// Whether the lyrics are visible on stage: have they run off the edges, are they near the centre.
+// That is exactly what broke — paddings in fractions of the window on a stage shorter than it.
 async function stageText(page, name, sel){
   const r = await page.evaluate((sel) => {
     const stage = document.querySelector(sel.stage).getBoundingClientRect();
@@ -90,10 +90,10 @@ async function stageText(page, name, sel){
             h: stage.height,
             first: seen.length ? seen[0].textContent.trim().slice(0, 28) : ''};
   }, sel);
-  ok(`${name}: текст песни видно на сцене`, r.seen >= 2,
-     `видно ${r.seen} из ${r.total}, сцена ${r.h.toFixed(0)}px`);
-  ok(`${name}: строка стоит близко к центру сцены`, r.nearest < r.h * 0.3,
-     `до центра ${r.nearest.toFixed(0)}px при высоте ${r.h.toFixed(0)}px`);
+  ok(`${name}: the lyrics are visible on stage`, r.seen >= 2,
+     `visible ${r.seen} of ${r.total}, stage ${r.h.toFixed(0)}px`);
+  ok(`${name}: the line sits close to the centre of the stage`, r.nearest < r.h * 0.3,
+     `${r.nearest.toFixed(0)}px from the centre with a height of ${r.h.toFixed(0)}px`);
   return r;
 }
 
@@ -104,18 +104,18 @@ const browser = await puppeteer.launch({
 
 try {
   /* ===================== 1. Студия ===================== */
-  console.log('=== студия: как она открывается ===');
+  console.log('=== the studio: how it opens ===');
   let page = await browser.newPage();
   await page.setViewport({width: 1280, height: 800});
   const errs = [];
   page.on('pageerror', e => errs.push(String(e)));
   page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
-  page.on('requestfailed', r => errs.push('не загрузилось: ' + r.url()));
+  page.on('requestfailed', r => errs.push('did not load: ' + r.url()));
 
   await page.goto(API + '/', {waitUntil: 'networkidle0'});
   await sleep(700);
-  if (SHOTS) await page.screenshot({path: path.join(shotDir, '1-список.png')});
-  await firstScreen(page, 'список песен', errs);
+  if (SHOTS) await page.screenshot({path: path.join(shotDir, '1-list.png')});
+  await firstScreen(page, 'song list', errs);
 
   const list = await page.evaluate(() => ({
     screen: [...document.querySelectorAll('.screen')].filter(s => !s.classList.contains('hide'))
@@ -123,30 +123,30 @@ try {
     cards: document.querySelectorAll('.card').length,
     addVisible: !!document.getElementById('btnAdd')?.offsetParent,
   }));
-  ok('открыт ровно один экран', list.screen.length === 1, list.screen.join(', '));
-  ok('это список песен', list.screen[0] === 'scrList', list.screen[0]);
-  ok('кнопка «Добавить песню» на виду', list.addVisible);
-  ok('песня в списке есть', list.cards >= 1, 'карточек ' + list.cards);
+  ok('exactly one screen is open', list.screen.length === 1, list.screen.join(', '));
+  ok('it is the list of songs', list.screen[0] === 'scrList', list.screen[0]);
+  ok('the “Add a song” button is in plain sight', list.addVisible);
+  ok('the song is in the list', list.cards >= 1, 'cards ' + list.cards);
 
-  /* ---- экран добавления ---- */
-  console.log('\n=== экран добавления песни ===');
+  /* ---- the add-a-song screen ---- */
+  console.log('\n=== the add-a-song screen ===');
   await page.click('#btnAdd'); await sleep(400);
-  if (SHOTS) await page.screenshot({path: path.join(shotDir, '2-добавление.png')});
-  await firstScreen(page, 'добавление', errs);
+  if (SHOTS) await page.screenshot({path: path.join(shotDir, '2-add.png')});
+  await firstScreen(page, 'add a song', errs);
   const add = await page.evaluate(() => ({
     model: document.getElementById('selModel').selectedOptions[0].textContent,
     note: document.getElementById('modelNote').textContent.trim(),
     noteVisible: !!document.getElementById('modelNote').offsetParent,
   }));
-  ok('у модели видна пометка про загрузку', /уже скачана|скачается/.test(add.model), add.model);
-  ok('подсказка под выбором показана', add.noteVisible && add.note.length > 10, add.note.slice(0, 50));
+  ok('the model shows a note about downloading', /уже скачана|скачается/.test(add.model), add.model);
+  ok('the hint under the picker is shown', add.noteVisible && add.note.length > 10, add.note.slice(0, 50));
 
-  /* ---- редактор ---- */
-  console.log('\n=== редактор: главный экран работы ===');
+  /* ---- the editor ---- */
+  console.log('\n=== the editor: the main working screen ===');
   await page.click('#btnBackNew'); await sleep(400);
   await page.click('.card'); await sleep(2500);
-  if (SHOTS) await page.screenshot({path: path.join(shotDir, '3-редактор.png')});
-  await firstScreen(page, 'редактор', errs);
+  if (SHOTS) await page.screenshot({path: path.join(shotDir, '3-editor.png')});
+  await firstScreen(page, 'editor', errs);
 
   const ed = await page.evaluate(() => {
     const vis = s => { const e = document.querySelector(s);
@@ -169,24 +169,24 @@ try {
       title: document.getElementById('edTitle').textContent.trim(),
     };
   });
-  ok('текст песни на сцене', ed.stage >= 3, ed.stage + ' строк');
-  ok('название песни в шапке', ed.title.length > 0, ed.title);
-  ok('блоки на дорожке', ed.blocks === ed.stage, `${ed.blocks} против ${ed.stage}`);
-  ok('дорожка видна', ed.timeline && ed.waveShown);
-  ok('волна голоса действительно нарисована', ed.waveDrawn);
-  ok('панель «Проверить» видна', ed.side);
-  ok('подсказка про порядок работы видна', ed.howto);
-  ok('строка читается: кегль не меньше 18px', ed.lineSize >= 18, ed.lineSize + 'px');
-  ok('состояние сохранения видно сразу', ed.savedShown > 0.5 && ed.saved.length > 0,
-     `«${ed.saved}», прозрачность ${ed.savedShown}`);
-  ok('до выбора строки ряда слов нет', ed.words === 0, ed.words + ' кусочков');
-  await stageText(page, 'редактор', {stage: '.stage', line: '#scroll .ln'});
+  ok('the lyrics are on stage', ed.stage >= 3, ed.stage + ' lines');
+  ok('the song title is in the header', ed.title.length > 0, ed.title);
+  ok('there are blocks on the timeline', ed.blocks === ed.stage, `${ed.blocks} against ${ed.stage}`);
+  ok('the timeline is visible', ed.timeline && ed.waveShown);
+  ok('the voice waveform is actually drawn', ed.waveDrawn);
+  ok('the “Check” panel is visible', ed.side);
+  ok('the hint about the order of work is visible', ed.howto);
+  ok('the line is readable: at least 18px', ed.lineSize >= 18, ed.lineSize + 'px');
+  ok('the save state is visible right away', ed.savedShown > 0.5 && ed.saved.length > 0,
+     `“${ed.saved}”, opacity ${ed.savedShown}`);
+  ok('before a line is picked there is no word row', ed.words === 0, ed.words + ' chips');
+  await stageText(page, 'editor', {stage: '.stage', line: '#scroll .ln'});
 
-  /* ---- выбор строки: появляется ряд слов ---- */
-  console.log('\n=== выбор строки и ряд слов ===');
+  /* ---- picking a line: the word row shows up ---- */
+  console.log('\n=== picking a line and the word row ===');
   await page.evaluate(() => document.querySelectorAll('#scroll .ln')[2].click());
   await sleep(600);
-  if (SHOTS) await page.screenshot({path: path.join(shotDir, '4-слова.png')});
+  if (SHOTS) await page.screenshot({path: path.join(shotDir, '4-words.png')});
   const wr = await page.evaluate(() => {
     const chips = [...document.querySelectorAll('.wrd')];
     const wrap = document.getElementById('tlwrap').getBoundingClientRect();
@@ -204,15 +204,15 @@ try {
       note: document.getElementById('selNote').textContent.trim(),
     };
   });
-  ok('слова выбранной строки показаны', wr.n >= 2, wr.n + ' слов');
-  ok('ряд слов внутри дорожки, а не за её краями', wr.inside);
-  ok('ряд не налезает на блоки строк', !wr.overlapBlocks);
-  ok('слова идут слева направо', wr.ordered);
-  ok('кусочки видимого размера', wr.readable);
-  ok('подпись показывает выбранную строку', /строка \d/.test(wr.note), wr.note);
+  ok('the words of the selected line are shown', wr.n >= 2, wr.n + ' words');
+  ok('the word row is inside the timeline, not past its edges', wr.inside);
+  ok('the row does not overlap the line blocks', !wr.overlapBlocks);
+  ok('the words go left to right', wr.ordered);
+  ok('the chips are of a visible size', wr.readable);
+  ok('the caption shows the selected line', /строка \d/.test(wr.note), wr.note);
 
-  /* ---- звук действительно заводится ---- */
-  console.log('\n=== звук ===');
+  /* ---- the sound really starts ---- */
+  console.log('\n=== the sound ===');
   await page.click('#btnPlay'); await sleep(1200);
   const snd = await page.evaluate(() => {
     const t = document.getElementById('tCur')?.textContent || '';
@@ -220,27 +220,27 @@ try {
   });
   await sleep(1200);
   const snd2 = await page.evaluate(() => (document.getElementById('tCur')||{}).textContent || '');
-  ok('время идёт, песня играет', snd.t !== snd2, `${snd.t} → ${snd2}`);
+  ok('time runs, the song plays', snd.t !== snd2, `${snd.t} → ${snd2}`);
   await page.click('#btnPlay'); await sleep(300);
 
-  /* ---- узкое окно: ноутбук, а не монитор ---- */
-  console.log('\n=== узкое окно 1024×640 ===');
+  /* ---- a narrow window: a laptop, not a monitor ---- */
+  console.log('\n=== a narrow window, 1024×640 ===');
   await page.setViewport({width: 1024, height: 640});
   await sleep(700);
-  if (SHOTS) await page.screenshot({path: path.join(shotDir, '5-узкое.png')});
-  await firstScreen(page, 'узкое окно', errs);
+  if (SHOTS) await page.screenshot({path: path.join(shotDir, '5-narrow.png')});
+  await firstScreen(page, 'narrow window', errs);
   const narrow = await page.evaluate(() => {
     const btns = [...document.querySelectorAll('.tlhead button')];
     return { hidden: btns.filter(b => b.getBoundingClientRect().width < 4).length,
              tl: document.querySelector('.timeline').getBoundingClientRect().height };
   });
-  ok('кнопки дорожки не схлопнулись', narrow.hidden === 0, narrow.hidden + ' схлопнутых');
-  ok('дорожка не съелась', narrow.tl > 80, narrow.tl.toFixed(0) + 'px');
+  ok('the timeline buttons did not collapse', narrow.hidden === 0, narrow.hidden + ' collapsed');
+  ok('the timeline was not eaten', narrow.tl > 80, narrow.tl.toFixed(0) + 'px');
 
   await page.close();
 
   /* ===================== 2. Отдельная страница ===================== */
-  console.log('\n=== отдельная HTML-страница: как её увидит человек ===');
+  console.log('\n=== the standalone HTML page: what a person will see ===');
   page = await browser.newPage();
   await page.setViewport({width: 1280, height: 800});
   const errs2 = [];
@@ -248,8 +248,8 @@ try {
   page.on('console', m => { if (m.type() === 'error') errs2.push(m.text()); });
   await page.goto('file://' + PAGE, {waitUntil: 'load'});
   await sleep(1500);
-  if (SHOTS) await page.screenshot({path: path.join(shotDir, '6-страница.png')});
-  await firstScreen(page, 'страница', errs2);
+  if (SHOTS) await page.screenshot({path: path.join(shotDir, '6-page.png')});
+  await firstScreen(page, 'page', errs2);
 
   const pl = await page.evaluate(() => {
     const vis = id => { const e = document.getElementById(id);
@@ -267,20 +267,20 @@ try {
       title: document.querySelector('.meta h1').textContent.trim(),
     };
   });
-  ok('текст песни на месте', pl.lines >= 3, pl.lines + ' строк');
-  ok('название в шапке', pl.title.length > 0, pl.title);
-  ok('кнопка воспроизведения видна', pl.playShown);
-  ok('крупный кегль сцены', pl.size >= 24, pl.size + 'px');
-  ok('панель правки закрыта, пока её не позвали', !pl.editorOpen && !pl.editorShown);
-  ok('подсказки по тапам не видно', !pl.tapRow);
-  ok('кнопки «не эту» не видно', !pl.unpin);
-  ok('всплывающая подпись не висит на экране', pl.toast < 0.1, 'прозрачность ' + pl.toast);
-  await stageText(page, 'страница', {stage: '.stage', line: '#scroll .ln'});
+  ok('the lyrics are in place', pl.lines >= 3, pl.lines + ' lines');
+  ok('the title is in the header', pl.title.length > 0, pl.title);
+  ok('the play button is visible', pl.playShown);
+  ok('the stage type is large', pl.size >= 24, pl.size + 'px');
+  ok('the editing panel stays closed until it is called', !pl.editorOpen && !pl.editorShown);
+  ok('the tapping hint is not showing', !pl.tapRow);
+  ok('the “not this one” button is not showing', !pl.unpin);
+  ok('no tooltip is hanging on the screen', pl.toast < 0.1, 'opacity ' + pl.toast);
+  await stageText(page, 'page', {stage: '.stage', line: '#scroll .ln'});
 
-  console.log('\n--- открыли правку ---');
+  console.log('\n--- opened the editing panel ---');
   await page.click('#btnEdit'); await sleep(500);
-  if (SHOTS) await page.screenshot({path: path.join(shotDir, '7-правка.png')});
-  await firstScreen(page, 'страница с правкой', errs2);
+  if (SHOTS) await page.screenshot({path: path.join(shotDir, '7-editing.png')});
+  await firstScreen(page, 'page with editing', errs2);
   const ep = await page.evaluate(() => {
     const rows = [...document.querySelectorAll('.editor .row')].filter(r => r.offsetParent);
     const btns = [...document.querySelectorAll('.editor button')].filter(b => b.offsetParent);
@@ -290,15 +290,15 @@ try {
       save: (document.getElementById('btnSavePage')||{}).textContent,
       tgt: document.getElementById('tgtName').textContent.trim() };
   });
-  ok('панель правки открылась', ep.rows >= 3, ep.rows + ' рядов');
-  ok('подсказка по тапам по-прежнему спрятана', !ep.tapRow);
-  ok('главное действие подписано', /Начало строки/.test(ep.here), ep.here);
-  ok('кнопка сохранения без ложной тревоги',
+  ok('the editing panel opened', ep.rows >= 3, ep.rows + ' rows');
+  ok('the tapping hint is still hidden', !ep.tapRow);
+  ok('the main action is labelled', /Начало строки/.test(ep.here), ep.here);
+  ok('the save button raises no false alarm',
      !/есть несохранённые/.test(ep.save), ep.save);
-  ok('видно, какую строку правим', ep.tgt !== '—' && ep.tgt.length > 2, ep.tgt);
-  await stageText(page, 'страница с правкой', {stage: '.stage', line: '#scroll .ln'});
+  ok('it is clear which line is being edited', ep.tgt !== '—' && ep.tgt.length > 2, ep.tgt);
+  await stageText(page, 'page with editing', {stage: '.stage', line: '#scroll .ln'});
 
-  console.log('\n--- открыли второй раз: ничего не должно всплывать ---');
+  console.log('\n--- opened a second time: nothing should pop up ---');
   await page.reload({waitUntil: 'load'});
   await sleep(1600);
   const again = await page.evaluate(() => ({
@@ -307,32 +307,32 @@ try {
     stored: !!Object.keys(localStorage).find(k => k.startsWith('kar')),
     save: (document.getElementById('btnSavePage')||{}).textContent || '',
   }));
-  ok('страница не сообщает о правках, которых не было', again.toast < 0.1,
-     `«${again.text}», прозрачность ${again.toast}`);
-  ok('и не объявляет себя несохранённой', !/есть несохранённые/.test(again.save), again.save);
-  await stageText(page, 'второе открытие', {stage: '.stage', line: '#scroll .ln'});
+  ok('the page does not report edits that never happened', again.toast < 0.1,
+     `“${again.text}”, opacity ${again.toast}`);
+  ok('and does not declare itself unsaved', !/есть несохранённые/.test(again.save), again.save);
+  await stageText(page, 'second opening', {stage: '.stage', line: '#scroll .ln'});
 
-  console.log('\n--- телефон 390×844 ---');
+  console.log('\n--- a phone, 390×844 ---');
   await page.setViewport({width: 390, height: 844, isMobile: true});
   await sleep(700);
-  if (SHOTS) await page.screenshot({path: path.join(shotDir, '8-телефон.png')});
-  await firstScreen(page, 'телефон', errs2);
+  if (SHOTS) await page.screenshot({path: path.join(shotDir, '8-phone.png')});
+  await firstScreen(page, 'phone', errs2);
   const mob = await page.evaluate(() => {
     const cur = document.querySelector('.ln');
     return { size: cur ? parseFloat(getComputedStyle(cur).fontSize) : 0,
              play: !!document.getElementById('btnPlay').offsetParent,
              footH: document.querySelector('footer').getBoundingClientRect().height };
   });
-  ok('текст остался читаемым', mob.size >= 20, mob.size + 'px');
-  ok('кнопка воспроизведения доступна', mob.play);
-  ok('низ не занял весь экран', mob.footH < 844 * 0.75, mob.footH.toFixed(0) + 'px');
+  ok('the text stayed readable', mob.size >= 20, mob.size + 'px');
+  ok('the play button is reachable', mob.play);
+  ok('the bottom did not take the whole screen', mob.footH < 844 * 0.75, mob.footH.toFixed(0) + 'px');
   const cover = await page.evaluate(() => {
     const t = document.getElementById('toast').getBoundingClientRect();
     const p = document.getElementById('btnPlay').getBoundingClientRect();
     return !(t.bottom < p.top || t.top > p.bottom || t.right < p.left || t.left > p.right);
   });
-  ok('подпись не накрывает кнопку пуска', !cover);
-  await stageText(page, 'телефон', {stage: '.stage', line: '#scroll .ln'});
+  ok('the caption does not cover the play button', !cover);
+  await stageText(page, 'phone', {stage: '.stage', line: '#scroll .ln'});
 
   await page.close();
 } finally {

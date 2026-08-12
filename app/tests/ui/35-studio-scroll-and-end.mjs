@@ -1,4 +1,4 @@
-// Листание текста руками и погасшая подсветка после последней строки.
+// Scrolling the text by hand, and the highlight going out after the last line.
 import puppeteer from 'puppeteer';
 const API = process.env.KARAOKE_API;
 const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disable-dev-shm-usage']});
@@ -17,7 +17,7 @@ const cur = () => p.evaluate(() => {
   return c ? all.indexOf(c) : -1;
 });
 
-console.log('--- листаем колесом ---');
+console.log('--- scrolling with the wheel ---');
 const was = await shift();
 const box = await p.evaluate(() => {
   const r = document.querySelector('.stage').getBoundingClientRect();
@@ -27,12 +27,12 @@ await p.mouse.move(box.x, box.y);
 await p.mouse.wheel({deltaY: 300});
 await new Promise(r=>setTimeout(r,400));
 const after = await shift();
-ok('текст поехал под колесом', after !== was, `${was} → ${after}`);
+ok('the text moved under the wheel', after !== was, `${was} → ${after}`);
 await p.mouse.wheel({deltaY: -300});
 await new Promise(r=>setTimeout(r,400));
-ok('и обратно', (await shift()) !== after);
+ok('and back', (await shift()) !== after);
 
-console.log('\n--- Home и End ---');
+console.log('\n--- Home and End ---');
 await p.keyboard.press('End');
 await new Promise(r=>setTimeout(r,900));
 const atEnd = await p.evaluate(() => {
@@ -40,8 +40,8 @@ const atEnd = await p.evaluate(() => {
   const s = document.querySelector('#scroll .ln.sel');
   return {i: s ? all.indexOf(s) : -1, n: all.length};
 });
-ok('End выбирает последнюю строку', atEnd.i === atEnd.n - 1,
-   `${atEnd.i+1} из ${atEnd.n}`);
+ok('End picks the last line', atEnd.i === atEnd.n - 1,
+   `${atEnd.i+1} of ${atEnd.n}`);
 await p.keyboard.press('Home');
 await new Promise(r=>setTimeout(r,900));
 const atHome = await p.evaluate(() => {
@@ -49,9 +49,9 @@ const atHome = await p.evaluate(() => {
   const s = document.querySelector('#scroll .ln.sel');
   return s ? all.indexOf(s) : -1;
 });
-ok('Home возвращает к первой', atHome === 0, String(atHome + 1));
+ok('Home goes back to the first', atHome === 0, String(atHome + 1));
 
-console.log('\n--- после последней строки ничего не горит ---');
+console.log('\n--- past the last line nothing stays lit ---');
 const last = await p.evaluate(async () => {
   const r = await fetch('/api/state');
   return null;
@@ -59,16 +59,16 @@ const last = await p.evaluate(async () => {
 const PID = (await (await fetch(API+'/api/state')).json()).projects[0].id;
 const lines = (await (await fetch(API+'/api/project/'+encodeURIComponent(PID))).json()).lines;
 const lastEnd = lines[lines.length-1].end;
-// прыгаем на середину песни — там подсветка обязана быть
+// jump to the middle of the song — the highlight must be there
 await p.evaluate(t => {
   const w = document.getElementById('tlwrap').getBoundingClientRect();
   return null;
 }, 0);
 await p.evaluate(() => document.querySelectorAll('#scroll .ln')[1].click());
 await new Promise(r=>setTimeout(r,600));
-ok('на середине песни строка подсвечена', (await cur()) >= 0, String(await cur()));
+ok('mid-song a line is highlighted', (await cur()) >= 0, String(await cur()));
 
-// а теперь честно доматываем за конец последней строки — стрелкой, как человек
+// and now honestly wind past the end of the last line — with the arrow, like a person
 await p.evaluate(() => document.getElementById('scrEdit').focus?.());
 for (let i = 0; i < 40; i++){
   const t = await p.evaluate(() => document.getElementById('tCur').textContent);
@@ -80,13 +80,13 @@ for (let i = 0; i < 40; i++){
 await new Promise(r=>setTimeout(r,600));
 const t2 = await p.evaluate(() => document.getElementById('tCur').textContent);
 const sec2 = t2.split(':').reduce((m, x) => m * 60 + parseFloat(x), 0);
-ok('домотали за последнюю строку', sec2 > lastEnd,
-   `${t2} при конце текста ${lastEnd.toFixed(2)} с`);
+ok('we wound past the last line', sec2 > lastEnd,
+   `${t2} with the lyrics ending at ${lastEnd.toFixed(2)} s`);
 const nothing = await cur();
-ok('подсветка снята — ничего не «обвисает»', nothing < 0,
-   nothing >= 0 ? `горит строка ${nothing+1}` : '');
+ok('the highlight is gone — nothing is left hanging', nothing < 0,
+   nothing >= 0 ? `line ${nothing+1} is lit` : '');
 
-ok('ошибок JS нет', errs.length===0, errs.slice(0,2).join(' | '));
+ok('no JS errors', errs.length===0, errs.slice(0,2).join(' | '));
 await b.close();
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

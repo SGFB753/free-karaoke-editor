@@ -24,62 +24,62 @@ await sleep(200);
 let fail = 0;
 const ok = (name, cond, extra='') => { console.log((cond?'  ✓ ':'  ✗ ')+name+(extra?' — '+extra:'')); if(!cond) fail++; };
 
-console.log('JS-ошибки:', w.__errs.length ? w.__errs : 'нет');
-ok('ошибок при загрузке нет', w.__errs.length===0);
+console.log('JS errors:', w.__errs.length ? w.__errs : 'none');
+ok('no errors while loading', w.__errs.length===0);
 
 const lns = [...doc.querySelectorAll('.ln')];
-ok('отрисовано 6 строк', lns.length===6, 'получено '+lns.length);
-ok('секции показаны', doc.querySelectorAll('.sect').length===2);
-ok('заголовок из мета-полей', $('mTitle').textContent==='Тестовая песня', $('mTitle').textContent);
-ok('исполнитель', $('mArtist').textContent==='Проверка Связи');
-ok('одна дорожка => регулятор голоса скрыт', $('grpVocal').style.display==='none');
-ok('длительность в футере', $('tDur').textContent==='0:26', $('tDur').textContent);
+ok('6 lines drawn', lns.length===6, 'got '+lns.length);
+ok('the sections are shown', doc.querySelectorAll('.sect').length===2);
+ok('the title comes from the meta fields', $('mTitle').textContent==='Тестовая песня', $('mTitle').textContent);
+ok('the artist', $('mArtist').textContent==='Проверка Связи');
+ok('one track => the voice slider is hidden', $('grpVocal').style.display==='none');
+ok('the length in the footer', $('tDur').textContent==='0:26', $('tDur').textContent);
 
 const master = w.__inst[0];
 const cur = () => lns.findIndex(e=>e.classList.contains('cur'));
-console.log('--- подсветка по времени (ожидаемые старты 2/5/8/11/16/19) ---');
+console.log('--- highlight by time (expected starts 2/5/8/11/16/19) ---');
 for (const [t, want] of [[0.5,-1],[2.5,0],[5.5,1],[8.5,2],[12,3],[17,4],[21,5]]){
   master.currentTime = t; await sleep(70);
-  ok(`t=${t}с → строка ${want<0?'нет':want+1}`, cur()===want, 'подсвечена '+(cur()<0?'нет':cur()+1));
+  ok(`t=${t}s → line ${want<0?'none':want+1}`, cur()===want, 'lit '+(cur()<0?'none':cur()+1));
 }
 
-// прогресс заливки слова внутри строки
+// how far a word is filled inside a line
 master.currentTime = 5.2; await sleep(70);
 const hls = [...lns[1].children].map(s=>s.firstChild);
 const p0 = hls[0].style.width;
 master.currentTime = 6.9; await sleep(70);
 const full = hls.filter(h=>h.style.width==='100%').length;
-ok('слова заливаются по очереди', full>0 && full<hls.length, `спето ${full} из ${hls.length}`);
-ok('первое слово имеет частичную заливку', /%$/.test(p0) && p0!=='100%' && p0!=='0%', 'ширина='+p0);
-ok('яркий слой отдельным элементом (без градиента по буквам)',
+ok('the words fill in one after another', full>0 && full<hls.length, `sung ${full} of ${hls.length}`);
+ok('the first word is partly filled', /%$/.test(p0) && p0!=='100%' && p0!=='0%', 'width='+p0);
+ok('the lit layer is a separate element (no per-letter gradient)',
    hls.every(h=>h.className==='hl'));
 
-// сдвиг
+// the offset
 $('rOffset').value = 500; $('rOffset').dispatchEvent(new w.Event('input'));
-ok('сдвиг применился и показан до миллисекунд',
+ok('the offset applied and shows to the millisecond',
    $('vOffset').textContent==='+0.500с', $('vOffset').textContent);
-ok('текущее время тоже с миллисекундами', /^\d+:\d\d\.\d{3}$/.test($('tCur').textContent),
+ok('the current time is in milliseconds too', /^\d+:\d\d\.\d{3}$/.test($('tCur').textContent),
    $('tCur').textContent);
 master.currentTime = 5.2; await sleep(70);
-ok('со сдвигом +0.5с строка 2 ещё не началась', cur()===0, 'строка '+(cur()+1));
+ok('with a +0.5 s offset line 2 has not started', cur()===0, 'line '+(cur()+1));
 $('rOffset').value = 0; $('rOffset').dispatchEvent(new w.Event('input'));
 
-// экспорт LRC
+// LRC export
 let dl=null;
 w.HTMLAnchorElement.prototype.click = function(){ dl=this.download; };
 w.URL.createObjectURL = () => 'blob:x'; w.URL.revokeObjectURL = ()=>{};
-$('btnSaveLrc').click(); ok('кнопка .lrc отдаёт файл', dl==='lyrics.lrc', String(dl));
-$('btnSaveJson').click(); ok('кнопка .json отдаёт файл', dl==='timings.json', String(dl));
+$('btnSaveLrc').click(); ok('the .lrc button hands over a file', dl==='lyrics.lrc', String(dl));
+$('btnSaveJson').click(); ok('the .json button hands over a file', dl==='timings.json', String(dl));
 
-// клик по строке = перемотка
+// a click on a line = a seek
 lns[4].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
-ok('клик по строке перематывает', Math.abs(master.currentTime-(16.14-0.35))<0.4, 't='+master.currentTime.toFixed(2));
+ok('clicking a line seeks', Math.abs(master.currentTime-(16.14-0.35))<0.4, 't='+master.currentTime.toFixed(2));
 
 // play/pause
 $('btnPlay').click(); await sleep(30);
-ok('play запускается', !master.paused && doc.body.classList.contains('playing'));
+ok('play starts', !master.paused && doc.body.classList.contains('playing'));
 $('btnPlay').click(); await sleep(30);
-ok('pause останавливает', master.paused);
+ok('pause stops', master.paused);
 
 console.log(fail ? `\nFAILED: ${fail}` : '\nAll checks passed');
 process.exit(fail?1:0);

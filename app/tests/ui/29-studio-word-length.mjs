@@ -1,5 +1,5 @@
-// Длина слова. Раньше её нельзя было задать в принципе: слово тянулось встык
-// до следующего, и «где оно кончается» вообще не было отдельной величиной.
+// The length of a word. It could not be set at all before: a word stretched to
+// the next one, and “where it ends” was not a separate value in the first place.
 import puppeteer from 'puppeteer';
 const API = process.env.KARAOKE_API;
 const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disable-dev-shm-usage']});
@@ -18,7 +18,7 @@ const line = async i => (await (await fetch(API + '/api/project/' +
 let fail = 0;
 const ok = (n, c, e = '') => { console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c) fail++; };
 
-// Берём строку, у которой слова заметной ширины: на узких ручки не рисуются.
+// Take a line whose words are wide enough: narrow ones get no grips drawn.
 const LINE = await p.evaluate(() => {
   const ls = [...document.querySelectorAll('#scroll .ln')];
   for (let i = 0; i < ls.length; i++){
@@ -30,9 +30,9 @@ const LINE = await p.evaluate(() => {
 });
 await p.evaluate(i => document.querySelectorAll('#scroll .ln')[i].click(), LINE);
 await new Promise(r => setTimeout(r, 500));
-ok('нашлась строка со словами приличной ширины', true, 'строка ' + (LINE+1));
+ok('found a line with words of decent width', true, 'line ' + (LINE+1));
 
-// Свободен ли край блока для захвата: сосед может его накрывать.
+// Is the edge of the block free to grab: a neighbour may be covering it.
 async function freeEdge(side){
   return await p.evaluate((i, side) => {
     const e = document.querySelectorAll('.blk')[i];
@@ -51,7 +51,7 @@ async function pull(spot, dx){
   await new Promise(r => setTimeout(r, 900));
   return await line(LINE);
 }
-// Отодвинуть следующую строку, если она стоит вплотную и мешает взять край.
+// Push the next line away if it sits flush and blocks the edge.
 async function shoveNeighbour(){
   const spot = await p.evaluate((i) => {
     const e = document.querySelectorAll('.blk')[i + 1];
@@ -75,9 +75,9 @@ async function undoAll(){
   await new Promise(r => setTimeout(r, 700));
 }
 
-// Что видит человек, пока тянет: не уехала ли песня, не сменилась ли строка,
-// не прокрутилась ли сцена. Именно это и ломалось: попытка взять слово
-// сначала перематывала дорожку, и сцена уходила на другую строку.
+// What a person sees while dragging: did the song run off, did the line change,
+// did the stage scroll. That is exactly what used to break: grabbing a word
+// first seeked the timeline, and the stage jumped to another line.
 async function view(){
   return await p.evaluate(() => {
     const sel = document.querySelector('#scroll .ln.sel');
@@ -102,7 +102,7 @@ async function drag(j, where, dx){
                                             : r.left + r.width / 2;
     const y = r.top + r.height / 2;
     const hit = document.elementFromPoint(x, y);
-    return {x, y, cls: hit ? hit.className : 'ничего', w: r.width};
+    return {x, y, cls: hit ? hit.className : 'nothing', w: r.width};
   }, j, where);
   await p.mouse.move(spot.x, spot.y);
   await p.mouse.down();
@@ -113,7 +113,7 @@ async function drag(j, where, dx){
 }
 const dur = (l, j) => l.words[j].d;
 
-console.log('\n--- пока тянем слово, ничего не уезжает ---');
+console.log('\n--- while a word is dragged nothing runs away ---');
 const v0 = await view();
 {
   const spot = await p.evaluate(() => {
@@ -124,74 +124,74 @@ const v0 = await view();
   await p.mouse.move(spot.x, spot.y);
   await p.mouse.down();
   const mid = await view();
-  ok('строка осталась выбранной той же', mid.selected === v0.selected,
+  ok('the same line stayed selected', mid.selected === v0.selected,
      `${v0.selected + 1} → ${mid.selected + 1}`);
-  ok('песня не перемоталась под курсор', mid.time === v0.time,
+  ok('the song did not seek under the cursor', mid.time === v0.time,
      `${v0.time} → ${mid.time}`);
-  ok('сцена не уехала на другую строку', mid.scroll === v0.scroll);
-  ok('ряд слов на месте', mid.chips === v0.chips, `${v0.chips} → ${mid.chips}`);
+  ok('the stage did not jump to another line', mid.scroll === v0.scroll);
+  ok('the word row is in place', mid.chips === v0.chips, `${v0.chips} → ${mid.chips}`);
   await p.mouse.move(spot.x + 40, spot.y, {steps: 6});
   const during = await view();
-  ok('и во время тяги строка не меняется', during.selected === v0.selected,
+  ok('and during the drag the line does not change', during.selected === v0.selected,
      `${during.selected + 1}`);
-  ok('и сцена стоит', during.scroll === v0.scroll);
+  ok('and the stage stands still', during.scroll === v0.scroll);
   await p.mouse.up();
   await new Promise(r => setTimeout(r, 900));
   const after = await view();
-  ok('после отпускания строка та же', after.selected === v0.selected,
+  ok('after release it is the same line', after.selected === v0.selected,
      `${after.selected + 1}`);
 }
 await undoAll();
 
-console.log('\n--- тянем ПРАВЫЙ край слова: меняется его длина ---');
+console.log("\n--- dragging the word's RIGHT edge: its length changes ---");
 let r = await drag(0, 'right', 60);
-ok('под курсором — ручка конца слова', /wgrip/.test(r.cls) && /right/.test(r.cls), r.cls);
-ok('слово стало длиннее', dur(r.after,0) > dur(r.before,0) + 0.05,
-   `${dur(r.before,0).toFixed(3)} → ${dur(r.after,0).toFixed(3)} с`);
-ok('начало слова не сдвинулось',
+ok('under the cursor — the word-end grip', /wgrip/.test(r.cls) && /right/.test(r.cls), r.cls);
+ok('the word got longer', dur(r.after,0) > dur(r.before,0) + 0.05,
+   `${dur(r.before,0).toFixed(3)} → ${dur(r.after,0).toFixed(3)} s`);
+ok('the word start did not move',
    Math.abs(r.after.words[0].t - r.before.words[0].t) < 1e-6);
-// Удлинили слово так, что оно дошло до соседа — сосед уступает, иначе
-// удлинять было бы некуда. Но уступает ровно и не исчезает.
+// The word was stretched until it reached its neighbour — the neighbour gives
+// way, or there would be nowhere to stretch. But it gives way exactly, and stays.
 const grew = r.after.words[0].t + dur(r.after,0);
-ok('сосед подвинут ровно к новому концу, а не куда попало',
+ok('the neighbour moved exactly to the new end, not somewhere random',
    r.after.words[1].t >= r.before.words[1].t - 1e-6 &&
    Math.abs(r.after.words[1].t - Math.max(r.before.words[1].t, grew)) < 1e-6,
    `${r.before.words[1].t.toFixed(3)} → ${r.after.words[1].t.toFixed(3)}`);
-ok('сосед не схлопнулся', dur(r.after,1) >= 0.05, dur(r.after,1).toFixed(3) + ' с');
+ok('the neighbour did not collapse', dur(r.after,1) >= 0.05, dur(r.after,1).toFixed(3) + ' s');
 
-await undoAll();   // возвращаемся к исходной раскладке
-console.log('\n--- и укорачиваем: между словами разрешена пауза ---');
+await undoAll();   // back to the original layout
+console.log('\n--- and shortening: a gap between words is allowed ---');
 r = await drag(0, 'right', -80);
-ok('слово стало короче', dur(r.after,0) < dur(r.before,0) - 0.05,
-   `${dur(r.before,0).toFixed(3)} → ${dur(r.after,0).toFixed(3)} с`);
+ok('the word got shorter', dur(r.after,0) < dur(r.before,0) - 0.05,
+   `${dur(r.before,0).toFixed(3)} → ${dur(r.after,0).toFixed(3)} s`);
 const gap = r.after.words[1].t - (r.after.words[0].t + dur(r.after,0));
-ok('после него появился промежуток, а не растяжка', gap > 0.02, `пауза ${gap.toFixed(3)} с`);
-ok('длина осталась положительной', dur(r.after,0) > 0.05, dur(r.after,0).toFixed(3));
+ok('a gap appeared after it, not a stretch', gap > 0.02, `gap ${gap.toFixed(3)} s`);
+ok('the length stayed positive', dur(r.after,0) > 0.05, dur(r.after,0).toFixed(3));
 
-await undoAll();   // возвращаемся к исходной раскладке
-console.log('\n--- тянем ЛЕВЫЙ край: начало едет, конец стоит ---');
+await undoAll();   // back to the original layout
+console.log('\n--- dragging the LEFT edge: the start moves, the end stays ---');
 r = await drag(1, 'left', -40);
-ok('под курсором — ручка начала слова', /wgrip/.test(r.cls) && /left/.test(r.cls), r.cls);
+ok('under the cursor — the word-start grip', /wgrip/.test(r.cls) && /left/.test(r.cls), r.cls);
 const endBefore = r.before.words[1].t + dur(r.before,1);
 const endAfter  = r.after.words[1].t + dur(r.after,1);
-ok('начало сдвинулось', Math.abs(r.after.words[1].t - r.before.words[1].t) > 0.02,
+ok('the start moved', Math.abs(r.after.words[1].t - r.before.words[1].t) > 0.02,
    `${r.before.words[1].t.toFixed(3)} → ${r.after.words[1].t.toFixed(3)}`);
-ok('конец остался на месте', Math.abs(endAfter - endBefore) < 0.005,
+ok('the end stayed put', Math.abs(endAfter - endBefore) < 0.005,
    `${endBefore.toFixed(3)} → ${endAfter.toFixed(3)}`);
-ok('длина изменилась соответственно', Math.abs(dur(r.after,1) - dur(r.before,1)) > 0.02,
-   `${dur(r.before,1).toFixed(3)} → ${dur(r.after,1).toFixed(3)} с`);
+ok('the length changed accordingly', Math.abs(dur(r.after,1) - dur(r.before,1)) > 0.02,
+   `${dur(r.before,1).toFixed(3)} → ${dur(r.after,1).toFixed(3)} s`);
 
-await undoAll();   // возвращаемся к исходной раскладке
-console.log('\n--- за середину: слово едет целиком, длина та же ---');
+await undoAll();   // back to the original layout
+console.log('\n--- by the middle: the word moves whole, same length ---');
 r = await drag(1, 'mid', 30);
-ok('под курсором — само слово', /wrd/.test(r.cls) && !/wgrip/.test(r.cls), r.cls);
-ok('слово сдвинулось', Math.abs(r.after.words[1].t - r.before.words[1].t) > 0.02,
+ok('under the cursor — the word itself', /wrd/.test(r.cls) && !/wgrip/.test(r.cls), r.cls);
+ok('the word moved', Math.abs(r.after.words[1].t - r.before.words[1].t) > 0.02,
    `${r.before.words[1].t.toFixed(3)} → ${r.after.words[1].t.toFixed(3)}`);
-ok('длина не поменялась', Math.abs(dur(r.after,1) - dur(r.before,1)) < 0.005,
+ok('the length did not change', Math.abs(dur(r.after,1) - dur(r.before,1)) < 0.005,
    `${dur(r.before,1).toFixed(3)} → ${dur(r.after,1).toFixed(3)}`);
 
-await undoAll();   // возвращаемся к исходной раскладке
-console.log('\n--- за середину тоже не перематывает ---');
+await undoAll();   // back to the original layout
+console.log('\n--- the middle does not seek either ---');
 {
   const v = await view();
   const spot = await p.evaluate(() => {
@@ -204,32 +204,32 @@ console.log('\n--- за середину тоже не перематывает 
   const mid = await view();
   await p.mouse.up();
   await new Promise(r => setTimeout(r, 400));
-  ok('время не прыгнуло', mid.time === v.time, `${v.time} → ${mid.time}`);
-  ok('выбранная строка не сменилась', mid.selected === v.selected);
+  ok('the time did not jump', mid.time === v.time, `${v.time} → ${mid.time}`);
+  ok('the selected line did not change', mid.selected === v.selected);
 }
 await undoAll();
 
-console.log('\n--- слово не залезает на соседей ---');
+console.log('\n--- a word does not climb onto its neighbours ---');
 r = await drag(0, 'right', 900);
-ok('конец упёрся в начало следующего',
+ok('the end stopped at the start of the next one',
    r.after.words[0].t + dur(r.after,0) <= r.after.words[1].t + 1e-6,
    `${(r.after.words[0].t+dur(r.after,0)).toFixed(3)} ≤ ${r.after.words[1].t.toFixed(3)}`);
-ok('порядок слов не нарушен',
+ok('the word order is intact',
    r.after.words.every((w,k)=> k===0 || w.t >= r.after.words[k-1].t - 1e-9));
 
-await undoAll();   // возвращаемся к исходной раскладке
-console.log('\n--- последнее слово может растянуть строку ---');
+await undoAll();   // back to the original layout
+console.log('\n--- the last word may stretch the line ---');
 const last = (await line(LINE)).words.length - 1;
 r = await drag(last, 'right', 120);
-ok('длина последнего слова выросла', dur(r.after,last) > dur(r.before,last) + 0.05,
-   `${dur(r.before,last).toFixed(3)} → ${dur(r.after,last).toFixed(3)} с`);
-ok('строка растянулась следом, а не обрезала слово',
+ok('the last word got longer', dur(r.after,last) > dur(r.before,last) + 0.05,
+   `${dur(r.before,last).toFixed(3)} → ${dur(r.after,last).toFixed(3)} s`);
+ok('the line stretched after it instead of cutting the word',
    r.after.end >= r.after.words[last].t + dur(r.after,last) - 1e-6,
-   `конец строки ${r.after.end.toFixed(3)}, конец слова ${(r.after.words[last].t+dur(r.after,last)).toFixed(3)}`);
+   `line end ${r.after.end.toFixed(3)}, word end ${(r.after.words[last].t+dur(r.after,last)).toFixed(3)}`);
 
-console.log('\n--- край строки трогает только крайнее слово ---');
-// Тянешь строку за край — внутренние слова обязаны остаться ровно там же,
-// иначе выверенная разметка строки портится без всякой нужды.
+console.log('\n--- a line edge touches only the outermost word ---');
+// Drag a line by its edge and the words inside must stay exactly where they
+// were, or a carefully tuned line is spoiled for no reason at all.
 await undoAll();
 {
   const spot = await p.evaluate(() => {
@@ -243,28 +243,28 @@ await undoAll();
   await p.mouse.up();
   await new Promise(r => setTimeout(r, 900));
   const tuned = await line(LINE);
-  ok('рисунок слов сделан неровным',
+  ok('the word pattern was made uneven',
      Math.max(...tuned.words.map(x=>x.d)) / Math.min(...tuned.words.map(x=>x.d)) > 1.4,
      tuned.words.map(x=>x.d.toFixed(2)).join(' '));
 
-  // Правый край блока может быть накрыт соседом — тогда двигаем сначала соседа.
+  // The right edge of a block may be covered by a neighbour — move that one first.
   let grip = await freeEdge('right');
   if (!grip){
     await shoveNeighbour();
     grip = await freeEdge('right');
   }
-  ok('правый край строки доступен курсору', !!grip, grip ? '' : 'сосед вплотную');
+  ok('the right edge of the line is reachable', !!grip, grip ? '' : 'the neighbour is flush');
   if (grip){
     const wide = await pull(grip, 55);
     const n = wide.words.length - 1;
-    ok('строка стала длиннее', wide.end > tuned.end + 0.05,
+    ok('the line got longer', wide.end > tuned.end + 0.05,
        `${tuned.end.toFixed(3)} → ${wide.end.toFixed(3)}`);
-    ok('начало строки не тронуто', Math.abs(wide.start - tuned.start) < 1e-6);
-    ok('последнее слово дотянулось до нового конца',
+    ok('the line start is untouched', Math.abs(wide.start - tuned.start) < 1e-6);
+    ok('the last word reached the new end',
        Math.abs((wide.words[n].t + wide.words[n].d) - wide.end) < 0.005 &&
        wide.words[n].d > tuned.words[n].d + 0.05,
-       `${tuned.words[n].d.toFixed(3)} → ${wide.words[n].d.toFixed(3)} с`);
-    ok('все остальные слова стоят там же, до миллисекунды',
+       `${tuned.words[n].d.toFixed(3)} → ${wide.words[n].d.toFixed(3)} s`);
+    ok('every other word is exactly where it was, to the millisecond',
        wide.words.slice(0, n).every((x, i) =>
          Math.abs(x.t - tuned.words[i].t) < 1e-6 &&
          Math.abs(x.d - tuned.words[i].d) < 1e-6),
@@ -274,35 +274,35 @@ await undoAll();
     const g2 = await freeEdge('right');
     if (g2){
       const back = await pull(g2, -35);
-      ok('строка укоротилась', back.end < wide.end - 0.02,
+      ok('the line got shorter', back.end < wide.end - 0.02,
          `${wide.end.toFixed(3)} → ${back.end.toFixed(3)}`);
-      ok('укоротилось именно последнее слово, соседи целы',
+      ok('it is the last word that shrank, the neighbours are intact',
          back.words[n].d < wide.words[n].d - 0.02 &&
          back.words.slice(0, n).every((x, i) =>
            Math.abs(x.t - tuned.words[i].t) < 1e-6),
-         `${wide.words[n].d.toFixed(3)} → ${back.words[n].d.toFixed(3)} с`);
-      ok('и оно не схлопнулось', back.words[n].d >= 0.05, back.words[n].d.toFixed(3));
+         `${wide.words[n].d.toFixed(3)} → ${back.words[n].d.toFixed(3)} s`);
+      ok('and it did not collapse', back.words[n].d >= 0.05, back.words[n].d.toFixed(3));
     }
   }
 }
 
-console.log('\n--- левый край — то же самое с первым словом ---');
+console.log('\n--- the left edge — the same with the first word ---');
 await undoAll();
 {
   const g = await freeEdge('left');
-  ok('левый край доступен курсору', !!g, g ? '' : 'сосед вплотную');
+  ok('the left edge is reachable with the cursor', !!g, g ? '' : 'the neighbour is flush');
   if (g){
     const was = await line(LINE);
     const now2 = await pull(g, -45);
-    ok('строка начинается раньше', now2.start < was.start - 0.02,
+    ok('the line starts earlier', now2.start < was.start - 0.02,
        `${was.start.toFixed(3)} → ${now2.start.toFixed(3)}`);
-    ok('конец строки не тронут', Math.abs(now2.end - was.end) < 1e-6);
-    ok('первое слово встало на новое начало, а его конец остался',
+    ok('the end of the line was not touched', Math.abs(now2.end - was.end) < 1e-6);
+    ok('the first word took the new start while its end stayed',
        Math.abs(now2.words[0].t - now2.start) < 0.005 &&
        Math.abs((now2.words[0].t + now2.words[0].d) -
                 (was.words[0].t + was.words[0].d)) < 0.005,
-       `конец первого слова ${(now2.words[0].t + now2.words[0].d).toFixed(3)}`);
-    ok('остальные слова не сдвинулись ни на миллисекунду',
+       `end of the first word ${(now2.words[0].t + now2.words[0].d).toFixed(3)}`);
+    ok('the other words did not move by a millisecond',
        now2.words.slice(1).every((x, i) =>
          Math.abs(x.t - was.words[i+1].t) < 1e-6 &&
          Math.abs(x.d - was.words[i+1].d) < 1e-6),
@@ -312,16 +312,16 @@ await undoAll();
 }
 await undoAll();
 
-console.log('\n--- отмена возвращает длину ---');
-await drag(0, 'right', 55);              // свежая правка, которую и отменим
+console.log('\n--- undo brings the length back ---');
+await drag(0, 'right', 55);              // a fresh edit, the one we will undo
 const beforeUndo = await line(LINE);
 await p.evaluate(() => document.getElementById('btnUndo').click());
 await new Promise(r => setTimeout(r, 900));
 const undone = await line(LINE);
-ok('длина слова вернулась', Math.abs(dur(undone,0) - dur(beforeUndo,0)) > 0.05,
+ok('the word length came back', Math.abs(dur(undone,0) - dur(beforeUndo,0)) > 0.05,
    `${dur(beforeUndo,0).toFixed(3)} → ${dur(undone,0).toFixed(3)}`);
 
-ok('ошибок JS нет', errs.length === 0, errs.slice(0,2).join(' | '));
+ok('no JS errors', errs.length === 0, errs.slice(0,2).join(' | '));
 await b.close();
 console.log(fail ? '\nFAILED: ' + fail : '\nAll checks passed');
 process.exit(fail ? 1 : 0);

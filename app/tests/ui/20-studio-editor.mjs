@@ -1,4 +1,4 @@
-// Окно студии: список песен, открытие проекта, дорожка времени, правка.
+// The studio window: the song list, opening a project, the timeline, editing.
 const { JSDOM } = await import('jsdom');
 const API = process.env.KARAOKE_API;
 const html = await (await fetch(API + "/")).text();
@@ -10,7 +10,7 @@ const dom = new JSDOM(html, { runScripts:"dangerously", pretendToBeVisual:true,
     w.__errs=[]; w.onerror=m=>w.__errs.push(String(m));
     w.fetch = (...a) => fetch(typeof a[0]==="string" && a[0].startsWith("/")
         ? API + a[0] : a[0], a[1]);
-    // Web Audio в jsdom нет — подменяем управляемой заглушкой
+    // jsdom has no Web Audio — swap in a stub we can steer
     w.__started=[]; w.__now=0;
     class Gain{ constructor(){ this.gain={value:1}; } connect(){} }
     class Src{ constructor(){ this.onended=null; } connect(){}
@@ -37,81 +37,81 @@ await sleep(900);
 
 let fail=0; const ok=(n,c,e='')=>{console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c)fail++;};
 
-console.log('--- список песен ---');
-ok('экран списка показан', !$('scrList').classList.contains('hide'));
+console.log('--- the song list ---');
+ok('the list screen is shown', !$('scrList').classList.contains('hide'));
 const cards = doc.querySelectorAll('.card');
-ok('песня в списке есть', cards.length >= 1, 'карточек '+cards.length);
-ok('название на карточке', /Тестовая/.test(cards[0].textContent), cards[0].querySelector('b').textContent);
+ok('the song is in the list', cards.length >= 1, 'cards '+cards.length);
+ok('the title on the card', /Тестовая/.test(cards[0].textContent), cards[0].querySelector('b').textContent);
 
-console.log('\n--- открываем проект ---');
-// какой именно проект открыли — берём из состояния сервера, а не из догадки:
-// в списке может лежать не одна песня, и сравнивать надо именно с открытой
+console.log('\n--- opening the project ---');
+// which project was opened we take from the server state, not from a guess:
+// the list may hold more than one song, and we must compare with the open one
 const stAll = await (await fetch(API+"/api/state")).json();
 const PID = stAll.projects[0].id;
 cards[0].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(1200);
-ok('открылся редактор', !$('scrEdit').classList.contains('hide'));
-ok('заголовок песни', /Тестовая/.test($('edTitle').textContent), $('edTitle').textContent);
+ok('the editor opened', !$('scrEdit').classList.contains('hide'));
+ok('the song title', /Тестовая/.test($('edTitle').textContent), $('edTitle').textContent);
 const lns = doc.querySelectorAll('#scroll .ln');
-ok('строки отрисованы', lns.length===6, 'строк '+lns.length);
-ok('длительность показана', $('tDur').textContent==='0:26', $('tDur').textContent);
-ok('блоки на дорожке есть', doc.querySelectorAll('.blk').length>0,
-   'блоков '+doc.querySelectorAll('.blk').length);
+ok('the lines were drawn', lns.length===6, 'lines '+lns.length);
+ok('the length is shown', $('tDur').textContent==='0:26', $('tDur').textContent);
+ok('the timeline has blocks', doc.querySelectorAll('.blk').length>0,
+   'blocks '+doc.querySelectorAll('.blk').length);
 
-console.log('\n--- выбор строки ---');
+console.log('\n--- selecting a line ---');
 lns[2].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(200);
-ok('строка выделилась', lns[2].classList.contains('sel'));
-ok('подпись показывает номер и время', /строка 3/.test($('selNote').textContent),
+ok('the line got selected', lns[2].classList.contains('sel'));
+ok('the caption shows the number and the time', /строка 3/.test($('selNote').textContent),
    $('selNote').textContent);
 
-console.log('\n--- правка с клавиатуры сохраняется на сервер ---');
+console.log('\n--- a keyboard edit is saved to the server ---');
 const before = $('selNote').textContent;
 doc.dispatchEvent(new w.KeyboardEvent('keydown',{key:']',bubbles:true}));
 await sleep(900);
-ok('время строки изменилось', $('selNote').textContent !== before,
+ok('the line time changed', $('selNote').textContent !== before,
    before + ' → ' + $('selNote').textContent);
 const shown = parseFloat($('selNote').textContent.match(/(\d+):(\d+\.\d+)/).slice(1)
   .reduce((m,x,i)=> i===0 ? +x*60 : m + +x, 0));
 const server = await (await fetch(API+"/api/project/"+encodeURIComponent(PID))).json();
-ok('сервер отдаёт ровно то, что показано в окне',
+ok('the server returns exactly what the window shows',
    Math.abs(server.lines[2].start - shown) < 0.002,
-   `окно ${shown.toFixed(3)} / сервер ${server.lines[2].start}`);
+   `window ${shown.toFixed(3)} / server ${server.lines[2].start}`);
 
-console.log('\n--- список проблем ---');
-ok('панель проблем заполнена', $('probs').children.length>0);
+console.log('\n--- the list of problems ---');
+ok('the problems panel is filled in', $('probs').children.length>0);
 
-console.log('\n--- главное действие: начало строки сюда ---');
+console.log('\n--- the main action: line starts here ---');
 w.__now += 3.0; await sleep(120);
 $('btnHere').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(800);
 const srv2 = await (await fetch(API+"/api/project/"+encodeURIComponent(PID))).json();
-ok('строка встала на текущую секунду',
+ok('the line moved to the current second',
    Math.abs(srv2.lines[2].start - (srv2.lines[2].start)) < 1e-9 &&
    /строка 3/.test($('selNote').textContent), $('selNote').textContent);
-ok('подсказка про порядок действий на месте',
+ok('the hint about the order of steps is there',
    /Enter/.test(doc.querySelector('.howto').textContent));
-ok('флажок «и все следующие» есть', !!$('chkRest'));
+ok('the “and all after it” box is there', !!$('chkRest'));
 
-console.log('\n--- дорожка не пересоздаёт блоки каждый кадр ---');
+console.log('\n--- the timeline does not rebuild the blocks every frame ---');
 const blk0 = doc.querySelector('.blk');
 const idBefore = blk0 && blk0.textContent;
-// прокручиваем 40 кадров воспроизведения
+// run 40 frames of playback
 for (let i=0;i<40;i++){ w.__now += 0.05; await sleep(4); }
 const blk1 = doc.querySelector('.blk');
-ok('элементы блоков те же самые (нет перестройки DOM)', blk0 === blk1,
-   blk0===blk1 ? 'тот же узел' : 'узел заменён');
-ok('блоки по-прежнему на месте', doc.querySelectorAll('.blk').length===6,
-   'блоков '+doc.querySelectorAll('.blk').length);
-ok('контейнер сдвигается трансформацией',
+ok('the block elements are the same ones (no DOM rebuild)', blk0 === blk1,
+   blk0===blk1 ? 'the same node' : 'the node was replaced');
+ok('the blocks are still in place', doc.querySelectorAll('.blk').length===6,
+   'blocks '+doc.querySelectorAll('.blk').length);
+ok('the container is moved by a transform',
    /translateX/.test($('tlscroll').style.transform), $('tlscroll').style.transform);
 
-console.log('\n--- масштаб дорожки ---');
+console.log('\n--- the timeline zoom ---');
 const z0 = $('zoomNote').textContent;
 $('btnZoomIn').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(150);
-ok('масштаб меняется', $('zoomNote').textContent !== z0,
+ok('the zoom changes', $('zoomNote').textContent !== z0,
    z0+' → '+$('zoomNote').textContent);
-ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(';'));
+ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(';'));
 console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

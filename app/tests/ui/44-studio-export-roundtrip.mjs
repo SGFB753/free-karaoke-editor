@@ -1,5 +1,5 @@
-// Всё, что человек настроил в Студии, должно доехать до готового файла:
-// второй голос, оставленный оригинал, цвета подсветки и оформления, правки строк.
+// Everything a person set up in the Studio must reach the finished file: the
+// second voice, the kept original, the highlight and theme colours, line edits.
 const { JSDOM } = await import('jsdom');
 import fs from 'fs';
 import path from 'path';
@@ -42,27 +42,27 @@ const before = await proj();
 doc.querySelectorAll('.card')[0].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(1400);
 
-console.log('--- настраиваем песню в окне ---');
+console.log('--- setting the song up in the window ---');
 doc.querySelectorAll('#scroll .ln')[1].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(120);
-$("btnVoice").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));   // второй голос
+$("btnVoice").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));   // the second voice
 await sleep(100);
 doc.querySelectorAll('#scroll .ln')[2].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(120);
-$("btnKeep").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));    // поёт оригинал
+$("btnKeep").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));    // the original sings
 await sleep(100);
 $("col2").value = "#ee2288"; $("col2").dispatchEvent(new w.Event('input',{bubbles:true}));
 $("colBg").value = "#101018"; $("colBg").dispatchEvent(new w.Event('input',{bubbles:true}));
 $("colTx").value = "#f0f0ff"; $("colTx").dispatchEvent(new w.Event('input',{bubbles:true}));
-await sleep(1000);                       // ждём автосохранение
+await sleep(1000);                       // wait for the autosave
 
 const saved = await proj();
-ok('второй голос записан', saved.lines[1].voice === 2, 'voice=' + saved.lines[1].voice);
-ok('оставленный оригинал записан', saved.lines[2].keep === true);
-ok('цвета записаны', saved.colors && saved.colors[1] === '#ee2288', JSON.stringify(saved.colors));
-ok('оформление записано', saved.theme && saved.theme[0] === '#101018', JSON.stringify(saved.theme));
+ok('the second voice was saved', saved.lines[1].voice === 2, 'voice=' + saved.lines[1].voice);
+ok('the kept original was saved', saved.lines[2].keep === true);
+ok('the colours were saved', saved.colors && saved.colors[1] === '#ee2288', JSON.stringify(saved.colors));
+ok('the look was saved', saved.theme && saved.theme[0] === '#101018', JSON.stringify(saved.theme));
 
-console.log('\n--- собираем отдельный HTML тем же способом, что и кнопка ---');
+console.log('\n--- building a standalone HTML the same way the button does ---');
 const job = await (await fetch(API+"/api/project/"+encodeURIComponent(PID)+"/export",
   {method:'POST', headers:{'Content-Type':'application/json'},
    body: JSON.stringify({kind:'html'})})).json();
@@ -72,30 +72,30 @@ for (let i = 0; i < 120; i++){
   if (st.done){ out = st.result; break; }
   await sleep(500);
 }
-ok('сборка страницы закончилась', !!out && !!out.path, JSON.stringify(out));
+ok('the page build finished', !!out && !!out.path, JSON.stringify(out));
 const page = fs.readFileSync(out.path, 'utf8');
 const mark = '<script id="payload" type="application/json">';
 const a = page.indexOf(mark) + mark.length, b = page.indexOf('</scr'+'ipt>', a);
 const P = JSON.parse(page.slice(a,b).replace(/\\u003c/g,'<').replace(/\\u003e/g,'>')
                                     .replace(/\\u0026/g,'&'));
 
-console.log('\n--- и всё это лежит в готовом файле ---');
-ok('цвета подсветки доехали', P.colors && P.colors[1] === '#ee2288', JSON.stringify(P.colors));
-ok('оформление доехало', P.theme && P.theme.bg === '#101018', JSON.stringify(P.theme));
-ok('цвет букв читаемый', P.theme && P.theme.text === '#f0f0ff', JSON.stringify(P.theme));
-ok('второй голос доехал', P.data.lines[1].voice === 2, 'voice=' + P.data.lines[1].voice);
-ok('оставленный оригинал доехал', P.data.lines[2].keep === true);
-ok('текст строк не пострадал',
+console.log('\n--- and all of it is inside the finished file ---');
+ok('the highlight colours made it through', P.colors && P.colors[1] === '#ee2288', JSON.stringify(P.colors));
+ok('the styling made it through', P.theme && P.theme.bg === '#101018', JSON.stringify(P.theme));
+ok('the text colour is readable', P.theme && P.theme.text === '#f0f0ff', JSON.stringify(P.theme));
+ok('the second voice made it through', P.data.lines[1].voice === 2, 'voice=' + P.data.lines[1].voice);
+ok('the kept original made it through', P.data.lines[2].keep === true);
+ok('the text of the lines was not harmed',
    P.data.lines.map(l=>l.text).join('|') === saved.lines.map(l=>l.text).join('|'));
-ok('тайминги совпадают с окном',
+ok('the timings match the window',
    P.data.lines.every((l,i) => Math.abs(l.start - saved.lines[i].start) < 0.002),
    P.data.lines[0].start + ' vs ' + saved.lines[0].start);
-ok('звук встроен в файл', /data:audio\//.test(page));
-ok('страница открывается без интернета',
+ok('the audio is embedded in the file', /data:audio\//.test(page));
+ok('the page opens without the internet',
    !/https?:\/\/(?!127\.0\.0\.1)/.test(page.replace(/<!--[\s\S]*?-->/g,'')),
    (page.match(/https?:\/\/[^\s"']+/g)||[]).slice(0,2).join(' '));
 
-console.log('\n--- готовая страница и правда это показывает ---');
+console.log('\n--- and the finished page really shows it ---');
 const dom2 = new JSDOM(page, { runScripts:'dangerously', pretendToBeVisual:true,
   url:'https://local.test/exported',
   beforeParse(w2){
@@ -111,19 +111,19 @@ const dom2 = new JSDOM(page, { runScripts:'dangerously', pretendToBeVisual:true,
 await sleep(400);
 const d2 = dom2.window.document;
 const lns = [...d2.querySelectorAll('#scroll .ln')];
-ok('строка второго голоса помечена', lns[1].classList.contains('v2'));
-ok('строка с оригиналом помечена и подписана',
+ok('the second-voice line is marked', lns[1].classList.contains('v2'));
+ok('the line with the original is marked and labelled',
    lns[2].classList.contains('keep') && /поёт оригинал|original sings/.test(lns[2].textContent),
    lns[2].textContent.slice(-30));
 const root2 = d2.documentElement.style;
-ok('второй цвет применён', root2.getPropertyValue('--accent-2').trim() === '#ee2288',
+ok('the second colour is applied', root2.getPropertyValue('--accent-2').trim() === '#ee2288',
    root2.getPropertyValue('--accent-2'));
-ok('фон применён', root2.getPropertyValue('--bg').trim() === '#101018',
+ok('the background is applied', root2.getPropertyValue('--bg').trim() === '#101018',
    root2.getPropertyValue('--bg'));
-ok('на странице нет ошибок JS', dom2.window.__errs.length === 0,
+ok('the page has no JS errors', dom2.window.__errs.length === 0,
    dom2.window.__errs.slice(0,2).join(' | '));
 
-// возвращаем стенд как было
+// put the stand back the way it was
 doc.querySelectorAll('#scroll .ln')[1].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(80); $("btnVoice").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 doc.querySelectorAll('#scroll .ln')[2].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
@@ -134,6 +134,6 @@ $("colTx").value = "#e8ebf5"; $("colTx").dispatchEvent(new w.Event('input',{bubb
 await sleep(900);
 try { fs.unlinkSync(out.path); } catch(e){}
 
-ok('ошибок JS в окне нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
+ok('the window has no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

@@ -1,4 +1,4 @@
-// Окно Студии по-английски и переключатель языка.
+// The Studio window in English and the language switch.
 const { JSDOM } = await import('jsdom');
 const API = process.env.KARAOKE_API;
 const html = await (await fetch(API + "/")).text();
@@ -32,78 +32,78 @@ const sleep = ms => new Promise(r=>setTimeout(r,ms));
 let fail=0; const ok=(n,c,e='')=>{console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c)fail++;};
 const CYR = /[А-Яа-яЁё]/;
 
-console.log('--- окно, собранное по-английски ---');
+console.log('--- the window built in English ---');
 const dom = mk('en'); const w = dom.window, doc = w.document, $ = id => doc.getElementById(id);
 w.eval(js);
 await sleep(900);
-ok('заголовок английский', $("scrList").querySelector("h1").textContent === "Karaoke Studio",
+ok('the title is English', $("scrList").querySelector("h1").textContent === "Karaoke Studio",
    $("scrList").querySelector("h1").textContent);
-ok('кнопка добавления переведена', /Add a song/.test($("btnAdd").textContent),
+ok('the add button is translated', /Add a song/.test($("btnAdd").textContent),
    $("btnAdd").textContent);
-ok('кнопка языка предлагает русский', $("btnLang").textContent.trim() === "RU",
+ok('the language button offers Russian', $("btnLang").textContent.trim() === "RU",
    $("btnLang").textContent);
 
-// экран добавления — там больше всего надписей
+// the add-a-song screen — it carries the most labels
 $("btnAdd").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(400);
-// Названия языков написаны на них самих («русский», «日本語») — их не переводят,
-// поэтому список языков из проверки исключаем.
+// Language names are written in the languages themselves (“русский”, “日本語”) —
+// they are not translated, so the language list is excluded from the check.
 const newScreen = [...$("scrNew").querySelectorAll("label, button, option, .hint, .warn")]
   .filter(e => !e.closest("#selLang")).map(e => e.textContent).join(" ");
-ok('на экране новой песни кириллицы нет', !CYR.test(newScreen),
+ok('the new-song screen carries no Cyrillic', !CYR.test(newScreen),
    (newScreen.match(/[А-Яа-яЁё][^\s]*/g)||[]).slice(0,4).join(" "));
-ok('«определить по тексту» переведено',
+ok('“detect from the text” is translated',
    !CYR.test([...$("selLang").options].find(o=>o.value==="auto").textContent),
    [...$("selLang").options].find(o=>o.value==="auto").textContent);
-ok('подсказка к модели по-английски', !CYR.test($("modelNote").textContent),
+ok('the model hint is in English', !CYR.test($("modelNote").textContent),
    $("modelNote").textContent.slice(0,60));
-ok('размер модели написан как MB', /MB/.test($("selModel").options[0].textContent),
+ok('the model size is written as MB', /MB/.test($("selModel").options[0].textContent),
    $("selModel").options[0].textContent);
 
-// редактор
+// the editor
 $("btnBackNew").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(300);
 doc.querySelectorAll('.card')[0].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(1400);
 const editUi = [...doc.querySelectorAll('.tlhead, footer, .howto, .side h3, .madefile')]
   .map(e => e.textContent).join(" ");
-ok('в редакторе надписи английские', !CYR.test(editUi),
+ok('the editor labels are English', !CYR.test(editUi),
    (editUi.match(/[А-Яа-яЁё][^\s]*/g)||[]).slice(0,4).join(" "));
-ok('подсказка про клавиши переведена', /Space — play/.test($("hint").textContent),
+ok('the keyboard hint is translated', /Space — play/.test($("hint").textContent),
    $("hint").textContent);
-ok('сводка по-английски', /Length|Lines/.test($("sum").textContent),
+ok('the summary is in English', /Length|Lines/.test($("sum").textContent),
    $("sum").textContent.slice(0,60));
-// текст самой песни, конечно, русский — это данные, а не надписи
-ok('текст песни не тронут', CYR.test($("scroll").textContent),
+// the lyrics themselves are Russian, of course — that is data, not labels
+ok('the lyrics themselves are untouched', CYR.test($("scroll").textContent),
    $("scroll").textContent.slice(0,40));
-// Причины в панели «Проверить» приходят с сервера — они тоже должны быть
-// на языке окна, иначе английское окно наполовину русское.
+// The reasons in the “Check” panel come from the server — they too must be in
+// the language of the window, or an English window is half Russian.
 const probs = $("probs").textContent;
-ok('панель «Проверить» по-английски',
+ok('the “Check” panel is in English',
    !CYR.test(probs.replace(/[0-9:.]/g, '').replace(/[^\S\n]+/g, ' ')
                   .split('\n').filter(l => !/^\s*\d+\./.test(l)).join(' ')) ||
    /no vocal|starts where|overlaps|syllables/i.test(probs),
    probs.replace(/\s+/g,' ').slice(0,90));
 
-console.log('\n--- переключение на месте ---');
+console.log('\n--- switching in place ---');
 $("btnLang").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(600);
-ok('надписи стали русскими', /Дорожка/.test(doc.querySelector('.tlhead').textContent),
+ok('the labels turned Russian', /Дорожка/.test(doc.querySelector('.tlhead').textContent),
    doc.querySelector('.tlhead').textContent.slice(0,40));
-ok('подсказка про клавиши тоже', /Пробел/.test($("hint").textContent),
+ok('the keyboard hint too', /Пробел/.test($("hint").textContent),
    $("hint").textContent.slice(0,40));
-ok('сводка тоже', /Длина|Строк/.test($("sum").textContent), $("sum").textContent.slice(0,50));
-ok('кнопка теперь предлагает английский', $("btnLang").textContent.trim() === "EN");
-ok('выбор записан в память', w.localStorage.getItem("karaoke-studio-lang") === "ru",
+ok('the summary too', /Длина|Строк/.test($("sum").textContent), $("sum").textContent.slice(0,50));
+ok('the button now offers English', $("btnLang").textContent.trim() === "EN");
+ok('the choice was written to storage', w.localStorage.getItem("karaoke-studio-lang") === "ru",
    String(w.localStorage.getItem("karaoke-studio-lang")));
-ok('атрибут языка страницы обновлён', doc.documentElement.lang === "ru");
+ok('the page language attribute was updated', doc.documentElement.lang === "ru");
 
-console.log('\n--- обратно ---');
+console.log('\n--- and back ---');
 $("btnLang").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(600);
-ok('снова английский', /Timeline/.test(doc.querySelector('.tlhead').textContent),
+ok('English again', /Timeline/.test(doc.querySelector('.tlhead').textContent),
    doc.querySelector('.tlhead').textContent.slice(0,40));
 
-ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
+ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

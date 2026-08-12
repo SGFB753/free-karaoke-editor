@@ -1,6 +1,6 @@
-// Два разных дела в одном наборе, потому что оба про подмену минусовки:
-//   • места без пения видны прямо на дорожке;
-//   • при своей минусовке голос не остаётся целой песней поверх неё.
+// Two different matters in one suite, because both are about swapping the backing track:
+//   • the places without singing show right on the timeline;
+//   • with your own backing track the voice does not stay a whole song on top of it.
 import puppeteer from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
@@ -13,9 +13,9 @@ const ok = (n, c, e='') => { console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:''
 const PID = (await (await fetch(API+'/api/state')).json()).projects[0].id;
 const proj = async () => (await (await fetch(API+'/api/project/'+encodeURIComponent(PID))).json());
 
-console.log('--- сервер сообщает места без пения ---');
+console.log('--- the server reports the places without singing ---');
 const before = await proj();
-ok('в проекте есть список мест без пения', Array.isArray(before.quiet),
+ok('the project has a list of places without singing', Array.isArray(before.quiet),
    JSON.stringify(before.quiet));
 
 const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disable-dev-shm-usage']});
@@ -27,9 +27,9 @@ await new Promise(r=>setTimeout(r,600));
 await p.click('.card');
 await new Promise(r=>setTimeout(r,2500));
 
-console.log('\n--- и они нарисованы на дорожке ---');
-// Затенение рисуется на том же холсте, что и волна. Сравниваем яркость
-// столбцов внутри и снаружи промежутка — внутри должно быть светлее фона.
+console.log('\n--- and they are drawn on the timeline ---');
+// The shading is drawn on the same canvas as the waveform. We compare the
+// brightness of columns inside and outside the gap — inside must be lighter.
 const shaded = await p.evaluate(() => {
   const c = document.getElementById('wave');
   const g = c.getContext('2d');
@@ -44,7 +44,7 @@ const marks = await p.evaluate(() => {
   const c = document.getElementById('wave'), g = c.getContext('2d');
   const w = c.width, h = c.height;
   const d = g.getImageData(0, 0, w, Math.min(8, h)).data;
-  // считаем, сколько столбцов имеют хоть какую-то заливку в самом верху
+  // count how many columns have any fill at all at the very top
   let painted = 0;
   for (let x = 0; x < w; x++){
     let a = 0;
@@ -54,15 +54,15 @@ const marks = await p.evaluate(() => {
   return {painted, w};
 });
 if (before.quiet.length)
-  ok('затенение нарисовано', marks.painted > 0, `${marks.painted} из ${marks.w} столбцов`);
+  ok('the shading is drawn', marks.painted > 0, `${marks.painted} of ${marks.w} columns`);
 else
-  ok('в этой песне длинных проигрышей нет — рисовать нечего', true);
+  ok('this song has no long interludes — nothing to draw', true);
 
-console.log('\n--- своя минусовка: голос не остаётся целой песней ---');
+console.log('\n--- own backing track: the voice does not stay a whole song ---');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'voc_'));
-// «Свой инструментал» — та же песня, но без вокальных всплесков не сделать,
-// поэтому берём её же: вычитание обязано либо дать тишину, либо отказаться.
-const own = path.join(tmp, 'свой.wav');
+// “Own instrumental” — the same song, since one without vocal peaks cannot be
+// made here, so subtraction must either give silence or refuse.
+const own = path.join(tmp, 'own.wav');
 execFileSync('ffmpeg', ['-y','-loglevel','error','-i', process.env.KARAOKE_SONG,
   '-af','adelay=800|800', own]);
 const j = await (await fetch(API+'/api/project/'+encodeURIComponent(PID)+'/track', {
@@ -75,22 +75,22 @@ for (let i = 0; i < 120; i++){
   job = await (await fetch(API+'/api/job?id='+j.job)).json();
   if (job.done) break;
 }
-ok('замена прошла', job && job.ok, job ? String(job.error) : 'не дождались');
+ok('the replacement went through', job && job.ok, job ? String(job.error) : 'never arrived');
 const after = await proj();
-ok('минусовка на месте', !!after.tracks.instrumental, JSON.stringify(after.tracks));
-ok('дорожки «всё вместе» больше нет', !after.tracks.mix,
+ok('the backing track is in place', !!after.tracks.instrumental, JSON.stringify(after.tracks));
+ok('the “everything together” track is gone', !after.tracks.mix,
    JSON.stringify(after.tracks));
 const said = (job.log || []).join(' ');
-ok('в логе сказано, что стало с голосом',
+ok('the log says what happened to the voice',
    /выдел|Голоса не будет|голос/i.test(said),
    (job.log||[]).slice(-3).join(' | '));
 if (after.tracks.vocals){
   const r = await fetch(API+'/api/project/'+encodeURIComponent(PID)+'/audio/vocals');
-  ok('голосовая дорожка отдаётся', r.ok && +r.headers.get('content-length') > 3000,
+  ok('the voice track is served', r.ok && +r.headers.get('content-length') > 3000,
      r.status + ', ' + r.headers.get('content-length'));
 }
 
-ok('ошибок JS нет', errs.length===0, errs.slice(0,2).join(' | '));
+ok('no JS errors', errs.length===0, errs.slice(0,2).join(' | '));
 await b.close();
 fs.rmSync(tmp, {recursive:true, force:true});
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');

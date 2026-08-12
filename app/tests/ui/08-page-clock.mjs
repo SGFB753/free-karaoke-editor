@@ -1,10 +1,10 @@
-// Симуляция с настоящим ходом времени и управляемыми кадрами.
+// A simulation with real time running and frames under our control.
 const { JSDOM } = await import('jsdom');
 import fs from 'fs';
 const dom = new JSDOM(fs.readFileSync(process.env.KARAOKE_PAGE_STEMS, 'utf8'), {
   runScripts:'dangerously', pretendToBeVisual:true, url:'https://local.test/',
   beforeParse(w){
-    w.__vt = 0;              // виртуальные часы, секунды
+    w.__vt = 0;              // the virtual clock, seconds
     w.__frames = [];
     w.requestAnimationFrame = cb => w.__frames.push(cb);
     w.cancelAnimationFrame = () => {};
@@ -34,7 +34,7 @@ await sleep(200);
 let fail=0; const ok=(n,c,e='')=>{console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c)fail++;};
 const [master, voice] = w.__inst;
 
-// прогнать N кадров по 1/60 секунды виртуального времени
+// run N frames of 1/60 s of virtual time
 async function run(seconds){
   const frames = Math.round(seconds*60);
   for (let i=0;i<frames;i++){
@@ -49,42 +49,42 @@ async function run(seconds){
 $('btnPlay').click(); await sleep(20);
 await run(10);
 let d = Math.abs(master.currentTime - voice.currentTime);
-ok('10 с игры: дорожки идут вместе', d < 0.05, `расхождение ${d.toFixed(3)}с`);
-ok('скорость вокала осталась обычной', voice.playbackRate === 1, 'rate='+voice.playbackRate);
-ok('жёстких перемоток вокала не было', voice.hardSeeks <= 1, 'их '+voice.hardSeeks);
+ok('10 s of playback: the tracks run together', d < 0.05, `drift ${d.toFixed(3)}s`);
+ok('the vocal rate stayed normal', voice.playbackRate === 1, 'rate='+voice.playbackRate);
+ok('the vocal was never hard-seeked', voice.hardSeeks <= 1, 'count '+voice.hardSeeks);
 
-console.log('\n--- вокал отстал на 0,2 с ---');
+console.log('\n--- the vocal fell behind by 0.2 s ---');
 voice._t -= 0.2;
 await run(6);
 d = master.currentTime - voice.currentTime;
-ok('подтяжка началась и идёт в нужную сторону', d > 0 && d < 0.2 && voice.playbackRate > 1,
-   `осталось ${d.toFixed(3)}с, rate=${voice.playbackRate.toFixed(4)}`);
-await run(20);                       // даём договорить до конца
+ok('the pull-up started and goes the right way', d > 0 && d < 0.2 && voice.playbackRate > 1,
+   `left ${d.toFixed(3)}s, rate=${voice.playbackRate.toFixed(4)}`);
+await run(20);                       // let it finish speaking
 d = master.currentTime - voice.currentTime;
-ok('отставание выбрано полностью', Math.abs(d) < 0.025, `осталось ${d.toFixed(3)}с`);
-ok('скорость вернулась к 1', voice.playbackRate === 1, 'rate='+voice.playbackRate);
+ok('the lag was taken up completely', Math.abs(d) < 0.025, `left ${d.toFixed(3)}s`);
+ok('the rate went back to 1', voice.playbackRate === 1, 'rate='+voice.playbackRate);
 
-console.log('\n--- вокал убежал вперёд на 0,2 с ---');
+console.log('\n--- the vocal ran ahead by 0.2 s ---');
 voice._t += 0.2;
 await run(26);
 d = master.currentTime - voice.currentTime;
-ok('опережение выбрано', Math.abs(d) < 0.05, `осталось ${d.toFixed(3)}с`);
+ok('the lead was taken up', Math.abs(d) < 0.05, `left ${d.toFixed(3)}s`);
 
-console.log('\n--- длинный прогон 3 минуты ---');
+console.log('\n--- a long 3-minute run ---');
 const seeksBefore = voice.hardSeeks;
 await run(180);
 d = Math.abs(master.currentTime - voice.currentTime);
 const rates = voice.rates;
 const mn = Math.min(...rates), mx = Math.max(...rates);
-ok('за 3 минуты дорожки не разъехались', d < 0.06, `расхождение ${d.toFixed(3)}с`);
-ok('скорость вокала не выходила за ±2%', mn >= 0.98 && mx <= 1.02,
-   `от ${mn.toFixed(3)} до ${mx.toFixed(3)}`);
-ok('вокал не ускорялся втрое и вообще заметно', mx < 1.05, 'максимум '+mx.toFixed(3));
-ok('без жёстких перемоток на ровном месте', voice.hardSeeks - seeksBefore === 0,
-   'их '+(voice.hardSeeks-seeksBefore));
-ok('позиции совпали по абсолютной шкале',
+ok('in 3 minutes the tracks did not drift apart', d < 0.06, `drift ${d.toFixed(3)}s`);
+ok('the vocal rate stayed within ±2%', mn >= 0.98 && mx <= 1.02,
+   `from ${mn.toFixed(3)} to ${mx.toFixed(3)}`);
+ok('the vocal never sped up threefold or noticeably', mx < 1.05, 'max '+mx.toFixed(3));
+ok('no hard seeks out of nowhere', voice.hardSeeks - seeksBefore === 0,
+   'count '+(voice.hardSeeks-seeksBefore));
+ok('the positions match on the absolute scale',
    Math.abs(master.currentTime - voice.currentTime) < 0.06,
    `master=${master.currentTime.toFixed(2)} voice=${voice.currentTime.toFixed(2)}`);
-ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(';'));
+ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(';'));
 console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

@@ -1,4 +1,4 @@
-// Новые проверки: фокус кнопок, чистота сохранённой страницы, точки отсчёта.
+// New checks: button focus, the cleanliness of the saved page, the count-in dots.
 const { JSDOM } = await import('jsdom');
 import fs from 'fs';
 function mk(file){
@@ -14,7 +14,7 @@ function mk(file){
         _fire(n){(this._h[n]||[]).slice().forEach(f=>f());}
         play(){this.paused=false;return Promise.resolve();} pause(){this.paused=true;}}
       w.Audio=FA; w.onerror=m=>w.__errs.push(String(m));
-      // Web Audio недоступен -> запасной путь (для простоты управления временем)
+      // Web Audio is unavailable -> the fallback path (easier to steer time in)
       w.Element.prototype.getBoundingClientRect=function(){
         return {left:0,top:0,width:500,height:20,right:500,bottom:20,x:0,y:0}; };
       w.Element.prototype.setPointerCapture=function(){};
@@ -23,20 +23,20 @@ function mk(file){
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let fail=0; const ok=(n,c,e='')=>{console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c)fail++;};
 
-console.log('--- фокус не липнет к кнопкам ---');
+console.log('--- focus does not stick to the buttons ---');
 {
   const d=mk(process.env.KARAOKE_PAGE_MIX), w=d.window, doc=w.document, $=id=>doc.getElementById(id);
   await sleep(200);
   const btn=$('btnEdit');
   btn.focus();
-  ok('до клика фокус на кнопке', doc.activeElement===btn);
+  ok('before the click the button has focus', doc.activeElement===btn);
   btn.dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
   await sleep(20);
-  ok('после клика фокус снят', doc.activeElement!==btn,
+  ok('after the click the focus is dropped', doc.activeElement!==btn,
      'activeElement='+(doc.activeElement&&doc.activeElement.id||doc.activeElement.tagName));
 }
 
-console.log('\n--- сохранённая страница чистая ---');
+console.log('\n--- the saved page is clean ---');
 {
   const d=mk(process.env.KARAOKE_PAGE_STEMS), w=d.window, doc=w.document, $=id=>doc.getElementById(id);
   let saved=null;
@@ -44,42 +44,42 @@ console.log('\n--- сохранённая страница чистая ---');
   w.Blob=class{constructor(p){saved=String(p[0]);}};
   w.HTMLAnchorElement.prototype.click=function(){};
   await sleep(200);
-  // включаем «грязное» состояние: играем + режим тапов
+  // turn on the “dirty” state: playing + tap mode
   $('btnPlay').click(); await sleep(30);
   $('btnEdit').click(); $('btnTap').click(); await sleep(30);
   $('btnSavePage').click(); await sleep(30);
-  ok('файл получен', !!saved && saved.includes('<!DOCTYPE html>'));
+  ok('the file came out', !!saved && saved.includes('<!DOCTYPE html>'));
   const dom2=new JSDOM(saved);
   const b=dom2.window.document.body;
-  ok('нет класса playing/tapping', b.className==='', 'class="'+b.className+'"');
-  ok('кнопка тапов в исходном виде',
+  ok('no playing/tapping class', b.className==='', 'class="'+b.className+'"');
+  ok('the tap button is in its original state',
      dom2.window.document.getElementById('btnTap').textContent==='Разметка по тапам');
-  ok('подсказка по тапам скрыта',
+  ok('the tapping hint is hidden',
      dom2.window.document.getElementById('tapRow').classList.contains('hide'));
-  ok('редактор закрыт',
+  ok('the editor is closed',
      !dom2.window.document.getElementById('editor').classList.contains('open'));
-  ok('тост скрыт', dom2.window.document.getElementById('toast').className==='toast');
+  ok('the toast is hidden', dom2.window.document.getElementById('toast').className==='toast');
   const pl=JSON.parse(dom2.window.document.getElementById('payload').textContent);
-  ok('в сохранённой отметка edited', pl.edited===true);
-  ok('ключ хранения длиннее и уникальнее', pl.id.length>16, 'id='+pl.id);
+  ok('the saved one is marked as edited', pl.edited===true);
+  ok('the storage key is longer and unique', pl.id.length>16, 'id='+pl.id);
 }
 
-console.log('\n--- точки отсчёта на новой схеме ---');
+console.log('\n--- the countdown dots in the new layout ---');
 {
   const d=mk(process.env.KARAOKE_PAGE_MIX), w=d.window, doc=w.document, $=id=>doc.getElementById(id);
   await sleep(200);
   const m=w.__inst[0];
-  // строка 5 начинается на 16.14, перед ней пауза > 2.5с
+  // line 5 starts at 16.14, with a pause of more than 2.5 s before it
   m.currentTime=14.0; await sleep(80);
   const lns=[...doc.querySelectorAll('.pips')];
   const lit=()=>lns.map(p=>[...p.children].filter(s=>s.classList.contains('on')).length)
                   .reduce((a,b)=>a+b,0);
-  ok('за 2.1с до строки горят точки', lit()>0, 'горит '+lit());
+  ok('2.1 s before a line the dots are lit', lit()>0, 'lit '+lit());
   m.currentTime=16.5; await sleep(80);
-  ok('после начала строки точки погашены', lit()===0, 'горит '+lit());
+  ok('once the line starts the dots go out', lit()===0, 'lit '+lit());
   m.currentTime=3.0; await sleep(80);
-  ok('в обычном месте точек нет', lit()===0);
-  ok('ошибок JS нет', w.__errs.length===0, w.__errs.join(';'));
+  ok('in an ordinary place there are no dots', lit()===0);
+  ok('no JS errors', w.__errs.length===0, w.__errs.join(';'));
 }
 console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

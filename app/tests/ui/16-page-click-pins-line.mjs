@@ -1,5 +1,5 @@
-// Выбор строки в отдельной HTML-странице: щёлкнул строку — правится именно она,
-// и песня её больше не уводит. Тут раньше цель уезжала на предыдущую строку.
+// Picking a line on the standalone HTML page: click a line and that is the one
+// edited, and the song no longer steals it. The target used to slide back a line.
 const { JSDOM } = await import('jsdom');
 import fs from 'fs';
 const dom = new JSDOM(fs.readFileSync(process.env.KARAOKE_PAGE_STEMS, 'utf8'), {
@@ -31,71 +31,71 @@ const lineEls = [...doc.querySelectorAll('#scroll .ln')];
 
 const __savedLabelAtStart = $('btnSavePage').textContent;
 $('btnEdit').click(); await sleep(50);
-ok('строк на сцене хватает для проверки', lineEls.length >= 5, 'строк '+lineEls.length);
+ok('there are enough lines on stage for the check', lineEls.length >= 5, 'lines '+lineEls.length);
 
-console.log('\n--- щелчок по строке выбирает именно её ---');
+console.log('\n--- a click picks exactly that line ---');
 const WANT = 4;
 lineEls[WANT].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(120);
-ok('правится та строка, по которой щёлкнули', tgtNo() === WANT,
-   'выбрана ' + (tgtNo()+1) + '-я вместо ' + (WANT+1) + '-й');
-ok('она же подчёркнута на сцене',
+ok('the line that was clicked is the one edited', tgtNo() === WANT,
+   'selected ' + (tgtNo()+1) + 'th instead of ' + (WANT+1) + 'th');
+ok('and it is the one underlined on stage',
    lineEls[WANT].classList.contains('tgt'), [...lineEls[WANT].classList].join(' '));
 
-console.log('\n--- песня играет, а выбор держится ---');
+console.log('\n--- the song plays, the choice holds ---');
 const before = await starts();
-m.currentTime = before[WANT] + 6;              // уехали далеко вперёд
+m.currentTime = before[WANT] + 6;              // jumped far ahead
 await sleep(150);
-ok('цель не убежала за песней', tgtNo() === WANT, 'стала ' + (tgtNo()+1) + '-й');
+ok('the target did not run off with the song', tgtNo() === WANT, 'now ' + (tgtNo()+1) + 'th');
 
-console.log('\n--- правка попадает в выбранную строку ---');
+console.log('\n--- the edit lands on the chosen line ---');
 m.currentTime = 12.5; await sleep(100);
 $('btnHere').click(); await sleep(80);
 const after = await starts();
-ok('выбранная строка встала на текущую секунду', Math.abs(after[WANT]-12.5) < 0.05,
-   'стало ' + after[WANT]);
-ok('соседняя строка не тронута', Math.abs(after[WANT-1]-before[WANT-1]) < 1e-6,
+ok('the chosen line moved to the current second', Math.abs(after[WANT]-12.5) < 0.05,
+   'now ' + after[WANT]);
+ok('the neighbouring line was not touched', Math.abs(after[WANT-1]-before[WANT-1]) < 1e-6,
    `${before[WANT-1]} → ${after[WANT-1]}`);
 
-console.log('\n--- выбор видно и его можно снять ---');
-ok('кнопка «не эту» появилась', !$('btnUnpin').classList.contains('hide'));
+console.log('\n--- the choice is visible and can be dropped ---');
+ok('the “not this one” button appeared', !$('btnUnpin').classList.contains('hide'));
 $('btnUnpin').click(); await sleep(80);
-ok('кнопка спряталась обратно', $('btnUnpin').classList.contains('hide'));
+ok('the button hid again', $('btnUnpin').classList.contains('hide'));
 m.currentTime = 2.0; await sleep(150);
-ok('цель снова идёт за песней', tgtNo() !== WANT, 'осталась ' + (tgtNo()+1) + '-й');
+ok('the target follows the song again', tgtNo() !== WANT, 'still ' + (tgtNo()+1) + 'th');
 
-console.log('\n--- ◀ ▶ тоже закрепляют ---');
+console.log('\n--- ◀ ▶ pin the target too ---');
 $('btnTgtNext').click(); await sleep(60);
 const t1 = tgtNo();
-ok('▶ сдвинула цель', t1 >= 0);
-ok('и закрепила её', !$('btnUnpin').classList.contains('hide'));
+ok('▶ moved the target', t1 >= 0);
+ok('and pinned it', !$('btnUnpin').classList.contains('hide'));
 m.currentTime = 20; await sleep(150);
-ok('цель осталась на месте при проигрывании', tgtNo() === t1, 'стала ' + (tgtNo()+1));
+ok('the target stayed put during playback', tgtNo() === t1, 'now ' + (tgtNo()+1));
 
-console.log('\n--- лишнего на экране нет ---');
-ok('подсказка по тапам спрятана, пока режим выключен',
+console.log('\n--- nothing extra on the screen ---');
+ok('the tapping hint is hidden while the mode is off',
    $('tapRow').classList.contains('hide') &&
    w.getComputedStyle($('tapRow')).display === 'none',
    'display: ' + w.getComputedStyle($('tapRow')).display);
 
 $('btnSavePage').click(); await sleep(60);
-ok('сохранённая страница открывается без закреплённой цели',
+ok('the saved page opens with no pinned target',
    /id="btnUnpin" class="hide"/.test(saved) || /class="hide"[^>]*id="btnUnpin"/.test(saved),
    (saved.match(/<button id="btnUnpin"[^>]*>/)||[''])[0]);
 
-console.log('\n--- видно, что правки ещё не в файле ---');
-ok('на свежей странице кнопка сохранения обычная',
+console.log('\n--- it is visible that the edits are not in the file yet ---');
+ok('on a fresh page the save button looks ordinary',
    !/есть несохранённые/.test(__savedLabelAtStart), __savedLabelAtStart);
-ok('сразу после сохранения предупреждения нет',
+ok('right after saving there is no warning',
    !/есть несохранённые/.test($('btnSavePage').textContent),
    $('btnSavePage').textContent);
-$('btnHere').click(); await sleep(80);          // правим уже после сохранения
-ok('новая правка снова предупреждает',
+$('btnHere').click(); await sleep(80);          // editing after the save this time
+ok('a new edit warns again',
    /есть несохранённые/.test($('btnSavePage').textContent) &&
    $('btnSavePage').classList.contains('on'),
    $('btnSavePage').textContent);
 
-ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
+ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

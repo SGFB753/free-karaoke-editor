@@ -1,5 +1,5 @@
-// Язык надписей готовой страницы. Страница уезжает к людям, у которых родной
-// язык может быть любым, поэтому английский — по умолчанию, русский — выбором.
+// The language of the finished page. The page travels to people whose native
+// tongue may be anything, so English is the default and Russian is a choice.
 const { JSDOM } = await import('jsdom');
 import fs from 'fs';
 
@@ -22,30 +22,30 @@ function open_(file, navLang){
     }});
 }
 
-console.log('--- страница, собранная по-английски ---');
+console.log('--- a page built in English ---');
 {
-  const d = open_(process.env.KARAOKE_PAGE_EN, 'ru-RU');   // язык браузера не должен мешать
+  const d = open_(process.env.KARAOKE_PAGE_EN, 'ru-RU');   // the browser language must not interfere
   const w = d.window, doc = w.document, $ = id => doc.getElementById(id);
   await sleep(250);
-  ok('в разметке заявлен английский', doc.documentElement.lang === 'en',
+  ok('the markup declares English', doc.documentElement.lang === 'en',
      doc.documentElement.lang);
-  ok('кнопка правки по-английски', $('btnEdit').textContent.trim() === 'Edit',
+  ok('the edit button is in English', $('btnEdit').textContent.trim() === 'Edit',
      $('btnEdit').textContent);
-  ok('главное действие переведено', /Line starts here/.test($('btnHere').textContent),
+  ok('the main action is translated', /Line starts here/.test($('btnHere').textContent),
      $('btnHere').textContent);
-  ok('сохранение переведено', /Save page/.test($('btnSavePage').textContent),
+  ok('saving is translated', /Save page/.test($('btnSavePage').textContent),
      $('btnSavePage').textContent);
-  ok('подсказка про правку заполнена и на английском',
+  ok('the editing hint is filled in and in English',
      /Line starts here/.test(doc.querySelector('[data-t="editHint"]').innerHTML),
      doc.querySelector('[data-t="editHint"]').textContent.slice(0,50));
-  ok('подсказка по тапам тоже', /Tap along/.test($('tapHint').innerHTML),
+  ok('the tapping hint too', /Tap along/.test($('tapHint').innerHTML),
      $('tapHint').textContent.slice(0,40));
-  ok('всплывающие подписи переведены', /Line above/.test($('btnTgtPrev').title),
+  ok('the tooltips are translated', /Line above/.test($('btnTgtPrev').title),
      $('btnTgtPrev').title);
-  // Сам текст песни, разумеется, остаётся русским — это содержимое, а не
-  // интерфейс. Смотрим только на органы управления: низ страницы и панель правки.
-  // Строка песни попадает и в подпись цели, и в саму сцену — это содержимое,
-  // а не интерфейс. Берём только те узлы, где текста песни быть не может.
+  // The lyrics themselves of course stay Russian — that is content, not the
+  // interface. We look only at the controls: the bottom bar and the edit panel.
+  // A line of the song lands both in the target caption and on the stage — content
+  // again, not interface. We take only the nodes where lyrics cannot appear.
   const chrome = [
     ...doc.querySelectorAll('footer button'),
     ...doc.querySelectorAll('.knobgrp'),
@@ -53,25 +53,25 @@ console.log('--- страница, собранная по-английски --
     ...doc.querySelectorAll('.editor .chk'),
   ].map(e => e.textContent).join(' ');
   const rus = (chrome.match(/[а-яА-ЯёЁ][а-яА-ЯёЁ ]{2,30}/g) || []);
-  ok('в органах управления русского нет', rus.length === 0, rus.slice(0,3).join(' | '));
+  ok('there is no Russian left in the controls', rus.length === 0, rus.slice(0,3).join(' | '));
   const titles = [...doc.querySelectorAll('[title]')].map(e => e.title).join(' ');
-  ok('и во всплывающих подсказках тоже', !/[а-яА-ЯёЁ]{3}/.test(titles),
+  ok('nor in the tooltips', !/[а-яА-ЯёЁ]{3}/.test(titles),
      (titles.match(/[а-яА-ЯёЁ][а-яА-ЯёЁ ]{2,30}/g)||[]).slice(0,2).join(' | '));
-  ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
+  ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 }
 
-console.log('\n--- страница, собранная по-русски ---');
+console.log('\n--- a page built in Russian ---');
 {
   const d = open_(process.env.KARAOKE_PAGE_STEMS, 'en-US');
   const w = d.window, doc = w.document, $ = id => doc.getElementById(id);
   await sleep(250);
-  ok('в разметке заявлен русский', doc.documentElement.lang === 'ru',
+  ok('the markup declares Russian', doc.documentElement.lang === 'ru',
      doc.documentElement.lang);
-  ok('надписи русские', $('btnEdit').textContent.trim() === 'Правка',
+  ok('the labels are Russian', $('btnEdit').textContent.trim() === 'Правка',
      $('btnEdit').textContent);
-  ok('язык браузера не переспорил выбор при сборке',
+  ok('the browser language did not override the build choice',
      /Начало строки/.test($('btnHere').textContent), $('btnHere').textContent);
-  ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
+  ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 }
 
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');

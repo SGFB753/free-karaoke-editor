@@ -1,4 +1,4 @@
-// Явный выбор строки для правки.
+// Picking a line for editing explicitly.
 const { JSDOM } = await import('jsdom');
 import fs from 'fs';
 const dom = new JSDOM(fs.readFileSync(process.env.KARAOKE_PAGE_MIX, 'utf8'), {
@@ -30,57 +30,57 @@ const lns=()=>[...doc.querySelectorAll('.ln')];
 const tgtIdx=()=>lns().findIndex(e=>e.classList.contains('tgt'));
 const curIdx=()=>lns().findIndex(e=>e.classList.contains('cur'));
 
-console.log('--- метка цели видна только при открытой правке ---');
+console.log('--- the target tag shows only while editing is open ---');
 m.currentTime=9.0; await sleep(80);
-ok('без панели правки класс editing не стоит',
+ok('without the edit panel there is no editing class',
    !doc.body.classList.contains('editing'));
 $('btnEdit').click(); await sleep(30);
-ok('открыли правку — класс появился', doc.body.classList.contains('editing'));
+ok('editing opened — the class appeared', doc.body.classList.contains('editing'));
 $('btnEdit').click(); await sleep(30);
-ok('закрыли — класс снят', !doc.body.classList.contains('editing'));
+ok('closed — the class is gone', !doc.body.classList.contains('editing'));
 $('btnEdit').click(); await sleep(30);
 
-console.log('\n--- по умолчанию правим ТУ строку, что подсвечена ---');
-m.currentTime=14.8; await sleep(80);      // проигрыш после 4-й строки
-ok('подсвечена 4-я строка', curIdx()===3, 'подсвечена '+(curIdx()+1));
-ok('цель правки совпадает с подсвеченной', tgtIdx()===3, 'цель '+(tgtIdx()+1));
-ok('подпись показывает её', /^4\./.test($('tgtName').textContent), $('tgtName').textContent);
+console.log('\n--- by default we edit the line that is HIGHLIGHTED ---');
+m.currentTime=14.8; await sleep(80);      // the interlude after the 4th line
+ok('line 4 is highlighted', curIdx()===3, 'lit '+(curIdx()+1));
+ok('the edit target matches the highlighted line', tgtIdx()===3, 'target '+(tgtIdx()+1));
+ok('the caption shows it', /^4\./.test($('tgtName').textContent), $('tgtName').textContent);
 
 const base=starts();
 $('btnHere').click(); await sleep(60);
 const a1=starts();
-ok('переставлена именно подсвеченная 4-я', Math.abs(a1[3]-14.8)<0.05, `${base[3]} → ${a1[3]}`);
-ok('пятая не тронута', a1[4]===base[4]);
+ok('the highlighted line 4 is the one that moved', Math.abs(a1[3]-14.8)<0.05, `${base[3]} → ${a1[3]}`);
+ok('the fifth was left alone', a1[4]===base[4]);
 
-console.log('\n--- ▶ переводит цель на следующую строку ---');
+console.log('\n--- ▶ moves the target to the next line ---');
 $('btnReset').click(); await sleep(60);
 m.currentTime=14.8; await sleep(80);
 $('btnTgtNext').click(); await sleep(30);
-ok('цель ушла на 5-ю', tgtIdx()===4, 'цель '+(tgtIdx()+1));
-ok('подсветка проигрывания не поехала', curIdx()===3, 'подсвечена '+(curIdx()+1));
-ok('подпись обновилась', /^5\./.test($('tgtName').textContent), $('tgtName').textContent);
+ok('the target went to line 5', tgtIdx()===4, 'target '+(tgtIdx()+1));
+ok('the playback highlight did not move', curIdx()===3, 'lit '+(curIdx()+1));
+ok('the caption updated', /^5\./.test($('tgtName').textContent), $('tgtName').textContent);
 const b2=starts();
 $('btnHere').click(); await sleep(60);
 const a2=starts();
-ok('переставлена 5-я, а не 4-я', Math.abs(a2[4]-14.8)<0.05 && a2[3]===b2[3],
+ok('line 5 moved, not line 4', Math.abs(a2[4]-14.8)<0.05 && a2[3]===b2[3],
    `4: ${b2[3]}→${a2[3]}, 5: ${b2[4]}→${a2[4]}`);
 
-console.log('\n--- ◀ и края списка ---');
+console.log('\n--- ◀ and the ends of the list ---');
 $('btnTgtPrev').click(); $('btnTgtPrev').click(); await sleep(30);
-ok('цель ушла на две строки вверх', tgtIdx()===2, 'цель '+(tgtIdx()+1));
+ok('the target went two lines up', tgtIdx()===2, 'target '+(tgtIdx()+1));
 const pinned = tgtIdx();
 m.currentTime=2.5; await sleep(80);
-ok('выбранная цель держится, даже когда песня ушла дальше', tgtIdx()===pinned,
-   `цель ${tgtIdx()+1}, подсвечена ${curIdx()+1}`);
+ok('the chosen target holds even as the song moves on', tgtIdx()===pinned,
+   `target ${tgtIdx()+1}, lit ${curIdx()+1}`);
 $('btnUnpin').click(); await sleep(60);
-ok('«не эту» возвращает цель к подсвеченной строке', tgtIdx()===curIdx(),
-   `цель ${tgtIdx()+1}, подсвечена ${curIdx()+1}`);
+ok('“not this one” hands the target back to the highlighted line', tgtIdx()===curIdx(),
+   `target ${tgtIdx()+1}, lit ${curIdx()+1}`);
 for (let i=0;i<9;i++) $('btnTgtPrev').click();
 await sleep(30);
-ok('за первую строку не уходим', tgtIdx()===0, 'цель '+(tgtIdx()+1));
+ok('we do not go past the first line', tgtIdx()===0, 'target '+(tgtIdx()+1));
 for (let i=0;i<20;i++) $('btnTgtNext').click();
 await sleep(30);
-ok('за последнюю тоже', tgtIdx()===5, 'цель '+(tgtIdx()+1));
-ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(';'));
+ok('nor past the last one', tgtIdx()===5, 'target '+(tgtIdx()+1));
+ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(';'));
 console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

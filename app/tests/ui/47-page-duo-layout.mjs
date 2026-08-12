@@ -1,5 +1,5 @@
-// Два голоса разом: в настоящем браузере строки должны читаться порознь —
-// не наезжать друг на друга и стоять по разным сторонам сцены.
+// Two voices at once: in a real browser the lines must read apart — they must
+// not overlap and must stand on different sides of the stage.
 import puppeteer from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
@@ -10,15 +10,15 @@ let fail = 0;
 const ok = (n, c, e='') => { console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c) fail++; };
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-// Своя песня: две строки, одна в скобках (второй голос), звучат внахлёст.
+// A song of our own: two lines, one in brackets (the second voice), overlapping.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'duo_'));
-const txt = path.join(tmp, 'текст.txt');
+const txt = path.join(tmp, 'lyrics.txt');
 fs.writeFileSync(txt, 'title: Дуэт\n\nПервый голос ведёт мелодию\n(а второй ему вторит)\nПотом снова один\n', 'utf8');
 const page = path.join(tmp, 'p.html');
 execFileSync('python3', ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', page,
   '--align','energy','--no-separate','--ui-lang','ru','--colors','#4de1ff,#ff5577']);
 
-// Сдвигаем вторую строку под первую — как в настоящем дуэте.
+// Shift the second line under the first — as in a real duet.
 const raw = fs.readFileSync(page,'utf8');
 const mark = '<script id="payload" type="application/json">';
 const a = raw.indexOf(mark) + mark.length, b = raw.indexOf('</scr'+'ipt>', a);
@@ -38,7 +38,7 @@ await p.setViewport({width:1280, height:720});
 await p.goto('file://' + page2, {waitUntil:'networkidle0'});
 await sleep(800);
 
-// Встаём на момент, когда поют оба.
+// Stand at the moment when both are singing.
 await p.evaluate(t => {
   const el = document.querySelector('audio') || null;
   window.__seek = t;
@@ -48,21 +48,21 @@ await p.evaluate(() => {
 });
 await sleep(500);
 await p.evaluate(t => {
-  // перематываем через ту же полосу, что и человек
+  // seek through the same bar a person would use
   const seek = document.getElementById('seek');
   const r = seek.getBoundingClientRect();
   const dur = document.getElementById('tDur').textContent;
   return t;
 }, 0);
-// проще: двигаем время напрямую через клик по строке и ожидание
+// simpler: move the time directly with a click on a line and a wait
 await p.evaluate(() => document.querySelectorAll('#scroll .ln')[0].click());
 await sleep(1200);
 
 const state = await p.evaluate(() => {
   const els = [...document.querySelectorAll('#scroll .ln')];
   const cur = els.filter(e => e.classList.contains('cur'));
-  // Меряем сами слова, а не блок строки: блок во всю ширину сцены, а глаз
-  // видит текст, и разводятся именно слова.
+  // Measure the words themselves, not the line block: the block spans the whole
+  // stage while the eye sees the text, and it is the words that are split apart.
   const box = e => {
     const ws = [...e.querySelectorAll('.w')].map(w => w.getBoundingClientRect());
     const r = e.getBoundingClientRect();
@@ -74,22 +74,22 @@ const state = await p.evaluate(() => {
             duo: e.classList.contains('duo'), v2: e.classList.contains('v2')}; };
   return {n: cur.length, boxes: cur.map(box), stage: document.getElementById('stage').getBoundingClientRect().width};
 });
-ok('поют двое', state.n >= 2, JSON.stringify(state.boxes.map(x=>x.text)));
+ok('two are singing', state.n >= 2, JSON.stringify(state.boxes.map(x=>x.text)));
 if (state.n >= 2){
   const one = state.boxes.find(x => !x.v2), two = state.boxes.find(x => x.v2);
-  ok('обе строки разведены', one && two && one.duo && two.duo,
+  ok('both lines are split apart', one && two && one.duo && two.duo,
      JSON.stringify(state.boxes));
-  ok('строки не пересекаются по вертикали',
+  ok('the lines do not overlap vertically',
      one.b <= two.t + 2 || two.b <= one.t + 2,
-     `${one.t}–${one.b} и ${two.t}–${two.b}`);
-  ok('первый голос стоит левее второго', one.l < two.l,
+     `${one.t}–${one.b} and ${two.t}–${two.b}`);
+  ok('the first voice sits to the left of the second', one.l < two.l,
      `${one.l} vs ${two.l}`);
-  ok('второй прижат к правому краю', two.r > state.stage * 0.6,
-     `${two.r} при ширине ${state.stage}`);
-  ok('обе видны целиком на сцене',
+  ok('the second hugs the right edge', two.r > state.stage * 0.6,
+     `${two.r} with a width of ${state.stage}`);
+  ok('both are fully visible on stage',
      one.t > 0 && two.b < 720, `${one.t} … ${two.b}`);
 }
-ok('ошибок JS нет', errs.length === 0, errs.slice(0,2).join(' | '));
+ok('no JS errors', errs.length === 0, errs.slice(0,2).join(' | '));
 await br.close();
 fs.rmSync(tmp, {recursive:true, force:true});
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');

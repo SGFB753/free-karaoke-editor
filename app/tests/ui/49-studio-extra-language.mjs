@@ -1,4 +1,4 @@
-// Новый язык окна — это файл kstudio/messages/<код>.json, без правки кода.
+// A new window language is a kstudio/messages/<code>.json file, with no code edits.
 const { JSDOM } = await import('jsdom');
 import fs from 'fs';
 import path from 'path';
@@ -8,7 +8,7 @@ const ROOT = process.env.KARAOKE_ROOT || process.cwd();
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 let fail=0; const ok=(n,c,e='')=>{console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c)fail++;};
 
-// Кладём «перевод»: половина ключей, чтобы проверить и запасной английский.
+// Drop in a “translation”: half the keys, so the English fallback is checked too.
 const dir = path.join(ROOT, 'kstudio', 'messages');
 const file = path.join(dir, 'xx.json');
 fs.writeFileSync(file, JSON.stringify({
@@ -18,14 +18,14 @@ fs.writeFileSync(file, JSON.stringify({
 
 try {
   const st = await (await fetch(API + '/api/state')).json();
-  ok('сервер увидел новый язык', (st.uiLangs || []).includes('xx'),
+  ok('the server saw the new language', (st.uiLangs || []).includes('xx'),
      JSON.stringify(st.uiLangs));
   const msgs = await (await fetch(API + '/api/messages?lang=xx')).json();
-  ok('и отдаёт сам файл', msgs.appTitle === 'Karaoke XX', JSON.stringify(msgs).slice(0,60));
+  ok('and it serves the file itself', msgs.appTitle === 'Karaoke XX', JSON.stringify(msgs).slice(0,60));
   const bad = await fetch(API + '/api/messages?lang=../secret');
-  ok('чужой путь не отдаётся', bad.status === 400, String(bad.status));
+  ok('a path outside is not served', bad.status === 400, String(bad.status));
   const none = await (await fetch(API + '/api/messages?lang=zz')).json();
-  ok('несуществующий язык — пустой ответ', Object.keys(none).length === 0);
+  ok('a missing language gives an empty answer', Object.keys(none).length === 0);
 
   const html = await (await fetch(API + "/")).text();
   const js   = await (await fetch(API + "/ui.js")).text();
@@ -50,24 +50,24 @@ try {
   w.eval(js);
   await sleep(900);
 
-  // Стенд поднят по-русски: кольцо en → ru → xx, значит следующий после ru — xx.
-  ok('кнопка предлагает новый язык', $("btnLang").textContent.trim() === 'XX',
+  // The stand is up in Russian: the ring is en → ru → xx, so after ru comes xx.
+  ok('the button offers the new language', $("btnLang").textContent.trim() === 'XX',
      $("btnLang").textContent);
   $("btnLang").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
   await sleep(600);
-  ok('заголовок взят из файла', /Karaoke XX/.test($("scrList").querySelector('h1').textContent),
+  ok('the title came from the file', /Karaoke XX/.test($("scrList").querySelector('h1').textContent),
      $("scrList").querySelector('h1').textContent);
-  ok('кнопка добавления тоже', /Add XX/.test($("btnAdd").textContent), $("btnAdd").textContent);
-  // Пустое значение и отсутствующий ключ — берём английский, а не пустоту.
+  ok('the add button too', /Add XX/.test($("btnAdd").textContent), $("btnAdd").textContent);
+  // An empty value and a missing key — we take English, not emptiness.
   doc.querySelectorAll('.card')[0].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
   await sleep(1400);
   const heads = [...doc.querySelectorAll('.side h3')].map(e => e.textContent.trim());
-  ok('пустой перевод заменён английским', heads.includes('Summary'), heads.join(' | '));
-  ok('переведённый ключ на месте', heads.includes('Check XX'), heads.join(' | '));
-  ok('а ключей, которых нет в файле, тоже не пусто',
+  ok('an empty translation falls back to English', heads.includes('Summary'), heads.join(' | '));
+  ok('the translated key is in place', heads.includes('Check XX'), heads.join(' | '));
+  ok('and keys missing from the file are not empty either',
      /Timeline XX/.test(doc.querySelector('.tlhead').textContent),
      doc.querySelector('.tlhead').textContent.slice(0,40));
-  ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
+  ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 } finally {
   fs.unlinkSync(file);
 }

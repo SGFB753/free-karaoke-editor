@@ -1,4 +1,4 @@
-// Оставленный оригинальный голос и переключатель языка на готовой странице.
+// The kept original voice and the language switch on the finished page.
 const { JSDOM } = await import('jsdom');
 import fs from 'fs';
 import path from 'path';
@@ -7,8 +7,8 @@ import os from 'os';
 let fail=0; const ok=(n,c,e='')=>{console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c)fail++;};
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-// Берём готовую страницу с двумя дорожками и отмечаем в ней строку как «поёт
-// оригинал» — так проверяется настоящая сборка, а не выдуманные данные.
+// We take a finished page with two tracks and mark a line in it as “the original
+// sings” — that checks the real build, not made-up data.
 const src = process.env.KARAOKE_PAGE_STEMS;
 const raw = fs.readFileSync(src, 'utf8');
 const mark = '<script id="payload" type="application/json">';
@@ -54,58 +54,58 @@ const w = dom.window, doc = w.document, $ = id => doc.getElementById(id);
 await sleep(500);
 const lns = () => [...doc.querySelectorAll('#scroll .ln')];
 
-console.log('--- строку видно заранее ---');
-ok('строка помечена как оригинальная', lns()[2].classList.contains('keep'),
+console.log('--- the line can be seen in advance ---');
+ok('the line is marked as the original', lns()[2].classList.contains('keep'),
    [...lns()[2].classList].join(' '));
-ok('на ней написано, что петь её не надо',
+ok('it says on it that there is no need to sing',
    /поёт оригинал/.test(lns()[2].textContent), lns()[2].textContent.slice(-40));
-ok('на остальных такой надписи нет', !/поёт оригинал/.test(lns()[0].textContent));
+ok('the others carry no such note', !/поёт оригинал/.test(lns()[0].textContent));
 
-console.log('\n--- голос возвращается именно на этом куске ---');
+console.log('\n--- the voice comes back exactly on that span ---');
 const vocalGain = () => {
   const g = w.__gains[1];
   return g ? g.gain.value : (w.__inst[1] ? w.__inst[1].volume : null);
 };
-ok('дорожки разделены (иначе проверять нечего)', w.__gains.length >= 2 || w.__inst.length >= 2,
+ok('the tracks are separated (otherwise there is nothing to check)', w.__gains.length >= 2 || w.__inst.length >= 2,
    `gains=${w.__gains.length} el=${w.__inst.length}`);
-// Играем по-настоящему: жмём кнопку и двигаем часы звукового движка.
+// Playing for real: press the button and move the clock of the audio engine.
 const goto = async t => { w.__now = t; await sleep(140); };
 $("btnPlay").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(150);
 await goto(L[0].start + 0.2);
 const before = vocalGain();
-ok('вне отмеченного куска голос приглушён', before === 0, String(before));
+ok('outside the marked span the voice is muted', before === 0, String(before));
 await goto(L[2].start + 0.3);
 const during = vocalGain();
-ok('на отмеченном куске голос звучит', during === 1, String(during));
+ok('on the marked span the voice sounds', during === 1, String(during));
 await goto(L[3] ? L[3].start + 0.4 : L[2].end + 1.5);
 await sleep(150);
 const after = vocalGain();
-ok('после куска голос снова убран', after === 0, String(after));
+ok('after the span the voice is removed again', after === 0, String(after));
 
-console.log('\n--- переключатель языка ---');
-ok('кнопка языка есть', !!$("btnLang"));
-ok('страница собрана по-русски', /Голос/.test($("grpVocal").textContent),
+console.log('\n--- the language switch ---');
+ok('the language button is there', !!$("btnLang"));
+ok('the page was built in Russian', /Голос/.test($("grpVocal").textContent),
    $("grpVocal").textContent.trim());
-ok('кнопка предлагает английский', $("btnLang").textContent.trim() === "EN",
+ok('the button offers English', $("btnLang").textContent.trim() === "EN",
    $("btnLang").textContent);
 $("btnLang").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(200);
-ok('надписи стали английскими', /Voice/.test($("grpVocal").textContent),
+ok('the labels turned English', /Voice/.test($("grpVocal").textContent),
    $("grpVocal").textContent.trim());
-ok('метка на строке тоже переведена', /original sings/.test(lns()[2].textContent),
+ok('the mark on the line is translated too', /original sings/.test(lns()[2].textContent),
    lns()[2].textContent.slice(-40));
-ok('кнопка теперь предлагает русский', $("btnLang").textContent.trim() === "RU");
-ok('язык записан в атрибут страницы', doc.documentElement.lang === "en");
+ok('the button now offers Russian', $("btnLang").textContent.trim() === "RU");
+ok('the language is written into the page attribute', doc.documentElement.lang === "en");
 
-console.log('\n--- выбор запоминается ---');
-// У каждого окна jsdom своя память, второй загрузкой это не проверить —
-// смотрим саму запись, из которой страница берёт язык при открытии.
+console.log('\n--- the choice is remembered ---');
+// Every jsdom window has its own storage, a second load cannot check this —
+// we look at the record the page takes the language from when it opens.
 const keys = Object.keys(w.localStorage).filter(k => k.startsWith("karaoke-lang-"));
-ok('выбор языка записан в память страницы', keys.length === 1, keys.join(","));
-ok('и записан именно английский', w.localStorage.getItem(keys[0]) === "en",
+ok('the language choice was written to the page storage', keys.length === 1, keys.join(","));
+ok('and it is English that was written', w.localStorage.getItem(keys[0]) === "en",
    String(w.localStorage.getItem(keys[0])));
-ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
+ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 fs.rmSync(tmp, {recursive:true, force:true});
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

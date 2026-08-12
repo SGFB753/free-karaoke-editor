@@ -1,11 +1,11 @@
-// Настоящая мышь: попадание курсором jsdom не проверяет вообще, а именно там
-// и пряталась беда — за левый край блока потянуть было нечем.
+// A real mouse: jsdom never checks whether the cursor actually hits anything,
+// and that is exactly where the trouble hid — the left edge had nothing to grab.
 import puppeteer from 'puppeteer';
 const API = process.env.KARAOKE_API;
 const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disable-dev-shm-usage']});
 const p = await b.newPage();
 await p.setViewport({width:1366, height:768});
-p.on('pageerror', e => console.log('ОШИБКА JS:', String(e)));
+p.on('pageerror', e => console.log('JS ERROR:', String(e)));
 await p.goto(API+'/', {waitUntil:'networkidle0'});
 await new Promise(r=>setTimeout(r,600));
 await p.click('.card');
@@ -16,8 +16,8 @@ const srv = async () => (await (await fetch(API+'/api/project/'+encodeURICompone
 let fail = 0;
 const ok = (n,c,e='') => { console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c) fail++; };
 
-// Ищем блок, у которого нужное место действительно доступно курсору: соседи
-// могут налезать, и тогда клик достанется им, а не тому, что мы метили.
+// Look for a block whose spot is really reachable with the cursor: neighbours
+// may lie on top, and then the click goes to them, not to what we aimed at.
 async function pick(where){
   return await p.evaluate((where) => {
     const blocks = [...document.querySelectorAll('.blk')];
@@ -49,7 +49,7 @@ async function grab(i, where, dx){
             : r.left + r.width/2;
     const y = r.top + r.height/2;
     const hit = document.elementFromPoint(x, y);
-    return {x, y, hit: hit ? hit.className : 'ничего', w: r.width};
+    return {x, y, hit: hit ? hit.className : 'nothing', w: r.width};
   }, i, where);
   await p.mouse.move(box.x, box.y);
   await p.mouse.down();
@@ -59,56 +59,56 @@ async function grab(i, where, dx){
   return {before, after: (await srv())[i], hit: box.hit};
 }
 
-console.log('--- за левый край: двигается начало ---');
+console.log('--- by the left edge: the start moves ---');
 let idx = await pick('left');
-ok('нашёлся блок со свободным левым краем', idx >= 0, 'блок ' + (idx+1));
+ok('found a block with a free left edge', idx >= 0, 'block ' + (idx+1));
 let r = await grab(idx, 'left', 60);
-ok('под курсором у левого края — ручка', /grip/.test(r.hit), r.hit);
-ok('начало строки уехало', Math.abs(r.after.start - r.before.start) > 0.05,
+ok('under the cursor at the left edge — a grip', /grip/.test(r.hit), r.hit);
+ok('the line start moved', Math.abs(r.after.start - r.before.start) > 0.05,
    `${r.before.start.toFixed(3)} → ${r.after.start.toFixed(3)}`);
-ok('конец строки остался на месте', Math.abs(r.after.end - r.before.end) < 1e-6,
+ok('the line end stayed put', Math.abs(r.after.end - r.before.end) < 1e-6,
    `${r.before.end.toFixed(3)} → ${r.after.end.toFixed(3)}`);
-ok('слова переразложены внутри новой длины',
+ok('the words were re-laid inside the new length',
    r.after.words[0].t >= r.after.start - 1e-6 &&
    r.after.words.at(-1).t + r.after.words.at(-1).d <= r.after.end + 1e-6);
 
-console.log('\n--- за правый край: двигается конец ---');
+console.log('\n--- by the right edge: the end moves ---');
 idx = await pick('right');
-ok('нашёлся блок со свободным правым краем', idx >= 0, 'блок ' + (idx+1));
+ok('found a block with a free right edge', idx >= 0, 'block ' + (idx+1));
 r = await grab(idx, 'right', 70);
-ok('под курсором у правого края — ручка', /grip/.test(r.hit), r.hit);
-ok('конец уехал', Math.abs(r.after.end - r.before.end) > 0.05,
+ok('under the cursor at the right edge — a grip', /grip/.test(r.hit), r.hit);
+ok('the end moved', Math.abs(r.after.end - r.before.end) > 0.05,
    `${r.before.end.toFixed(3)} → ${r.after.end.toFixed(3)}`);
-ok('начало осталось', Math.abs(r.after.start - r.before.start) < 1e-6);
+ok('the start stayed', Math.abs(r.after.start - r.before.start) < 1e-6);
 
-console.log('\n--- за середину: едет вся строка ---');
+console.log('\n--- by the middle: the whole line moves ---');
 idx = await pick('mid');
-ok('нашёлся блок со свободной серединой', idx >= 0, 'блок ' + (idx+1));
+ok('found a block with a free middle', idx >= 0, 'block ' + (idx+1));
 r = await grab(idx, 'mid', 80);
-ok('под курсором — сам блок', /blk/.test(r.hit) && !/grip/.test(r.hit), r.hit);
-ok('строка сдвинулась целиком',
+ok('under the cursor — the block itself', /blk/.test(r.hit) && !/grip/.test(r.hit), r.hit);
+ok('the line moved as a whole',
    Math.abs(r.after.start - r.before.start) > 0.05 &&
    Math.abs((r.after.end - r.after.start) - (r.before.end - r.before.start)) < 0.01,
    `${r.before.start.toFixed(2)}–${r.before.end.toFixed(2)} → ${r.after.start.toFixed(2)}–${r.after.end.toFixed(2)}`);
 
-console.log('\n--- первый блок у самого левого края тоже тянется ---');
+console.log('\n--- the very first block drags too ---');
 await p.evaluate(() => document.getElementById('btnUndo').click());
 await new Promise(r=>setTimeout(r,600));
 r = await grab(0, 'mid', 50);
-ok('самый первый блок двигается', Math.abs(r.after.start - r.before.start) > 0.05,
+ok('the very first block moves', Math.abs(r.after.start - r.before.start) > 0.05,
    `${r.before.start.toFixed(3)} → ${r.after.start.toFixed(3)}`);
 
-console.log('\n--- слово тянется настоящей мышью ---');
+console.log('\n--- a word drags with a real mouse ---');
 const wr = await p.evaluate(() => {
   const c = [...document.querySelectorAll('.wrd')];
   if (!c.length) return null;
   const r = c[c.length-1].getBoundingClientRect();
   const hit = document.elementFromPoint(r.left + r.width/2, r.top + r.height/2);
-  return {cls: hit ? hit.className : 'ничего',
-          // важно не «какой это элемент», а достанется ли нажатие слову
+  return {cls: hit ? hit.className : 'nothing',
+          // what matters is not “which element” but whether the press reaches the word
           mine: !!(hit && hit.closest && hit.closest('.wrd') === c[c.length-1])};
 });
-ok('нажатие по слову достаётся слову', wr && wr.mine, wr ? wr.cls : 'нет слов');
+ok('a press on a word reaches the word', wr && wr.mine, wr ? wr.cls : 'no words');
 
 await b.close();
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');

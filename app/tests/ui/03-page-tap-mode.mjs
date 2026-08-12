@@ -19,39 +19,39 @@ await sleep(200);
 let fail=0; const ok=(n,c,e='')=>{console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c)fail++;};
 const master=w.__inst[0], lns=[...doc.querySelectorAll('.ln')];
 
-console.log('--- редактор: разметка по тапам ---');
+console.log('--- editor: tapping the timing in ---');
 $('btnTap').click();
-ok('режим тапов включился', doc.body.classList.contains('tapping'));
+ok('tap mode is on', doc.body.classList.contains('tapping'));
 const space=()=>doc.dispatchEvent(new w.KeyboardEvent('keydown',{key:' ',bubbles:true}));
-space(); await sleep(30);              // первый Пробел только запускает песню
-// отмечаем строки в моменты 3, 7, 11, 15, 19, 23 с
+space(); await sleep(30);              // the first Space only starts the song
+// mark the lines at 3, 7, 11, 15, 19, 23 s
 for (const t of [3,7,11,15,19,23]) { master.currentTime=t; await sleep(20); space(); }
 $('btnTap').click();
 $('btnSaveJson').click();
 const j = JSON.parse(saved);
 const starts = j.lines.map(l=>+l.start.toFixed(2));
-ok('тапы записали 6 начал строк', JSON.stringify(starts)===JSON.stringify([3,7,11,15,19,23]), starts.join(', '));
-const w1 = j.lines[0].words;   // Раз(1) два(1) три(1) четыре(3) пять(1) = 7 слогов
-ok('слова разложены по слогам, а не поровну',
-   Math.abs(w1[3].d - 3*w1[0].d) < 0.02, 'четыре='+w1[3].d+'с, раз='+w1[0].d+'с');
-ok('слова строки укладываются в её длительность',
+ok('the taps recorded 6 line starts', JSON.stringify(starts)===JSON.stringify([3,7,11,15,19,23]), starts.join(', '));
+const w1 = j.lines[0].words;   // Раз(1) два(1) три(1) четыре(3) пять(1) = 7 syllables
+ok('the words are laid out by syllable, not evenly',
+   Math.abs(w1[3].d - 3*w1[0].d) < 0.02, 'four='+w1[3].d+'s, one='+w1[0].d+'s');
+ok("the words fit inside the line's length",
    Math.abs((w1[4].t+w1[4].d) - j.lines[0].end) < 0.05);
 
-console.log('--- сдвиг строки и отмена ---');
+console.log('--- shifting a line and undoing ---');
 master.currentTime=8; await sleep(60);
 const before = JSON.parse(JSON.stringify(lns.map(e=>e.className)));
 doc.dispatchEvent(new w.KeyboardEvent('keydown',{key:']',bubbles:true}));
 await sleep(40); $('btnSaveJson').click();
 const after = JSON.parse(saved).lines[1].start;
-ok('строка сдвинулась на +0.05с клавишей ]', Math.abs(after-7.05)<0.001, 'start='+after);
+ok('the line moved by +0.05 s with ]', Math.abs(after-7.05)<0.001, 'start='+after);
 $('btnUndo').click(); $('btnSaveJson').click();
-ok('отмена вернула прежнее', Math.abs(JSON.parse(saved).lines[1].start-7)<0.001);
+ok('undo brought the previous state back', Math.abs(JSON.parse(saved).lines[1].start-7)<0.001);
 
-console.log('--- сохранение в браузере ---');
-ok('правки записаны в localStorage', !!w.localStorage.getItem(Object.keys(w.localStorage).find(k=>k.startsWith('karaoke:'))||'x'));
+console.log('--- saving in the browser ---');
+ok('the edits are written to localStorage', !!w.localStorage.getItem(Object.keys(w.localStorage).find(k=>k.startsWith('karaoke:'))||'x'));
 $('btnReset').click(); $('btnSaveJson').click();
-ok('сброс вернул исходную разметку', Math.abs(JSON.parse(saved).lines[0].start-2.02)<0.1,
+ok('reset restored the original timing', Math.abs(JSON.parse(saved).lines[0].start-2.02)<0.1,
    'start='+JSON.parse(saved).lines[0].start);
-ok('ошибок JS нет', w.__errs.length===0, w.__errs.join(';'));
+ok('no JS errors', w.__errs.length===0, w.__errs.join(';'));
 console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

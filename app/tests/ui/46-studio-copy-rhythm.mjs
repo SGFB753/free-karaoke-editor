@@ -1,5 +1,5 @@
-// Выверенную строку не надо размечать заново: её ритм копируется в такие же,
-// а сама строка дублируется целиком.
+// A tuned line need not be timed again: its rhythm is copied into lines like it,
+// and the line itself can be duplicated whole.
 const { JSDOM } = await import('jsdom');
 const API = process.env.KARAOKE_API;
 const html = await (await fetch(API + "/")).text();
@@ -40,7 +40,7 @@ const pick = i => doc.querySelectorAll('#scroll .ln')[i]
                      .dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 const click = id => $(id).dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 
-// Своя разметка на время проверки: две одинаковые строки, как припев.
+// Our own timing for the duration of the check: two identical lines, like a chorus.
 const original = await srv();
 const test = JSON.parse(JSON.stringify(original));
 test[1].text = test[3].text = "Раз два три";
@@ -55,9 +55,9 @@ await sleep(300);
 doc.querySelectorAll('.card')[0].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(1400);
 
-console.log('--- копируем ритм выверенной строки ---');
+console.log('--- copying the rhythm of a tuned line ---');
 pick(1); await sleep(120);
-// делаем «свой» ритм: первое слово короткое, второе длинное
+// make a rhythm “of our own”: the first word short, the second long
 await sleep(50);
 const lines0 = await srv();
 const mine = JSON.parse(JSON.stringify(lines0));
@@ -72,96 +72,96 @@ doc.querySelectorAll('.card')[0].dispatchEvent(new w.MouseEvent('click',{bubbles
 await sleep(1400);
 
 pick(1); await sleep(150);
-ok('кнопка вставки пока недоступна', $("btnPaste").disabled);
+ok('the paste button is not available yet', $("btnPaste").disabled);
 click("btnRhythm"); await sleep(150);
-ok('после копирования вставка доступна', !$("btnPaste").disabled);
-ok('на кнопке видно, сколько таких строк', /×2|2/.test($("btnPaste").textContent),
+ok('after copying, pasting is available', !$("btnPaste").disabled);
+ok('the button shows how many such lines there are', /×2|2/.test($("btnPaste").textContent),
    $("btnPaste").textContent);
 
-console.log('\n--- вставляем в такую же строку ---');
+console.log('\n--- pasting into a line just like it ---');
 pick(3); await sleep(150);
 click("btnPaste"); await sleep(1000);
 const after = await srv();
 const src = mine[1], dst = after[3];
-ok('слова легли тем же рисунком',
+ok('the words fell into the same pattern',
    dst.words.every((x, j) => Math.abs((x.t - dst.start) - (src.words[j].t - src.start)) < 0.004),
    dst.words.map(x => (x.t - dst.start).toFixed(2)).join(' ') + ' vs ' +
    src.words.map(x => (x.t - src.start).toFixed(2)).join(' '));
-ok('и той же длины', dst.words.every((x, j) => Math.abs(x.d - src.words[j].d) < 0.004),
+ok('and the same lengths', dst.words.every((x, j) => Math.abs(x.d - src.words[j].d) < 0.004),
    dst.words.map(x => x.d.toFixed(2)).join(' '));
-ok('начало строки не сдвинулось', Math.abs(dst.start - mine[3].start) < 1e-6,
+ok('the start of the line did not move', Math.abs(dst.start - mine[3].start) < 1e-6,
    `${mine[3].start} → ${dst.start}`);
-ok('строка не короче своих слов',
+ok('the line is not shorter than its words',
    dst.end >= dst.words[dst.words.length-1].t + dst.words[dst.words.length-1].d - 1e-6);
 
-console.log('\n--- в строку с другим числом слов не лезет ---');
+console.log('\n--- it does not fit a line with a different word count ---');
 pick(0); await sleep(150);
 const was0 = (await srv())[0];
 click("btnPaste"); await sleep(700);
 const now0 = (await srv())[0];
-ok('чужая строка не тронута',
+ok('the other line was not touched',
    now0.words.length === was0.words.length &&
    now0.words.every((x, j) => Math.abs(x.t - was0.words[j].t) < 1e-6));
-ok('и об этом сказано', /слов|words/.test($("toast").textContent), $("toast").textContent);
+ok('and it is said out loud', /слов|words/.test($("toast").textContent), $("toast").textContent);
 
-console.log('\n--- копия пачки строк ---');
-// Выделяем две строки, копируем и вставляем — они должны появиться ниже.
+console.log('\n--- a copy of a batch of lines ---');
+// Select two lines, copy and paste — they must appear below.
 pick(1); await sleep(120);
 doc.querySelectorAll('#scroll .ln')[2].dispatchEvent(
   new w.MouseEvent('click',{bubbles:true, shiftKey:true}));
 await sleep(150);
 click("btnRhythm"); await sleep(150);
-ok('сказано, сколько строк скопировано', /2/.test($("toast").textContent),
+ok('it says how many lines were copied', /2/.test($("toast").textContent),
    $("toast").textContent);
 const beforeBlock = await srv();
 pick(4); await sleep(150);
 click("btnPasteLine"); await sleep(1000);
 const withBlock = await srv();
-ok('строк стало на две больше', withBlock.length === beforeBlock.length + 2,
+ok('there are two more lines', withBlock.length === beforeBlock.length + 2,
    `${beforeBlock.length} → ${withBlock.length}`);
-ok('вставились именно скопированные',
+ok('exactly the copied ones were pasted',
    withBlock[5].text === beforeBlock[1].text && withBlock[6].text === beforeBlock[2].text,
    `${withBlock[5].text} | ${withBlock[6].text}`);
-ok('они идут после той строки, на которой стояли',
+ok('they come after the line we were standing on',
    withBlock[5].start >= withBlock[4].end - 1e-6,
    `${withBlock[4].end.toFixed(2)} → ${withBlock[5].start.toFixed(2)}`);
-ok('и не налезают на следующую',
+ok('and they do not run into the next one',
    !withBlock[7] || withBlock[6].end <= withBlock[7].start + 0.01,
    `${withBlock[6].end.toFixed(2)} vs ${withBlock[7] ? withBlock[7].start.toFixed(2) : '—'}`);
-ok('строка, на которой стояли, осталась прежней',
+ok('the line we were standing on stayed as it was',
    withBlock[4].text === beforeBlock[4].text, `${beforeBlock[4].text} → ${withBlock[4].text}`);
-ok('и весь прежний текст на месте',
+ok('and all the previous text is in place',
    beforeBlock.every(l => withBlock.some(x => x.text === l.text)));
-ok('слова копий внутри своих строк',
+ok('the words of the copies are inside their own lines',
    [5,6].every(i => withBlock[i].words.every(x => x.t >= withBlock[i].start - 1e-6 &&
                     x.t + x.d <= withBlock[i].end + 0.01)));
 click("btnUndo"); await sleep(1000);
-ok('Ctrl+Z убирает вставленную пачку', (await srv()).length === beforeBlock.length);
+ok('Ctrl+Z removes the pasted batch', (await srv()).length === beforeBlock.length);
 
-console.log('\n--- дублирование строки целиком ---');
+console.log('\n--- duplicating a whole line ---');
 pick(1); await sleep(150);
 const before = (await srv()).length;
 w.document.dispatchEvent(new w.KeyboardEvent('keydown',
   {key:'d', ctrlKey:true, bubbles:true, cancelable:true}));
 await sleep(1000);
 const dup = await srv();
-ok('строк стало на одну больше', dup.length === before + 1, `${before} → ${dup.length}`);
-ok('копия стоит сразу под оригиналом', dup[2].text === dup[1].text, dup[2].text);
-ok('копия идёт после оригинала по времени', dup[2].start >= dup[1].end - 1e-6,
+ok('there is one more line', dup.length === before + 1, `${before} → ${dup.length}`);
+ok('the copy sits right under the original', dup[2].text === dup[1].text, dup[2].text);
+ok('the copy comes after the original in time', dup[2].start >= dup[1].end - 1e-6,
    `${dup[1].end} → ${dup[2].start}`);
-ok('слова копии внутри её же границ',
+ok("the copy's words are inside its own bounds",
    dup[2].words.every(x => x.t >= dup[2].start - 1e-6 &&
                            x.t + x.d <= dup[2].end + 0.001),
    `${dup[2].start.toFixed(2)}–${dup[2].end.toFixed(2)}: ` +
    dup[2].words.map(x => `${x.t.toFixed(2)}+${x.d.toFixed(2)}`).join(' '));
-ok('копия не наезжает на следующую строку',
+ok('the copy does not run into the next line',
    !dup[3] || dup[2].end <= dup[3].start + 0.001,
    `${dup[2].end.toFixed(2)} vs ${dup[3] ? dup[3].start.toFixed(2) : '—'}`);
 click("btnUndo"); await sleep(900);
-ok('Ctrl+Z убирает копию', (await srv()).length === before);
+ok('Ctrl+Z removes the copy', (await srv()).length === before);
 
-await put(original);                       // стенд как был
+await put(original);                       // the stand as it was
 await sleep(300);
-ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
+ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

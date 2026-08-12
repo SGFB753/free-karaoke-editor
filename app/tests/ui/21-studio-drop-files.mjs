@@ -1,4 +1,4 @@
-// Перетаскивание файлов в окно студии.
+// Dropping files into the studio window.
 const { JSDOM } = await import('jsdom');
 import fs from 'fs';
 const API = process.env.KARAOKE_API;
@@ -33,36 +33,36 @@ function fire(type, files){
   w.dispatchEvent(e);
   return e;
 }
-// поддельные File: jsdom умеет Blob/File
-const audio = new w.File([fs.readFileSync(process.env.KARAOKE_SONG)], "Перетащенная.wav", {type:"audio/wav"});
-const text  = new w.File([fs.readFileSync(process.env.KARAOKE_TEXT)], "Перетащенная.txt", {type:"text/plain"});
+// fake File objects: jsdom can do Blob/File
+const audio = new w.File([fs.readFileSync(process.env.KARAOKE_SONG)], "Dropped.wav", {type:"audio/wav"});
+const text  = new w.File([fs.readFileSync(process.env.KARAOKE_TEXT)], "Dropped.txt", {type:"text/plain"});
 
-console.log('--- подсказка при наведении ---');
+console.log('--- the hint on hover ---');
 fire('dragenter', [audio, text]);
 await sleep(60);
-ok('окно приёма показалось', !$('dropHint').classList.contains('hide'));
+ok('the drop overlay appeared', !$('dropHint').classList.contains('hide'));
 fire('dragleave', [audio, text]);
 await sleep(60);
-ok('и скрылось, когда увели', $('dropHint').classList.contains('hide'));
+ok('and hid again when the cursor left', $('dropHint').classList.contains('hide'));
 
-console.log('\n--- бросаем оба файла ---');
+console.log('\n--- dropping both files ---');
 fire('dragenter', [audio, text]);
 fire('drop', [audio, text]);
 await sleep(2500);
-ok('окно приёма закрылось', $('dropHint').classList.contains('hide'));
-ok('перешли на экран добавления', !$('scrNew').classList.contains('hide'));
-ok('путь к песне подставлен', /Перетащенная(-\d+)?\.wav/.test($('inAudio').value), $('inAudio').value);
-ok('путь к тексту подставлен', /Перетащенная(-\d+)?\.txt/.test($('inLyrics').value), $('inLyrics').value);
+ok('the drop overlay closed', $('dropHint').classList.contains('hide'));
+ok('we moved to the add-a-song screen', !$('scrNew').classList.contains('hide'));
+ok('the path to the song was filled in', /Dropped(-\d+)?\.wav/.test($('inAudio').value), $('inAudio').value);
+ok('the path to the lyrics was filled in', /Dropped(-\d+)?\.txt/.test($('inLyrics').value), $('inLyrics').value);
 
 const st = await (await fetch(API+"/api/state")).json();
-ok('файлы реально легли на диск', true, 'проектов: '+st.projects.length);
+ok('the files really landed on disk', true, 'projects: '+st.projects.length);
 
-console.log('\n--- бросаем что-то постороннее ---');
-const junk = new w.File([Buffer.from("x")], "картинка.png", {type:"image/png"});
+console.log('\n--- dropping something unrelated ---');
+const junk = new w.File([Buffer.from("x")], "picture.png", {type:"image/png"});
 fire('dragenter', [junk]);
 fire('drop', [junk]);
 await sleep(400);
-ok('лишний файл не сломал окно', w.__errs.length===0, w.__errs.join(';'));
-ok('поля не затёрлись', /Перетащенная(-\d+)?\.wav/.test($('inAudio').value));
+ok('a stray file did not break the window', w.__errs.length===0, w.__errs.join(';'));
+ok('the fields were not wiped', /Dropped(-\d+)?\.wav/.test($('inAudio').value));
 console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

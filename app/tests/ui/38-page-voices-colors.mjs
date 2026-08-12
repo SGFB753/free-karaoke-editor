@@ -1,4 +1,4 @@
-// Второй голос, цвета и одновременно звучащие строки.
+// The second voice, the colours and lines that sound at the same time.
 const { JSDOM } = await import('jsdom');
 import fs from 'fs';
 import { execFileSync } from 'child_process';
@@ -8,9 +8,9 @@ import os from 'os';
 let fail=0; const ok=(n,c,e='')=>{console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c)fail++;};
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-// Своя песня: основная строка, подпевка, снова основная.
+// A song of our own: a main line, a backing line, a main line again.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'voice_'));
-const txt = path.join(tmp, 'текст.txt');
+const txt = path.join(tmp, 'lyrics.txt');
 fs.writeFileSync(txt, 'title: Проба\n\nОсновная строка тут\n(подпевка звучит)\nСнова основная\n', 'utf8');
 const page = path.join(tmp, 'p.html');
 execFileSync('python3', ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', page,
@@ -32,25 +32,25 @@ const w = dom.window, doc = w.document, $ = id => doc.getElementById(id);
 await sleep(300);
 const lns = () => [...doc.querySelectorAll('#scroll .ln')];
 
-console.log('--- второй голос ---');
-ok('строка в скобках помечена вторым голосом',
+console.log('--- the second voice ---');
+ok('a line in brackets is marked as the second voice',
    lns()[1].classList.contains('v2'), [...lns()[1].classList].join(' '));
-ok('обычные строки — первым', !lns()[0].classList.contains('v2') &&
+ok('ordinary lines as the first', !lns()[0].classList.contains('v2') &&
    !lns()[2].classList.contains('v2'));
 
-console.log('\n--- цвета ---');
+console.log('\n--- colours ---');
 const root = doc.documentElement.style;
-ok('основной цвет взят из сборки',
+ok('the main colour came from the build',
    root.getPropertyValue('--accent').trim() === '#4de1ff',
    root.getPropertyValue('--accent'));
-ok('второй цвет тоже', root.getPropertyValue('--accent-2').trim() === '#ff5577',
+ok('the second colour too', root.getPropertyValue('--accent-2').trim() === '#ff5577',
    root.getPropertyValue('--accent-2'));
-ok('в стилях есть правило для второго голоса',
+ok('the styles carry a rule for the second voice',
    /\.ln\.v2 \.w \.hl\{color:var\(--accent-2\)\}/.test(
      fs.readFileSync(page,'utf8').replace(/\s+/g,' ').replace(/ \{/g,'{')),
-   'правило .ln.v2');
+   'the .ln.v2 rule');
 
-console.log('\n--- оформление ---');
+console.log('\n--- the look ---');
 {
   const eng = path.join(tmp,'t.html');
   execFileSync('python3', ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', eng,
@@ -67,18 +67,18 @@ console.log('\n--- оформление ---');
       w.Audio=FA; }});
   await sleep(250);
   const st = d.window.document.documentElement.style;
-  ok('фон страницы взят из настроек', st.getPropertyValue('--bg').trim() === '#fdf6e3',
+  ok('the page background came from the settings', st.getPropertyValue('--bg').trim() === '#fdf6e3',
      st.getPropertyValue('--bg'));
-  ok('цвет букв тоже', st.getPropertyValue('--text').trim() === '#3b3a34',
+  ok('the text colour too', st.getPropertyValue('--text').trim() === '#3b3a34',
      st.getPropertyValue('--text'));
-  ok('тусклые строки не остались светлыми',
+  ok('the dim lines did not stay light',
      st.getPropertyValue('--dim').trim() !== '' &&
      st.getPropertyValue('--dim').trim() !== '#5d6480',
      st.getPropertyValue('--dim'));
-  ok('ошибок JS нет', d.window.__errs.length === 0, d.window.__errs.slice(0,2).join(' | '));
+  ok('no JS errors', d.window.__errs.length === 0, d.window.__errs.slice(0,2).join(' | '));
 }
 
-console.log('\n--- буквы не сливаются с фоном ---');
+console.log('\n--- the letters do not blend into the background ---');
 {
   const bad = path.join(tmp,'bad.html');
   execFileSync('python3', ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', bad,
@@ -87,13 +87,13 @@ console.log('\n--- буквы не сливаются с фоном ---');
   const m2 = '<script id="payload" type="application/json">';
   const a2 = raw2.indexOf(m2) + m2.length, b2 = raw2.indexOf('</scr'+'ipt>', a2);
   const th = JSON.parse(raw2.slice(a2,b2)).theme;
-  ok('фон остался тем, что выбрали', th.bg === '#fdf6e3', JSON.stringify(th));
-  ok('а цвет букв поправлен', th.text !== '#f5efdc', JSON.stringify(th));
+  ok('the background stayed the one that was picked', th.bg === '#fdf6e3', JSON.stringify(th));
+  ok('while the text colour was adjusted', th.text !== '#f5efdc', JSON.stringify(th));
 }
 
-console.log('\n--- строки звучат одновременно ---');
-// Накладываем вторую строку на первую прямо в данных страницы и открываем заново:
-// так проверяется настоящий разбор и отрисовка, а не внутренние переменные.
+console.log('\n--- the lines sound at the same time ---');
+// We overlap the second line with the first right in the page data and reopen it:
+// that checks the real parsing and drawing, not internal variables.
 const raw = fs.readFileSync(page,'utf8');
 const mark = '<script id="payload" type="application/json">';
 const a = raw.indexOf(mark) + mark.length, b = raw.indexOf('</scr'+'ipt>', a);
@@ -125,39 +125,39 @@ m.currentTime = L[0].start + 0.3;
 await sleep(300);
 const lns2 = [...w2.document.querySelectorAll('#scroll .ln')];
 const cur = lns2.filter(e => e.classList.contains('cur'));
-ok('подсвечены обе накладывающиеся строки', cur.length >= 2,
-   cur.length + ' строк подсвечено');
-ok('и это именно первая и вторая',
+ok('both overlapping lines are highlighted', cur.length >= 2,
+   cur.length + ' lines highlighted');
+ok('and they are exactly the first and the second',
    cur.includes(lns2[0]) && cur.includes(lns2[1]));
 const lit = lns2[1].querySelectorAll('.w .hl');
-ok('у второй строки слова тоже подсвечиваются', lit.length > 0);
-ok('ошибок JS на второй странице нет', w2.__errs.length===0, w2.__errs.slice(0,2).join(' | '));
+ok("the second line's words light up as well", lit.length > 0);
+ok('there are no JS errors on the second page', w2.__errs.length===0, w2.__errs.slice(0,2).join(' | '));
 
-console.log('\n--- разные голоса не сливаются в кашу ---');
-// Строка 1 — второй голос (в скобках), строка 0 — первый. Они звучат разом.
-ok('обе помечены как «поют вдвоём»',
+console.log('\n--- different voices do not blur together ---');
+// Line 1 is the second voice (in brackets), line 0 the first. They sound at once.
+ok('both are marked as “singing together”',
    cur.every(e => e.classList.contains('duo')),
    cur.map(e => e.className).join(' | '));
-ok('первый голос уходит влево, второй вправо',
+ok('the first voice goes left, the second right',
    !lns2[0].classList.contains('v2') && lns2[1].classList.contains('v2'));
 {
   const css = fs.readFileSync(page2,'utf8').replace(/\s+/g,' ');
-  ok('в стилях есть развод по сторонам',
+  ok('the styles carry the split to the sides',
      /\.ln\.duo:not\(\.v2\)\{[^}]*text-align:left/.test(css) &&
      /\.ln\.duo\.v2\{[^}]*text-align:right/.test(css),
-     'правила .ln.duo');
-  ok('у каждой стороны своя метка голоса',
+     'the .ln.duo rules');
+  ok('each side has its own voice mark',
      /\.ln\.duo::before\{content:"1"/.test(css) && /\.ln\.duo\.v2::before\{content:"2"/.test(css));
 }
-// когда поёт кто-то один — никакого развода
+// when only one is singing — no splitting apart
 m.currentTime = L[2] ? L[2].start + 0.2 : L[0].end + 5;
 await sleep(300);
 const solo = [...w2.document.querySelectorAll('#scroll .ln')].filter(e => e.classList.contains('cur'));
-ok('в одиночном пении развода нет',
+ok('in solo singing there is no split',
    solo.every(e => !e.classList.contains('duo')),
    solo.map(e => e.className).join(' | '));
 
-ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
+ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 fs.rmSync(tmp, {recursive:true, force:true});
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

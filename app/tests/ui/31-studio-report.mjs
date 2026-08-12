@@ -1,5 +1,5 @@
-// Отчёт перед сборкой: показывается сам, как только выбраны оба файла, и
-// говорит то же, что потом окажется в логе.
+// The report before building: it shows up by itself once both files are picked,
+// and it says the same thing that later turns up in the log.
 const { JSDOM } = await import('jsdom');
 const API = process.env.KARAOKE_API;
 const html = await (await fetch(API + "/")).text();
@@ -32,51 +32,51 @@ const text = () => $('report').textContent.replace(/\s+/g,' ').trim();
 $('btnAdd').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(200);
 
-console.log('--- пока файлов нет, отчёта нет ---');
-ok('отчёт спрятан', $('report').classList.contains('hide'));
+console.log('--- with no files there is no report ---');
+ok('the report is hidden', $('report').classList.contains('hide'));
 
-console.log('\n--- выбрали оба файла ---');
+console.log('\n--- both files picked ---');
 $('inAudio').value = process.env.KARAOKE_SONG;
 $('inAudio').dispatchEvent(new w.Event('input',{bubbles:true}));
 $('inLyrics').value = process.env.KARAOKE_TEXT;
 $('inLyrics').dispatchEvent(new w.Event('input',{bubbles:true}));
 await sleep(300);
-ok('отчёт показался и сначала честно ждёт', !$('report').classList.contains('hide'));
+ok('the report appeared and honestly waits at first', !$('report').classList.contains('hide'));
 await sleep(6000);
 
 const t = text();
-ok('длина песни названа', /0:2\d/.test(t), t.slice(0, 70));
-// Про темп в окне больше не пишем: для караоке важнее, где текст молчит.
-ok('места без пения названы', /Без пения/.test(t), t.slice(0, 110));
-ok('строки и слова посчитаны', /6\b/.test(t) && /Строк/i.test(t), t.slice(0, 120));
-ok('язык назван', /русский/i.test(t), t.slice(0, 140));
-ok('сказано, что программа будет делать', /Сделаю/.test(t), t.slice(-120));
-ok('оценка времени есть и помечена грубой', /займёт/.test(t) && /грубо/.test(t),
+ok('the length of the song is named', /0:2\d/.test(t), t.slice(0, 70));
+// We no longer print the tempo in the window: for karaoke it matters more where the text falls silent.
+ok('the places without singing are named', /Без пения/.test(t), t.slice(0, 110));
+ok('lines and words are counted', /6\b/.test(t) && /Строк/i.test(t), t.slice(0, 120));
+ok('the language is named', /русский/i.test(t), t.slice(0, 140));
+ok('it says what the program is going to do', /Сделаю/.test(t), t.slice(-120));
+ok('there is a time estimate, marked as rough', /займёт/.test(t) && /грубо/.test(t),
    t.slice(-90));
 
-console.log('\n--- отчёт пересчитывается при смене настроек ---');
+console.log('\n--- the report is recomputed when settings change ---');
 const before = text();
 $('selAlign').value = 'energy';
 $('selAlign').dispatchEvent(new w.Event('change',{bubbles:true}));
 await sleep(5000);
 const after = text();
-ok('план поменялся вслед за выбором', before !== after &&
+ok('the plan changed along with the choice', before !== after &&
    /по энергии/.test(after), after.slice(-110));
 
-console.log('\n--- язык из выбора попадает в отчёт ---');
+console.log('\n--- the picked language reaches the report ---');
 $('selAlign').value = 'auto';
 $('selLang').value = 'en';
 $('selLang').dispatchEvent(new w.Event('change',{bubbles:true}));
 await sleep(5000);
-ok('выбранный вручную язык показан', /english/i.test(text()), text().slice(0, 150));
+ok('the manually picked language is shown', /english/i.test(text()), text().slice(0, 150));
 
-console.log('\n--- чужой файл не роняет окно ---');
-$('inLyrics').value = '/такого/файла/нет.txt';
+console.log('\n--- a foreign file does not break the window ---');
+$('inLyrics').value = '/no/such/file.txt';
 $('inLyrics').dispatchEvent(new w.Event('input',{bubbles:true}));
 await sleep(3000);
-ok('сказано по-человечески, а не молчанием',
+ok('it is said in plain words instead of silence',
    /не найден|Не вышло/i.test(text()), text().slice(0, 90));
 
-ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
+ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

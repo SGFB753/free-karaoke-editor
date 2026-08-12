@@ -1,5 +1,5 @@
-// Отмена в студии. Правки уходят на диск сами, «закрыть без сохранения» тут нет —
-// отмена и есть единственная защита от неверного движения.
+// Undo in the studio. Edits reach the disk on their own, there is no “close
+// without saving” here — undo is the only guard against a wrong move.
 const { JSDOM } = await import('jsdom');
 const API = process.env.KARAOKE_API;
 const html = await (await fetch(API + "/")).text();
@@ -48,34 +48,34 @@ await sleep(1200);
 const start = await srv();
 const snapshot = () => JSON.stringify(start.map(l=>[l.text, +l.start.toFixed(3)]));
 
-console.log('--- пока не правили, отменять нечего ---');
-ok('кнопка отмены выключена', $('btnUndo').disabled);
+console.log('--- before any edit there is nothing to undo ---');
+ok('the undo button is disabled', $('btnUndo').disabled);
 
-console.log('\n--- отмена сдвига клавишами ---');
+console.log('\n--- undoing a keyboard shift ---');
 pickLine(2); await sleep(60);
 const s0 = (await srv())[2].start;
 key(']'); await sleep(60);
 key(']'); await sleep(900);
 const s1 = (await srv())[2].start;
-ok('строка сдвинулась', Math.abs(s1 - s0 - 0.1) < 1e-6, `${s0} → ${s1}`);
-ok('кнопка отмены включилась', !$('btnUndo').disabled);
+ok('the line moved', Math.abs(s1 - s0 - 0.1) < 1e-6, `${s0} → ${s1}`);
+ok('the undo button became active', !$('btnUndo').disabled);
 click('btnUndo'); await sleep(900);
 const s2 = (await srv())[2].start;
-ok('одна отмена вернула оба нажатия сразу', Math.abs(s2 - s0) < 1e-6,
-   `${s1} → ${s2}, ждали ${s0}`);
+ok('one undo took back both presses at once', Math.abs(s2 - s0) < 1e-6,
+   `${s1} → ${s2}, expected ${s0}`);
 
-console.log('\n--- отмена удаления строки ---');
+console.log('\n--- undoing a line deletion ---');
 const nBefore = (await srv()).length;
 const textGone = (await srv())[2].text;
 pickLine(2); await sleep(60);
 click('btnDelLine'); await sleep(900);
-ok('строка удалилась', (await srv()).length === nBefore - 1);
+ok('the line was deleted', (await srv()).length === nBefore - 1);
 key('z', {ctrlKey:true}); await sleep(900);
 let now = await srv();
-ok('Ctrl+Z вернул строку', now.length === nBefore, `${nBefore-1} → ${now.length}`);
-ok('вернулась именно та строка', now[2].text === textGone, now[2].text);
+ok('Ctrl+Z brought the line back', now.length === nBefore, `${nBefore-1} → ${now.length}`);
+ok('and it is the very same line', now[2].text === textGone, now[2].text);
 
-console.log('\n--- отмена правки текста ---');
+console.log('\n--- undoing a text edit ---');
 const wasText = now[1].text;
 doc.querySelectorAll('#scroll .ln')[1].dispatchEvent(new w.MouseEvent('dblclick',{bubbles:true}));
 await sleep(80);
@@ -83,12 +83,12 @@ const inp = doc.querySelector('.lnedit');
 inp.value = "ошибочная правка";
 inp.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
 await sleep(900);
-ok('текст изменился', (await srv())[1].text === "ошибочная правка");
+ok('the text changed', (await srv())[1].text === "ошибочная правка");
 click('btnUndo'); await sleep(900);
-ok('отмена вернула прежний текст', (await srv())[1].text === wasText,
+ok('undo brought the old text back', (await srv())[1].text === wasText,
    (await srv())[1].text);
 
-console.log('\n--- правка без изменений не занимает шаг отмены ---');
+console.log('\n--- an edit that changes nothing takes no undo step ---');
 const depthBefore = $('btnUndo').disabled;
 doc.querySelectorAll('#scroll .ln')[1].dispatchEvent(new w.MouseEvent('dblclick',{bubbles:true}));
 await sleep(80);
@@ -96,20 +96,20 @@ const inp2 = doc.querySelector('.lnedit');
 inp2.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
 await sleep(700);
 const afterNoop = await srv();
-ok('текст не поменялся', afterNoop[1].text === wasText, afterNoop[1].text);
+ok('the text did not change', afterNoop[1].text === wasText, afterNoop[1].text);
 
-console.log('\n--- отмена откатывает до самого начала ---');
+console.log('\n--- undo rolls back to the very start ---');
 let guard = 0;
 while (!$('btnUndo').disabled && guard++ < 60){ click('btnUndo'); await sleep(120); }
 await sleep(900);
 const back = await srv();
-ok('дошли до конца истории', $('btnUndo').disabled, 'шагов сделано ' + guard);
-ok('вернулось ровно исходное состояние',
+ok('we reached the end of the history', $('btnUndo').disabled, 'steps taken ' + guard);
+ok('exactly the original state came back',
    JSON.stringify(back.map(l=>[l.text, +l.start.toFixed(3)])) === snapshot(),
-   back.length + ' строк против ' + start.length);
-ok('и это состояние легло на диск', back.length === start.length);
+   back.length + ' lines against ' + start.length);
+ok('and that state reached the disk', back.length === start.length);
 
-ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
+ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

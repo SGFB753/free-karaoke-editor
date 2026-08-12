@@ -1,4 +1,4 @@
-// Непроверенные пути: медленная загрузка, конец песни, отказ Web Audio.
+// The untested paths: slow loading, the end of the song, Web Audio refusing.
 const { JSDOM } = await import('jsdom');
 import fs from 'fs';
 const HTML = fs.readFileSync(process.env.KARAOKE_PAGE_STEMS, 'utf8');
@@ -20,7 +20,7 @@ function mk(opts){
         resume(){ this.state="running"; } close(){} }
       if (!opts.noWebAudio) w.AudioContext = AC;
       w.fetch = opts.fetchFails
-        ? () => Promise.reject(new Error('нет доступа'))
+        ? () => Promise.reject(new Error('no access'))
         : () => new Promise(r => setTimeout(()=>r({arrayBuffer:()=>Promise.resolve(new ArrayBuffer(8))}),
                                             opts.slow ? 250 : 0));
       class FA{ constructor(){ this.paused=true; this.volume=1; this.duration=26.04; this._t=0;
@@ -38,79 +38,79 @@ function mk(opts){
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 let fail=0; const ok=(n,c,e='')=>{console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c)fail++;};
 
-console.log('--- нажали play, пока звук ещё грузится ---');
+console.log('--- play pressed while the audio still loads ---');
 {
   const d=mk({slow:true}), w=d.window, $=id=>w.document.getElementById(id);
   await sleep(30);
-  $('btnPlay').click();                       // движок ещё "loading"
-  ok('иконка сразу показывает воспроизведение', $('icPause').style.display==='');
-  ok('ничего не запущено раньше времени', w.__started.length===0);
+  $('btnPlay').click();                       // the engine is still "loading"
+  ok('the icon shows playing right away', $('icPause').style.display==='');
+  ok('nothing was started too early', w.__started.length===0);
   await sleep(500);
-  ok('после загрузки звук пошёл сам', w.__started.length===2, 'запусков '+w.__started.length);
-  ok('обе дорожки в один момент', w.__started[0].at===w.__started[1].at);
+  ok('once loaded, the audio started by itself', w.__started.length===2, 'starts '+w.__started.length);
+  ok('both tracks at one moment', w.__started[0].at===w.__started[1].at);
 }
 
-console.log('\n--- перемотали, пока звук грузится ---');
+console.log('\n--- seeked while the audio loads ---');
 {
   const d=mk({slow:true}), w=d.window, $=id=>w.document.getElementById(id);
   await sleep(30);
   w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
   await sleep(500);
   $('btnPlay').click(); await sleep(50);
-  ok('перемотка не потерялась', w.__started.length===2 && Math.abs(w.__started[0].off-5)<0.2,
-     'старт с '+(w.__started[0]?w.__started[0].off.toFixed(2):'—'));
+  ok('the seek was not lost', w.__started.length===2 && Math.abs(w.__started[0].off-5)<0.2,
+     'start at '+(w.__started[0]?w.__started[0].off.toFixed(2):'—'));
 }
 
-console.log('\n--- конец песни ---');
+console.log('\n--- the end of the song ---');
 {
   const d=mk({}), w=d.window, $=id=>w.document.getElementById(id);
   await sleep(200);
   $('btnPlay').click(); await sleep(40);
-  w.__now += 27;                              // доиграли до конца
+  w.__now += 27;                              // played to the very end
   const src=w.__started[0]; if (src.onended) src.onended();
   await sleep(40);
-  ok('по окончании кнопка вернулась в «играть»', $('icPlay').style.display==='');
+  ok('at the end the button went back to “play”', $('icPlay').style.display==='');
   const before=w.__started.length;
   $('btnPlay').click(); await sleep(40);
-  ok('повторный запуск начинает сначала',
+  ok('starting again begins from the top',
      w.__started.length===before+2 && w.__started[before].off===0,
-     'старт с '+w.__started[before].off);
+     'start at '+w.__started[before].off);
 }
 
-console.log('\n--- Web Audio недоступен ---');
+console.log('\n--- Web Audio is unavailable ---');
 {
   const d=mk({noWebAudio:true}), w=d.window, $=id=>w.document.getElementById(id);
   await sleep(200);
-  ok('перешли на отдельные элементы', w.__inst.length===2, 'элементов '+w.__inst.length);
+  ok('we switched to separate media elements', w.__inst.length===2, 'elements '+w.__inst.length);
   $('btnPlay').click(); await sleep(50);
-  ok('звук всё равно играет', w.__inst.every(a=>!a.paused));
+  ok('the audio plays anyway', w.__inst.every(a=>!a.paused));
   $('rVocal').value='70'; $('rVocal').dispatchEvent(new w.Event('input')); await sleep(20);
-  ok('регулятор голоса работает и здесь', Math.abs(w.__inst[1].volume-0.7)<1e-9,
+  ok('the voice slider works here too', Math.abs(w.__inst[1].volume-0.7)<1e-9,
      'volume='+w.__inst[1].volume);
 }
 
-console.log('\n--- декодирование не удалось ---');
+console.log('\n--- decoding failed ---');
 {
   const d=mk({decodeFails:true}), w=d.window, $=id=>w.document.getElementById(id);
   await sleep(250);
-  ok('откат на элементы состоялся', w.__inst.length===2, 'элементов '+w.__inst.length);
+  ok('it fell back to media elements', w.__inst.length===2, 'elements '+w.__inst.length);
   $('btnPlay').click(); await sleep(50);
-  ok('играет', w.__inst.every(a=>!a.paused));
+  ok('it plays', w.__inst.every(a=>!a.paused));
 }
 
-console.log('\n--- звук лежит отдельными файлами, доступа нет ---');
+console.log('\n--- the audio sits in separate files with no access ---');
 {
   const d=mk({fetchFails:true}), w=d.window, $=id=>w.document.getElementById(id);
   await sleep(250);
-  ok('откат на элементы состоялся', w.__inst.length===2, 'элементов '+w.__inst.length);
-  ok('ошибок JS нет', w.__errs.length===0, w.__errs.slice(0,2).join(';'));
+  ok('it fell back to media elements', w.__inst.length===2, 'elements '+w.__inst.length);
+  ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(';'));
 }
 
-console.log('\n--- старт с чистой минусовки ---');
+console.log('\n--- starting from a clean instrumental ---');
 {
   const d=mk({}), w=d.window, $=id=>w.document.getElementById(id);
   await sleep(200);
-  ok('голос при открытии выключен', $('vVocal').textContent==='0%', $('vVocal').textContent);
+  ok('the voice is off on opening', $('vVocal').textContent==='0%', $('vVocal').textContent);
 }
 console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);
