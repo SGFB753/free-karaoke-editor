@@ -212,6 +212,10 @@ The files must be named alike:  Wind.mp3 + Wind.txt
 The file app\settings.ini, change the values to the right of "=".
 The keys are English, the Russian ones are understood too.
 
+That file is yours: Install.bat makes it on the first run from
+app\settings.example.ini and never touches it again, so an update
+cannot overwrite what you chose. Without the file the defaults are used.
+
     align = auto        auto | whisper | energy
     model = small       tiny | base | small | medium | large-v3
     language = auto     auto | ru | uk | en | de | fr | es | it | pl …

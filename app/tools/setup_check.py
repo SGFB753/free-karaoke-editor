@@ -12,6 +12,8 @@ sys.path.insert(0, ROOT)
 
 from kstudio.i18n import tr          # noqa: E402
 
+MARK = "# --- the copy starts below this line ---\n"
+
 
 def pip_install(*pkgs) -> bool:
     print(tr(f"\nInstalling: {' '.join(pkgs)}\n", f"\nСтавлю: {' '.join(pkgs)}\n") + "-" * 60)
@@ -128,6 +130,31 @@ def main() -> int:
         if ask(tr("   Install numpy (small, and noticeably faster)?",
                   "   Поставить numpy (небольшой, заметно ускоряет)?")):
             pip_install("numpy")
+
+    print(tr("\n6. Your own settings file", "\n6. Свой файл настроек"))
+    # settings.ini belongs to whoever runs the program: it is not in the
+    # repository, so an update can never overwrite what they chose. The example
+    # next to it is the reference, and this is the copy made from it.
+    ini = os.path.join(ROOT, "settings.ini")
+    example = os.path.join(ROOT, "settings.example.ini")
+    if os.path.isfile(ini):
+        print(tr(f"   Already there: {ini}", f"   Уже есть: {ini}"))
+    elif os.path.isfile(example):
+        try:
+            text = open(example, encoding="utf-8").read()
+            # Everything above the marker explains what the example is; in the
+            # copy that would only confuse, so it stays behind.
+            _, sep, body = text.partition(MARK)
+            with open(ini, "w", encoding="utf-8") as f:
+                f.write((body if sep else text).lstrip("\n"))
+            print(tr(f"   Made from the example: {ini}",
+                     f"   Сделал из примера: {ini}"))
+        except OSError as e:
+            print(tr(f"   Could not make it ({e}) — the program will use the defaults.",
+                     f"   Не смог создать ({e}) — программа возьмёт значения по умолчанию."))
+    else:
+        print(tr("   No example next to the program — the defaults will be used.",
+                 "   Примера рядом с программой нет — возьмутся значения по умолчанию."))
 
     print("\n" + "=" * 60)
     print(tr("Setup finished.", "Настройка закончена."))

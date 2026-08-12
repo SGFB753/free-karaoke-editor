@@ -9,6 +9,15 @@ commits themselves are one click away in the history.
 
 ## 4.27.1
 
+**A licence.** [LICENSE](LICENSE) — MIT. Without one, an open repository says
+“all rights reserved” by default, whatever the README promises.
+
+**Your settings are yours.** `app/settings.ini` has left the repository:
+`app/settings.example.ini` is the documented reference, and the first run of
+`Install.bat` / `install.command` makes your copy from it. An update can no
+longer overwrite what you chose, and with no settings file at all the program
+uses its defaults.
+
 **A song in another language kept the language of the previous one.**
 The window remembered the language picked last time and used it for the next
 song. If you had ever chosen “русский” by hand, an English text was handed to

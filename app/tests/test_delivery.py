@@ -17,8 +17,12 @@ import sys
 import tempfile
 import wave
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # папка app/
-HOME = os.path.dirname(ROOT)                                          # то, что видит человек
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # the app/ folder
+HOME = os.path.dirname(ROOT)                                          # what a person sees
+
+# The line in settings.example.ini above which everything is about the example
+# itself; the copy made on the first run starts below it.
+MARK_LINE = "# --- the copy starts below this line ---"
 sys.path.insert(0, ROOT)
 
 failures = []
@@ -65,21 +69,34 @@ def main():
         check("it can also be started by hand", "workflow_dispatch" in body)
     # Everything else lives inside app/.
     for name in ("Make-karaoke.bat", "Make-video.bat", "make-karaoke.command",
-                 "settings.ini", "START-HERE.txt", "SERVER.md", "Dockerfile",
+                 "settings.example.ini", "START-HERE.txt", "SERVER.md", "Dockerfile",
                  "docker-compose.yml"):
         check(f"{name} moved into app/", os.path.isfile(os.path.join(ROOT, name)))
     cyr = [n for n in os.listdir(HOME)
            if re.search("[А-Яа-яЁё]", n) and not n.startswith(".")]
     check("no Cyrillic left in the file names", not cyr, ", ".join(cyr))
     # This is what the move was for: only what a person needs is in the root —
-    # the two launchers, the two readmes, the two changelogs, the songs, the code.
+    # the two launchers, the two readmes, the two changelogs, the licence, the
+    # songs, the code.
     root_items = sorted(n for n in os.listdir(HOME)
                         if not n.startswith(".") and n not in ("node_modules", "__pycache__"))
-    check("no more than 10 names in the root", len(root_items) <= 10,
+    check("no more than 11 names in the root", len(root_items) <= 11,
           f"{len(root_items)}: " + ", ".join(root_items))
     check("the history of changes is in plain sight",
           os.path.isfile(os.path.join(HOME, "CHANGELOG.md"))
           and os.path.isfile(os.path.join(HOME, "CHANGELOG.ru.md")))
+    # An open repository has to say what may be done with it, or the answer is
+    # “nothing”: without a licence the default is all rights reserved.
+    lic = os.path.join(HOME, "LICENSE")
+    check("there is a LICENSE in the root", os.path.isfile(lic))
+    if os.path.isfile(lic):
+        text = open(lic, encoding="utf-8").read()
+        check("it is a real licence text, not a stub",
+              "MIT License" in text and "WITHOUT WARRANTY" in text and len(text) > 900,
+              f"{len(text)} characters")
+        check("and both readmes point at it",
+              all("LICENSE" in open(os.path.join(HOME, n), encoding="utf-8").read()
+                  for n in ("README.md", "README.ru.md")))
     check("the internals are tucked into app/",
           all(os.path.isdir(os.path.join(HOME, "app", d)) for d in ("kstudio", "tools", "tests")))
     check("the songs folder is in plain sight", os.path.isdir(os.path.join(HOME, "projects"))
@@ -96,6 +113,24 @@ def main():
     check("studio.command calls the program in app/", "app/studio.py" in src)
 
     print("\nSettings")
+    # settings.ini belongs to whoever runs the program: it is not in the
+    # repository, an update cannot overwrite it, and the example next to it is
+    # what the first run copies. Without any file at all the defaults hold.
+    example = os.path.join(ROOT, "settings.example.ini")
+    check("there is an example settings file", os.path.isfile(example))
+    ex_text = open(example, encoding="utf-8").read() if os.path.isfile(example) else ""
+    check("the example explains that it is a reference",
+          "settings.ini" in ex_text and MARK_LINE in ex_text)
+    check("and it carries every option the docs promise",
+          all(k in ex_text for k in ("align", "model", "language", "instrumental",
+                                     "colors", "theme", "ui-lang", "codec", "embed")))
+    # Without stdin the setup asks nothing and takes the defaults; with a
+    # terminal attached it would sit waiting for an answer forever.
+    r = run([sys.executable, os.path.join(ROOT, "tools", "setup_check.py")],
+            env={"KARAOKE_UI_LANG": "en"}, stdin=subprocess.DEVNULL)
+    check("the setup run does not fall over", r.returncode == 0, r.stderr[-120:])
+    check("and it says what happened to the settings file",
+          "settings" in (r.stdout or "").lower(), (r.stdout or "")[-160:])
     tmp = tempfile.mkdtemp(prefix="karaoke_deliv_")
     import importlib.util
     spec = importlib.util.spec_from_file_location("auto", os.path.join(ROOT, "tools", "auto.py"))

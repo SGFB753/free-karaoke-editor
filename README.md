@@ -73,7 +73,7 @@ projects/                       your songs
 app/                            the program itself
 ```
 
-Nothing else sits in the root. Inside `app/`: the code, `settings.ini`,
+Nothing else sits in the root. Inside `app/`: the code, `settings.example.ini`,
 `START-HERE.txt`, the server notes, the tests, and `Make-karaoke.bat` /
 `Make-video.bat` for people who like dragging files from the file manager.
 Songs live in `projects/` and are left alone by updates — only the `app` folder
@@ -245,7 +245,11 @@ output
 ```
 
 `app/settings.ini` holds the same options for the launcher scripts, with English
-key names (the Russian ones still work).
+key names (the Russian ones still work). That file is yours: it is not in the
+repository, so an update never overwrites it. `Install.bat` /
+`install.command` make it on the first run from `app/settings.example.ini`,
+which is the documented reference — copy it by hand if you prefer. Without any
+settings file the program simply uses its defaults.
 
 ## Language
 
@@ -347,6 +351,9 @@ in a real Chrome — hit-testing and layout, which jsdom does not do at all.
 * The lyrics must match the recording: alignment lines up text with audio, it
   does not transcribe it.
 * Rap and dense mixes are harder; an instrumental helps a lot.
+* Syllables are exact for Russian (by vowels) and a heuristic for the Latin
+  script — good enough to spread the time inside a line, and it still lies on
+  loanwords: `karaoke` counts as 2, not 4.
 * Whisper needs memory: `small` about 2 GB, `medium` about 5 GB.
 
 ## Questions, bugs, ideas
@@ -355,6 +362,12 @@ Open an issue — questions, bug reports and suggestions are all welcome. If
 something went wrong, the two most useful things to attach are the text from
 the job window (it now prints a report before the long steps) and the last
 lines from the console.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Do what you like with it: use it, change it, pass
+it on, build something of your own on top. The songs you make with it are
+yours, and nothing in this program lays a claim to them.
 
 ## Support
 
