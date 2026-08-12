@@ -362,6 +362,24 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     # What could not be spread stays a pile, and a pile is not a timing: those
     # lines fly past in a blink. Better to name them than to hand over a page
     # that looks finished and is not.
+    # A whole stretch of singing with no text under it means the alignment did
+    # not just stumble on a line — it lost its place. Worth saying: the fix is
+    # not dragging lines one by one.
+    sung_end = last_sound(audio_path, duration)
+    text_end = max((ln.end for ln in lyrics.lines if ln.end is not None), default=0.0)
+    if sung_end - text_end > max(15.0, 0.15 * duration):
+        log(tr(f"  NOTE: the text ends at {text_end // 60:.0f}:{text_end % 60:04.1f} while "
+               f"the singing goes on to {sung_end // 60:.0f}:{sung_end % 60:04.1f} — "
+               f"{sung_end - text_end:.0f} s of song with no lyrics under it. Either the "
+               f"text is written out fewer times than it is sung, or the alignment lost "
+               f"its place. “Re-time” with the loudness engine spreads the lines over the "
+               f"whole song instead.",
+               f"  ВНИМАНИЕ: текст кончается на {text_end // 60:.0f}:{text_end % 60:04.1f}, "
+               f"а поют до {sung_end // 60:.0f}:{sung_end % 60:04.1f} — "
+               f"{sung_end - text_end:.0f} с песни без единой строки. Либо в тексте "
+               f"выписано меньше повторов, чем поётся, либо разметка потеряла место. "
+               f"«Разметить заново» движком по энергии разложит строки по всей песне."))
+
     left = pile_share(lyrics)
     if left > 0.02:
         stuck = [i + 1 for a, b in pile_runs(lyrics.lines) for i in range(a, b + 1)]
@@ -525,6 +543,8 @@ def _spread(words: List[Word], start: float, end: float) -> None:
 # fast singing, it is a pile: the aligner gave up and dropped the words where
 # it stopped looking.
 _MIN_PER_SYLLABLE = 0.07
+# An unhurried pace for a sung syllable — what a spread-out pile is given.
+_SUNG_PER_SYLLABLE = 0.45
 
 
 def _syl(ln) -> int:
@@ -587,6 +607,21 @@ def first_sound(audio_path: str) -> float:
     return 0.0
 
 
+def last_sound(audio_path: str, duration: float) -> float:
+    """When the singing ends — the tail of a track is usually music or silence."""
+    try:
+        from . import audio as AU
+        from . import report as R
+        env, hop = AU.rms_envelope(audio_path)
+        quiet = R.quiet_stretches(env, hop)
+    except Exception:
+        return duration
+    for q in quiet:
+        if q["end"] >= duration - 0.5:            # the silence the song ends with
+            return float(q["start"])
+    return duration
+
+
 def repair_piles(lyrics: Lyrics, duration: float, log: Log = _noop,
                  floor: float = 0.0) -> int:
     """Spread out the lines an aligner piled up in one spot.
@@ -601,9 +636,15 @@ def repair_piles(lyrics: Lyrics, duration: float, log: Log = _noop,
     free time around the pile. Spreading the run across that free time is much
     closer to the truth than one instant, and every line stays draggable.
 
-    Only the room between the neighbouring sound lines is used. When the
-    neighbours themselves contradict each other, the pile is left alone: moving
-    it would just stack lines on top of a line that IS timed right.
+    Only the room between the neighbouring sound lines is used, and only as much
+    of it as the singing needs: a gap can hold wordless sounds — a breath, an
+    intro, humming — and stretching seven lines over half a minute of those
+    claims as lyrics what is not. So the run keeps a singable pace and sits
+    against the line that follows it, which is where the aligner found its
+    footing again.
+
+    When the neighbours themselves contradict each other, the pile is left
+    alone: moving it would just stack lines on top of a line that IS timed right.
     """
     lines = lyrics.lines
     fixed = 0
@@ -619,12 +660,17 @@ def repair_piles(lyrics: Lyrics, duration: float, log: Log = _noop,
         if hi <= lo or (hi - lo) <= max(need, was) + 0.05:
             continue                               # nowhere to spread it
         total = sum(_syl(ln) for ln in run)
-        span = hi - lo
+        # An unhurried sung pace. Wider than the “nobody sings that fast” floor,
+        # narrower than the whole gap — the rest of the gap may well be music.
+        span = min(hi - lo, max(_SUNG_PER_SYLLABLE * total, need))
+        # Against the following line when there is one: a pile forms where the
+        # aligner lost the text, and it re-locked at the line after it.
+        base = hi - span if b + 1 < len(lines) else lo
         acc = 0.0
         for ln in run:
-            t0 = lo + span * acc / total
+            t0 = base + span * acc / total
             acc += _syl(ln)
-            t1 = lo + span * acc / total
+            t1 = base + span * acc / total
             _spread(ln.words, t0, max(t1 - 0.05, t0 + 0.05))
             ln.start, ln.end = ln.words[0].start, ln.words[-1].end
         fixed += len(run)

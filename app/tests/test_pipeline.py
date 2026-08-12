@@ -733,10 +733,17 @@ def main():
     A.repair_piles(piled, 200.02, log=said.append, floor=11.0)
     first = piled.lines[:7]
     check("the pile was spread out", said and "7" in said[0], said[0] if said else "silence")
-    check("it starts where the singing does, not at zero",
-          abs(first[0].start - 11.0) < 0.01, f"{first[0].start:.2f}")
-    check("and it stops before the next sound line",
-          first[-1].end <= 38.0 + 1e-6, f"{first[-1].end:.2f}")
+    check("it stops right before the next sound line",
+          37.0 < first[-1].end <= 38.0 + 1e-6, f"{first[-1].end:.2f}")
+    # A gap can be wordless — a breath, an intro, humming. Filling all of it
+    # would claim as lyrics what is not sung, so the run keeps a sung pace and
+    # leaves the rest of the gap alone.
+    check("the wordless part of the gap is left free",
+          first[0].start > 20.0, f"the pile starts at {first[0].start:.1f}, the gap opens at 11.0")
+    check("and the pace is a sung one, not a smear",
+          all(0.3 < (ln.end - ln.start) / (sum(w.syllables for w in ln.words) or 1) < 0.7
+              for ln in first),
+          f"{(first[0].end - first[0].start) / 5:.2f} s per syllable")
     check("every line got a singable length",
           all((ln.end - ln.start) / (sum(w.syllables for w in ln.words) or 1) > 0.07
               for ln in first),

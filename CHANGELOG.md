@@ -22,11 +22,17 @@ uses its defaults.
 lyrics.** On a quiet intro or a whispered verse Whisper finds nothing to hold on
 to and returns a whole stretch of text at the single moment where it did hear
 something — seven lines inside a fifth of a second. The program now sees such a
-pile, spreads it over the free time between the lines around it (starting where
-the singing actually starts, not over the silent intro), and leaves the lines
-that are timed right exactly where they are. What cannot be spread — when the
-neighbouring lines contradict each other — is left alone and named out loud in
-the log: which lines, at what second, and what to do about them.
+pile and spreads it out, at a sung pace, against the line that follows it. It
+does not fill the whole gap: a gap may hold a breath, an intro or humming, and
+covering that with lyrics claims as singing what is not sung. Lines that are
+timed right are never touched, and a pile with nowhere to go — when the
+neighbouring lines contradict each other — is left alone and named in the log:
+which lines, at what second, and what to do about them.
+
+**A stretch of song with no lyrics under it is now reported.** If the text ends
+at 1:50 while the singing goes on to 2:50, the alignment did not stumble on a
+line, it lost its place — and the log says so, along with the way out: re-time
+with the loudness engine, which spreads the lines over the whole song.
 
 **A song in another language kept the language of the previous one.**
 The window remembered the language picked last time and used it for the next
