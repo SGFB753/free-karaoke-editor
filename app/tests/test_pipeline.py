@@ -700,6 +700,23 @@ def main():
           LG.script_of("ru") == "cyr" and LG.script_of("uk") == "cyr"
           and LG.script_of("en") == "lat" and LG.script_of("zh") == "cjk")
 
+    print("\nWhat the aligner mutters is put in the log")
+    # stable-ts says the single most useful thing through the warnings module,
+    # and it scrolls past in a console window nobody is watching.
+    import warnings as _w
+    told = []
+    with _w.catch_warnings(record=True) as caught:
+        _w.simplefilter("always")
+        _w.warn("12/34 segments failed to align.", UserWarning)
+    failed = A.report_warnings(caught, 34, told.append)
+    check("the warning itself reaches the log",
+          any("12/34" in m for m in told), " | ".join(told)[:80])
+    check("and it is explained in plain words",
+          any("не расслышал" in m for m in told), " | ".join(told)[-90:])
+    check("the number of unplaced lines is read out", failed == 12, str(failed))
+    check("silence is not reported as a problem",
+          A.report_warnings([], 34, told.append) == 0)
+
     print("\nLines the aligner piled in one spot")
     # Straight from a real project: Bjork — Unravel, a quiet intro. Whisper found
     # nothing to hold on to and dropped seven lines at 0:16.7 and six more at

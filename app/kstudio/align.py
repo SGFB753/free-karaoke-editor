@@ -10,7 +10,9 @@ Two engines:
 from __future__ import annotations
 
 import difflib
+import re
 import sys
+import warnings
 from typing import Callable, List, Optional
 
 from .i18n import tr
@@ -272,6 +274,14 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
 
     log(tr("Lining the text up with the audio…", "Выравниваю текст по звуку…"))
     try:
+        # stable-ts complains through the warnings module — “12/34 segments failed
+        # to align” and the like. In a console that scrolls past and is gone; it
+        # belongs in the log with everything else, because it names the trouble
+        # before any of our repairs even start.
+        caught: List[warnings.WarningMessage] = []
+        stack = warnings.catch_warnings(record=True)
+        caught = stack.__enter__()
+        warnings.simplefilter("always")
         # The longest step after the instrumental. stable-ts can report how many
         # seconds it has processed — send that to the log rather than to a
         # console progress bar, which the studio window never shows anyway.
@@ -294,7 +304,10 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                 # time still shows, it comes from Heartbeat itself
                 result = model.align(audio_input, lyrics.plain_text(),
                                      language=language, original_split=True)
+        stack.__exit__(None, None, None)
+        report_warnings(caught, len(lyrics.lines), log)
     except FileNotFoundError as e:
+        stack.__exit__(None, None, None)
         raise RuntimeError(tr(
             f"Whisper could not start ffmpeg ({e}). Install it into the system: "
             f"winget install Gyan.FFmpeg — and restart the command line.",
@@ -397,6 +410,32 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                f"шёпотом спетое место. Растащите их в студии мышкой или нажмите "
                f"«Разметить заново» с движком по энергии."))
     return lyrics
+
+
+def report_warnings(caught, lines: int, log: Log) -> int:
+    """Put what stable-ts muttered into the log, and say what it means.
+
+    “12/34 segments failed to align” is the single most useful line the aligner
+    ever prints, and it goes to a console window nobody is looking at. Returns
+    how many lines the aligner admits it could not place.
+    """
+    failed = 0
+    for w in caught or ():
+        text = str(getattr(w, "message", w)).strip()
+        if not text:
+            continue
+        log("  " + text.splitlines()[0])
+        m = re.search(r"(\d+)\s*/\s*(\d+)\s+segments failed to align", text)
+        if m:
+            failed = int(m.group(1))
+            total = int(m.group(2)) or lines
+            log(tr(f"  that is {failed} of {total} lines with no timing of their own — "
+                   f"Whisper heard no words there. They come out piled in one spot; "
+                   f"what was done with them is said below.",
+                   f"  это {failed} строк из {total} без своего времени — Whisper не "
+                   f"расслышал там слов. Они выходят сваленными в одну точку; что с ними "
+                   f"сделано, сказано ниже."))
+    return failed
 
 
 def _apply_recognized(words: List[Word], rec: List[tuple]) -> float:

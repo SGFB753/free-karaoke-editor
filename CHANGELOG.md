@@ -29,6 +29,16 @@ timed right are never touched, and a pile with nowhere to go — when the
 neighbouring lines contradict each other — is left alone and named in the log:
 which lines, at what second, and what to do about them.
 
+**What the aligner mutters now lands in the log.** stable-ts says the single
+most useful thing it has to say — “12/34 segments failed to align” — through a
+Python warning, into a console window nobody is watching. It is now written to
+the job log along with what it means: that many lines got no timing of their own
+and will come out piled in one spot.
+
+**An error no longer flashes past.** When a job falls over, the whole traceback
+is written to `projects/last-error.txt` with the time, and the log says where it
+is. One line of it was always shown; the rest used to scroll away.
+
 **Words with no audio under them are no longer laid over wordless singing.**
 When a piled-up run repeats, word for word, a block of lines that IS timed, the
 program leaves it where it is instead of spreading it: there is a reason no

@@ -52,6 +52,23 @@ JOBS_LOCK = threading.Lock()
 #  Background jobs that report their progress
 # --------------------------------------------------------------------------- #
 
+def save_error(text: str) -> str:
+    """Keep the whole error on disk: a console window scrolls, and it is gone.
+
+    The job log holds one line of it; the traceback belongs somewhere a person
+    can still read tomorrow, and can attach to a bug report.
+    """
+    path = os.path.join(PROJECTS, "last-error.txt")
+    try:
+        os.makedirs(PROJECTS, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%d %H:%M:%S\n"))
+            f.write(text)
+        return path
+    except OSError:
+        return ""
+
+
 def start_job(title: str, fn) -> str:
     jid = uuid.uuid4().hex[:12]
     with JOBS_LOCK:
@@ -77,6 +94,10 @@ def start_job(title: str, fn) -> str:
                 traceback.print_exc()
             for line in msg.splitlines():
                 log(line)
+            where = save_error(traceback.format_exc())
+            if where:
+                log(tr(f"The whole error is written to {where}",
+                       f"Ошибка целиком записана в {where}"))
             with JOBS_LOCK:
                 JOBS[jid].update(done=True, ok=False, error=msg.splitlines()[0])
 

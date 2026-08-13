@@ -156,6 +156,24 @@ def main():
           args[args.index("--align") + 1] == "energy" and
           args[args.index("--ui-lang") + 1] == "ru", " ".join(args))
 
+    print("\nWhen something falls over")
+    # A console window scrolls and the error is gone — that is exactly what
+    # happened to a real report: “an error flashed by, I did not see which”.
+    import importlib.util as _il
+    spec = _il.spec_from_file_location("studio_mod", os.path.join(ROOT, "studio.py"))
+    studio = _il.module_from_spec(spec)
+    os.environ["KARAOKE_PROJECTS"] = tmp
+    spec.loader.exec_module(studio)
+    where = studio.save_error("Traceback (most recent call last):\nValueError: пример\n")
+    check("the whole error is written to a file", where and os.path.isfile(where), str(where))
+    if where and os.path.isfile(where):
+        body = open(where, encoding="utf-8").read()
+        check("with the traceback in it", "ValueError" in body and "Traceback" in body)
+        check("and the time it happened", re.search(r"\d{4}-\d\d-\d\d \d\d:\d\d", body) is not None,
+              body.splitlines()[0] if body else "")
+        check("it lands next to the songs, where a person can find it",
+              os.path.basename(where) == "last-error.txt", where)
+
     print("\nThe container")
     docker = os.path.join(ROOT, "Dockerfile")
     compose = os.path.join(ROOT, "docker-compose.yml")
