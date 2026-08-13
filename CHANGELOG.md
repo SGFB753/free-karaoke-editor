@@ -29,6 +29,15 @@ timed right are never touched, and a pile with nowhere to go — when the
 neighbouring lines contradict each other — is left alone and named in the log:
 which lines, at what second, and what to do about them.
 
+**Words with no audio under them are no longer laid over wordless singing.**
+When a piled-up run repeats, word for word, a block of lines that IS timed, the
+program leaves it where it is instead of spreading it: there is a reason no
+audio was found for it, and a stretch of humming or vocalise is not a place to
+paint lyrics over. Which of the two reasons it is, is told apart by the rest of
+the song — either the lyrics file holds one repetition more than is sung, or the
+aligner locked onto the wrong repetition and the whole timing is out by a pass.
+Both are named in the log, with what to do about them.
+
 **A stretch of song with no lyrics under it is now reported.** If the text ends
 at 1:50 while the singing goes on to 2:50, the alignment did not stumble on a
 line, it lost its place — and the log says so, along with the way out: re-time

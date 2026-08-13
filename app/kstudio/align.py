@@ -354,8 +354,12 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     repair_lines(lyrics, log=log)      # Whisper sometimes drops a word far away
     # …and sometimes drops a dozen of them in one spot. Looking at the audio is
     # only worth it once we know there is a pile to spread.
+    sung_end = last_sound(audio_path, duration)
+    text_end = max((ln.end for ln in lyrics.lines if ln.end is not None), default=0.0)
+    untexted = max(0.0, sung_end - text_end)
     if pile_runs(lyrics.lines):
-        repair_piles(lyrics, duration, log=log, floor=first_sound(audio_path))
+        repair_piles(lyrics, duration, log=log, floor=first_sound(audio_path),
+                     untexted=untexted)
     repair_order(lyrics, log=log)
     _fill_lines(lyrics, duration)      # after repairs the bounds may exceed the track
 
@@ -365,9 +369,7 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     # A whole stretch of singing with no text under it means the alignment did
     # not just stumble on a line — it lost its place. Worth saying: the fix is
     # not dragging lines one by one.
-    sung_end = last_sound(audio_path, duration)
-    text_end = max((ln.end for ln in lyrics.lines if ln.end is not None), default=0.0)
-    if sung_end - text_end > max(15.0, 0.15 * duration):
+    if untexted > max(15.0, 0.15 * duration):
         log(tr(f"  NOTE: the text ends at {text_end // 60:.0f}:{text_end % 60:04.1f} while "
                f"the singing goes on to {sung_end // 60:.0f}:{sung_end % 60:04.1f} — "
                f"{sung_end - text_end:.0f} s of song with no lyrics under it. Either the "
@@ -592,6 +594,32 @@ def pile_share(lyrics: Lyrics) -> float:
     return sum(b - a + 1 for a, b in pile_runs(lines)) / len(lines)
 
 
+def duplicate_of(lines, a: int, b: int) -> Optional[tuple]:
+    """Does the run a..b repeat, word for word, a block of lines that IS timed?
+
+    A lyrics file often holds the song written out more times than it is sung —
+    a verse pasted twice, a chorus copied “for completeness”. There is no audio
+    for the extra copy, so the aligner has nowhere to put it and drops it in a
+    pile. Such lines must not be spread over the music: nobody sings them there.
+    Naming the block they repeat is the whole answer for the person.
+    """
+    run = [normalize_token(" ".join(w.text for w in ln.words)) for ln in lines[a:b + 1]]
+    n = len(run)
+    if n < 2:
+        return None
+    piled = {i for x, y in pile_runs(lines) for i in range(x, y + 1)}
+    for i in range(len(lines) - n + 1):
+        if i <= b and i + n - 1 >= a:                 # the run itself
+            continue
+        if any(k in piled for k in range(i, i + n)):   # a pile is no proof
+            continue
+        cand = [normalize_token(" ".join(w.text for w in ln.words))
+                for ln in lines[i:i + n]]
+        if difflib.SequenceMatcher(a=run, b=cand, autojunk=False).ratio() >= 0.8:
+            return (i, i + n - 1)
+    return None
+
+
 def first_sound(audio_path: str) -> float:
     """When the singing starts — so a pile at the head is not spread over silence."""
     try:
@@ -623,7 +651,7 @@ def last_sound(audio_path: str, duration: float) -> float:
 
 
 def repair_piles(lyrics: Lyrics, duration: float, log: Log = _noop,
-                 floor: float = 0.0) -> int:
+                 floor: float = 0.0, untexted: float = 0.0) -> int:
     """Spread out the lines an aligner piled up in one spot.
 
     On a quiet intro, a long instrumental or a whispered verse Whisper finds
@@ -648,7 +676,14 @@ def repair_piles(lyrics: Lyrics, duration: float, log: Log = _noop,
     """
     lines = lyrics.lines
     fixed = 0
+    phantom = []
     for a, b in pile_runs(lines):
+        dup = duplicate_of(lines, a, b)
+        if dup:
+            # Not sung at all — an extra copy in the lyrics file. Spreading it
+            # would paint words over music nobody sings there.
+            phantom.append((a, b, dup))
+            continue
         run = lines[a:b + 1]
         lo = lines[a - 1].end if a and lines[a - 1].end is not None else floor
         hi = lines[b + 1].start if b + 1 < len(lines) and lines[b + 1].start is not None \
@@ -678,6 +713,30 @@ def repair_piles(lyrics: Lyrics, duration: float, log: Log = _noop,
     if fixed:
         log(tr(f"  lines the aligner piled in one spot, spread out: {fixed}",
                f"  разложил строк, сваленных разметчиком в одну точку: {fixed}"))
+    for a, b, (c, d) in phantom:
+        if untexted > 15.0:
+            # The words are sung twice and there is a whole stretch of singing with
+            # no text on it: the aligner locked onto the wrong repetition and put
+            # both copies of the text on one pass of the song.
+            log(tr(f"  NOTE: lines {a + 1}–{b + 1} say the same as lines {c + 1}–{d + 1}, "
+                   f"and {untexted:.0f} s of singing has no text at all. The song sings "
+                   f"those words twice, and the timing landed on one pass only — it is "
+                   f"out by a whole repetition, not by a line. “Re-time” with the "
+                   f"loudness engine lays the lines over the whole song instead.",
+                   f"  ВНИМАНИЕ: строки {a + 1}–{b + 1} слово в слово повторяют строки "
+                   f"{c + 1}–{d + 1}, а {untexted:.0f} с пения остались вообще без текста. "
+                   f"Эти слова поются дважды, а разметка легла только на один прогон — "
+                   f"она сдвинута на целый повтор, а не на строку. «Разметить заново» "
+                   f"движком по энергии разложит строки по всей песне."))
+        else:
+            log(tr(f"  NOTE: lines {a + 1}–{b + 1} say the same as lines {c + 1}–{d + 1}, "
+                   f"which are timed — and there is no audio for them. The lyrics file "
+                   f"seems to be written out more times than the song sings it: remove "
+                   f"the extra copy and press “Re-time”. Left where they are for now.",
+                   f"  ВНИМАНИЕ: строки {a + 1}–{b + 1} слово в слово повторяют строки "
+                   f"{c + 1}–{d + 1}, которые размечены, — а в записи их нет. Похоже, в "
+                   f"файле с текстом песня выписана больше раз, чем поётся: уберите лишний "
+                   f"повтор и нажмите «Разметить заново». Пока оставил их на месте."))
     return fixed
 
 

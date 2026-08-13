@@ -760,6 +760,34 @@ def main():
     check("and it is still reported as a pile", A.pile_share(piled) > 0.1,
           f"{A.pile_share(piled):.0%}")
 
+    # The words are sung twice, the second pass much later. Whisper laid BOTH
+    # copies of the text on the first pass, so the early copy has no audio under
+    # it and a whole stretch of singing has no text. Spreading that copy over the
+    # music would be inventing a performance: it is left alone and explained.
+    twice = L.parse("\n".join(
+        ["While you are away", "My heart comes undone", "Slowly unravels",
+         "In a ball of yarn", "The devil collects it", "With a grin", "Our love"] * 2))
+    for i, ln in enumerate(twice.lines):
+        a_, b_ = (16.74, 16.90 + i * 0.02) if i < 7 else (39.0 + (i - 7) * 6, 43.0 + (i - 7) * 6)
+        A._spread(ln.words, a_, b_)
+        ln.start, ln.end = a_, b_
+    was = [(ln.start, ln.end) for ln in twice.lines]
+    told = []
+    A.repair_piles(twice, 200.0, log=told.append, floor=11.0, untexted=60.0)
+    check("a repeated block is found in what is timed",
+          A.duplicate_of(twice.lines, 0, 6) == (7, 13),
+          str(A.duplicate_of(twice.lines, 0, 6)))
+    check("text with no audio under it is not spread over the music",
+          [(ln.start, ln.end) for ln in twice.lines] == was)
+    check("and the reason given is the repetition, not a stray line",
+          told and "повтор" in told[-1] and "60" in told[-1],
+          told[-1][:90] if told else "silence")
+    told2 = []
+    A.repair_piles(twice, 200.0, log=told2.append, floor=11.0, untexted=0.0)
+    check("with every second of singing covered, the answer is the other one",
+          told2 and "выписана больше раз" in told2[-1],
+          told2[-1][:90] if told2 else "silence")
+
     clean = L.parse("one two three\nfour five six\nseven eight nine")
     for i, ln in enumerate(clean.lines):
         A._spread(ln.words, 10.0 + i * 4, 13.0 + i * 4)
