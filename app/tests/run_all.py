@@ -319,6 +319,13 @@ def main() -> int:
     if not have_module("jsdom"):
         say("\nNo jsdom package — the window and page suites were skipped.")
         say("Fix it with:  npm install jsdom")
+        # Silence here looks exactly like “all green”, and that is how half the
+        # suite went missing once: node_modules was a link to a folder that had
+        # been swept away. Where the whole run is asked for, this is a failure.
+        if os.environ.get("KARAOKE_REQUIRE_BROWSER"):
+            head("Summary")
+            say("  failed: jsdom is missing, so the window suites never ran")
+            return 1
         return 0
 
     tmp = tempfile.mkdtemp(prefix="karaoke_tests_")

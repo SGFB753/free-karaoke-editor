@@ -164,14 +164,27 @@ def main():
     # so they must still run — the settings file among them.
     empty = tempfile.mkdtemp(prefix="karaoke_nopath_")
     blocker = tempfile.mkdtemp(prefix="karaoke_noffmpeg_")
+    # A machine with no ffmpeg at all, played by a stand-in: the import of
+    # imageio_ffmpeg is refused, and every path that ends in “ffmpeg” is said
+    # not to exist — otherwise the program finds the real one in /usr/local/bin
+    # and there is no refusal left to check.
     open(os.path.join(blocker, "sitecustomize.py"), "w").write(
-        "import sys\n"
+        "import os, sys\n"
         "class Gone:\n"
         "    def find_spec(self, name, path=None, target=None):\n"
         "        if name == 'imageio_ffmpeg':\n"
         "            raise ImportError(name)\n"
         "        return None\n"
-        "sys.meta_path.insert(0, Gone())\n")
+        "sys.meta_path.insert(0, Gone())\n"
+        "_exists = os.path.exists\n"
+        "def exists(p):\n"
+        "    try:\n"
+        "        if os.path.basename(p) in ('ffmpeg', 'ffmpeg.exe'):\n"
+        "            return False\n"
+        "    except TypeError:\n"
+        "        pass\n"
+        "    return _exists(p)\n"
+        "os.path.exists = exists\n")
     r = run([sys.executable, os.path.join(ROOT, "tools", "setup_check.py")],
             env={"KARAOKE_UI_LANG": "en", "PATH": empty, "PYTHONPATH": blocker,
                  "KARAOKE_FFMPEG": os.path.join(empty, "no-such-ffmpeg")},

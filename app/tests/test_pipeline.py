@@ -934,6 +934,60 @@ def main():
     os.environ["KARAOKE_YTDLP"] = stub
     os.environ["KARAOKE_STUB_AUDIO"] = song            # the test song stands in
     check("the downloader is the one we pointed at", FE.tool() == [stub] and FE.available())
+
+    # pip on macOS writes the command into ~/Library/Python/3.x/bin, which a
+    # double-clicked window has never heard of. Found there, it still works.
+    hidden = os.path.join(tmp, "hidden-bin")
+    os.makedirs(hidden, exist_ok=True)
+    shutil.copyfile(stub, os.path.join(hidden, "yt-dlp"))
+    os.chmod(os.path.join(hidden, "yt-dlp"), 0o755)
+    del os.environ["KARAOKE_YTDLP"]
+    was_path, was_places = os.environ.get("PATH", ""), FE.places
+    os.environ["PATH"] = ""
+    FE.places = lambda: [hidden]
+    check("a command outside PATH is still found",
+          FE.tool() == [os.path.join(hidden, "yt-dlp")], FE.tool())
+
+    # A Python that cannot say where it lives cannot be asked to run a module:
+    # handing that emptiness to the command line crashes on NoneType instead of
+    # answering about the song.
+    FE.places = lambda: []
+    was_exe, sys.executable = sys.executable, None
+    check("and with nothing to run, nothing is invented", FE.tool() is None)
+    try:
+        FE.download("https://example.com/watch?v=zzz123", inbox)
+        check("the answer is about the downloader, not about NoneType", False)
+    except FE.FetchError as e:
+        check("the answer is about the downloader, not about NoneType",
+              "yt-dlp" in str(e) and "NoneType" not in str(e), str(e)[:70])
+    sys.executable = was_exe
+    FE.places, os.environ["PATH"] = was_places, was_path
+    os.environ["KARAOKE_YTDLP"] = stub
+
+    # The same emptiness used to crash the search for ffmpeg, which is what a
+    # link really tripped over: a fault of ours dressed up as a missing file.
+    was_exe, sys.executable = sys.executable, None
+    AU._FFMPEG = None
+    try:
+        AU.ffmpeg()
+        check("ffmpeg is looked for without falling over", True)
+    except AU.AudioError:
+        check("ffmpeg is looked for without falling over", True)
+    except TypeError as e:
+        check("ffmpeg is looked for without falling over", False, str(e))
+    sys.executable, AU._FFMPEG = was_exe, None
+
+    # And the window opened by double-clicking has a bare PATH: ffmpeg is
+    # installed and works in a terminal, while the program says it is missing.
+    was_path, os.environ["PATH"] = os.environ.get("PATH", ""), ""
+    AU._FFMPEG = None
+    try:
+        found_ff = AU.ffmpeg()
+    except AU.AudioError:
+        found_ff = ""
+    os.environ["PATH"], AU._FFMPEG = was_path, None
+    check("ffmpeg is found in the usual places, not only through PATH",
+          bool(found_ff), found_ff or "not found with an empty PATH")
     got = FE.download("https://example.com/watch?v=zzz123", inbox)
     check("the sound lands next to the projects",
           os.path.isfile(got["path"]) and os.path.dirname(got["path"]) == inbox)

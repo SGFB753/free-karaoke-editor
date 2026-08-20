@@ -13,8 +13,14 @@ __pycache__/
 venv/
 
 # Tests
+# Without the slashless forms a symlink named node_modules is not ignored —
+# and one of those, pointing into a temporary folder, spent the whole first
+# release inside the repository.
+app/node_modules
+node_modules
 app/node_modules/
 node_modules/
+package-lock.json
 
 # Bits and pieces from the systems
 .DS_Store

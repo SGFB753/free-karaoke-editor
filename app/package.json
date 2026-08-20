@@ -7,7 +7,7 @@
     "test": "python3 tests/run_all.py"
   },
   "devDependencies": {
-    "jsdom": "^25.0.0",
-    "puppeteer": "^23.0.0"
+    "jsdom": "^25.0.1",
+    "puppeteer": "^23.11.1"
   }
 }

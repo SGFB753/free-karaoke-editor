@@ -27,6 +27,14 @@ class AudioError(RuntimeError):
     pass
 
 
+# A window opened by double-clicking inherits a bare PATH: neither Homebrew nor
+# a pip --user install is in it, though the person has both and both work in a
+# terminal. Looking in the usual places is the difference between “ffmpeg is
+# not installed” and the truth.
+COMMON = ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin",
+          os.path.expanduser("~/.local/bin"))
+
+
 def _probe_candidates(name: str):
     yield os.environ.get(f"KARAOKE_{name.upper()}")
     yield shutil.which(name)
@@ -36,7 +44,13 @@ def _probe_candidates(name: str):
             yield imageio_ffmpeg.get_ffmpeg_exe()
     except Exception:
         pass
-    yield os.path.join(os.path.dirname(sys.executable), name)
+    # Next to the running Python. sys.executable is not always there to be
+    # had — an embedded or oddly launched interpreter leaves it empty, and
+    # os.path.dirname(None) is a crash, not a missing ffmpeg.
+    if sys.executable:
+        yield os.path.join(os.path.dirname(sys.executable), name)
+    for folder in COMMON:
+        yield os.path.join(folder, name)
 
 
 def ffmpeg() -> str:

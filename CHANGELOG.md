@@ -18,6 +18,34 @@ When a download fails — a private video, a dead link, nothing at that address
 — what the downloader itself said is shown, and the field stays open for
 another link.
 
+**A link to nowhere, in the repository since the first day.** `app/node_modules`
+was committed as a symlink pointing into a temporary folder on the machine
+that made it — so everyone who cloned got a dangling link where the test
+packages should go. It is gone, and `.gitignore` now names the folder in the
+form that catches a symlink too. Nothing a person runs was affected; the
+checks were.
+
+**A missing jsdom looked exactly like success.** When the package could not be
+found, the window and page suites were skipped and the run still ended with
+“nothing failed”. That is how half the suite went quiet for a whole run here.
+Where the whole set is asked for — `KARAOKE_REQUIRE_BROWSER=1`, which is how it
+runs on the server — a missing jsdom is now a failure that says so.
+
+**Where the program looks for what it did not install.** A window opened by
+double-clicking inherits a bare `PATH`: Homebrew is not in it, and neither is
+the folder pip writes commands into — though the person has both and both work
+in a terminal. On macOS `pip install yt-dlp` puts the command in
+`~/Library/Python/3.x/bin`, which nothing on that list knows about. ffmpeg and
+yt-dlp are now looked for in those usual places as well, so “not installed” is
+said only when it is true.
+
+**“expected str, bytes or os.PathLike object, not NoneType”.** A fault of ours
+wearing the clothes of an answer about the song. Two places asked a Python that
+cannot say where it lives for its own folder, and `os.path.dirname(None)` is
+not a missing file — it is a crash. Both are guarded, the message now says what
+kind of error it was, and the window points at `projects/last-error.txt`, where
+the whole of it is written.
+
 **“The page needs to be reloaded” is not about your ffmpeg.** YouTube answers a
 player client it does not care for with a refusal that says nothing about the
 video, and that refusal was handed straight to the person as the answer. The

@@ -967,9 +967,15 @@ async function takeLink(){
   const btn = $("btnFetch");
   btn.disabled = true;
   note("linkNote", T.linkWorking);
+  let trace = "";
   try{
     const j = await api("/api/fetch", {url});
-    const got = await followJob(j.job, line => note("linkNote", line));
+    const got = await followJob(j.job, line => {
+      // The whole error goes to a file, and the log says which one. Worth
+      // keeping: when the reason is a fault of ours, that file is the answer.
+      if (/last-error\.txt/.test(line)) trace = line;
+      note("linkNote", line);
+    });
     lastSong = got;
     $("inAudio").value = got.path;
     note("linkNote", T.linkGot(got.name));
@@ -978,7 +984,8 @@ async function takeLink(){
   }catch(e){
     // The job already says “It did not download”; the word “Error” in front of
     // the downloader's own sentence only doubles it.
-    note("linkNote", T.linkFail(String(e.message).replace(/^(Error|Ошибка):\s*/, "")), true);
+    note("linkNote", T.linkFail(String(e.message).replace(/^(Error|Ошибка):\s*/, ""))
+                     + (trace ? " · " + trace : ""), true);
   }finally{
     btn.disabled = false;
   }

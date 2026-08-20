@@ -12,8 +12,10 @@ import os
 import re
 import shlex
 import shutil
+import site
 import subprocess
 import sys
+import sysconfig
 import tempfile
 import time
 from typing import Callable, Optional
@@ -95,6 +97,30 @@ def extra_args() -> list:
         return []
 
 
+def places() -> list:
+    """Folders where pip leaves the command when PATH knows nothing about them.
+
+    On macOS `pip install yt-dlp` writes into ~/Library/Python/3.x/bin, which a
+    double-clicked window has never heard of; Homebrew has its own two. Looking
+    there is the difference between “it works” and “not installed”.
+    """
+    out = []
+    try:
+        out.append(sysconfig.get_path("scripts"))
+        out.append(sysconfig.get_path("scripts", f"{os.name}_user"))
+    except (KeyError, ValueError):
+        pass
+    try:
+        out.append(os.path.join(site.getuserbase(), "bin"))
+    except Exception:
+        pass
+    if sys.executable:
+        out.append(os.path.dirname(sys.executable))
+    out += ["/opt/homebrew/bin", "/usr/local/bin",
+            os.path.expanduser("~/.local/bin")]
+    return [p for p in out if p]
+
+
 def tool() -> Optional[list]:
     """The command that downloads, or None if there is nothing to run.
 
@@ -107,11 +133,18 @@ def tool() -> Optional[list]:
     found = shutil.which("yt-dlp")
     if found:
         return [found]
+    for folder in places():                 # installed, but not where PATH looks
+        path = os.path.join(folder, "yt-dlp.exe" if os.name == "nt" else "yt-dlp")
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return [path]
     try:                                    # installed as a library, no command
         import yt_dlp  # noqa: F401
-        return [sys.executable, "-m", "yt_dlp"]
     except ImportError:
         return None
+    # A Python that cannot say where it lives cannot be asked to run a module;
+    # passing that emptiness on gives a crash about NoneType instead of an
+    # answer about the song.
+    return [sys.executable, "-m", "yt_dlp"] if sys.executable else None
 
 
 def available() -> bool:
@@ -130,10 +163,22 @@ def check_url(url: str) -> str:
 
 
 def how_to_install() -> str:
-    return tr("yt-dlp is not installed — it is what takes the sound out of a "
-              "link. Install it with: pip install yt-dlp",
-              "Не установлен yt-dlp — он и достаёт звук из ссылки. "
-              "Поставить: pip install yt-dlp")
+    """Why there is nothing to download with, in the words that fit the case."""
+    try:
+        import yt_dlp  # noqa: F401
+    except ImportError:
+        return tr("yt-dlp is not installed — it is what takes the sound out of a "
+                  "link. Install it with: pip install yt-dlp",
+                  "Не установлен yt-dlp — он и достаёт звук из ссылки. "
+                  "Поставить: pip install yt-dlp")
+    # The library is here and the command is not, and this Python cannot even
+    # say where it lives itself — so it cannot be asked to run the library.
+    return tr("yt-dlp is installed as a library, but the command is nowhere to "
+              "be found and this Python cannot say where it lives. Install the "
+              "command: pip install -U yt-dlp — or point KARAOKE_YTDLP at it.",
+              "yt-dlp стоит как библиотека, но команды нигде нет, а этот Python "
+              "не может сказать, где он сам лежит. Поставьте команду: "
+              "pip install -U yt-dlp — или укажите путь в KARAOKE_YTDLP.")
 
 
 def _reason(lines: list, code: int) -> str:
@@ -324,7 +369,9 @@ def download(url: str, dest_dir: str, log: Optional[Callable] = None) -> dict:
         raise
     except Exception as e:
         shutil.rmtree(tmp, ignore_errors=True)
-        raise FetchError(str(e))
+        # Not a refusal from the site but a fault of ours: name the kind of it,
+        # because “not NoneType” alone leaves nobody anywhere to look.
+        raise FetchError(f"{type(e).__name__}: {e}")
     shutil.rmtree(tmp, ignore_errors=True)
 
     mb = os.path.getsize(dst) / 1024 / 1024
