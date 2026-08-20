@@ -39,6 +39,16 @@ and will come out piled in one spot.
 is written to `projects/last-error.txt` with the time, and the log says where it
 is. One line of it was always shown; the rest used to scroll away.
 
+**macOS refuses the first double-click, and the documentation now says why.**
+A file that came from the internet carries a mark, and `studio.command` is not
+signed by a paid Apple developer account — so the first attempt to open it is
+answered with “the file cannot be checked for malware”. Nothing was scanned and
+nothing was found, but it reads like a virus report, and there was not a word
+about it in the README. Now all three documents a newcomer opens carry the
+three ways through: starting it from the Terminal, letting the file through in
+Privacy & Security, or taking the mark off the folder with `xattr`. Taking the
+repository with `git clone` instead of a ZIP avoids the whole thing.
+
 **The setup on macOS stopped after every single step.** `install.command`
 installs ffmpeg with pip and then, in the same breath, asks Python whether it is
 there. On macOS pip puts the package into the user's own site-packages — a

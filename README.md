@@ -62,6 +62,43 @@ point of publishing it.
 Songs live in `projects/`. The timing is saved to disk as you edit; nothing is
 rebuilt.
 
+## macOS: “the file cannot be checked for malware”
+
+The first double-click on `studio.command` or `install.command` is refused by
+macOS. Nothing was scanned and nothing was found: a file that came from the
+internet carries a mark, this one is not signed by a paid Apple developer
+account, and that is the whole message. The script is twenty readable lines —
+it looks for `python3` and starts `app/studio.py`.
+
+Any one of these is enough:
+
+* **Start it from the Terminal** — the mark stops double-clicks, not commands:
+
+  ```bash
+  cd ~/Downloads/karaoke && python3 app/studio.py
+  ```
+
+  (type `cd ` and drag the folder into the Terminal window to get the path)
+
+* **Let the file through once.** System Settings → Privacy & Security →
+  scroll to the bottom, where the blocked file is named → **Open Anyway**. On
+  macOS 14 and older: Control-click the file → **Open** → **Open**.
+
+* **Take the mark off the whole folder.** The second command puts back the
+  right to run, which unpacking with Finder often drops:
+
+  ```bash
+  xattr -dr com.apple.quarantine ~/Downloads/karaoke
+  chmod +x ~/Downloads/karaoke/*.command
+  ```
+
+Cloning instead of downloading the ZIP avoids all of it — files that arrive
+through git are never marked, updates included:
+
+```bash
+git clone https://github.com/frdm666/free-karaoke-editor.git
+```
+
 ## What is in the folder
 
 ```

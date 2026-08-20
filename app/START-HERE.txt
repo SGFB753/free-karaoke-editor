@@ -31,6 +31,38 @@ Without stable-ts and demucs the program still works, but the timing is
 approximate and there is no instrumental. They can be added at any time.
 
 
+ON macOS: "THE FILE CANNOT BE CHECKED FOR MALWARE"
+==================================================
+
+That is what the first double-click on install.command or studio.command
+gets. Nothing was scanned and nothing was found: a file downloaded from
+the internet carries a mark, and these scripts are not signed by a paid
+Apple developer account. Inside each is twenty lines of readable text.
+
+Any one of these is enough:
+
+  1. Start it from the Terminal — the mark stops double-clicks, not
+     commands:
+
+         cd ~/Downloads/karaoke
+         python3 app/studio.py
+
+     (type "cd " and drag the folder into the Terminal window)
+
+  2. Let the file through once: System Settings -> Privacy & Security ->
+     scroll down to the blocked file -> "Open Anyway".
+     On macOS 14 and older: Control-click the file -> Open -> Open.
+
+  3. Take the mark off the folder, and put back the right to run that
+     unpacking with Finder often drops:
+
+         xattr -dr com.apple.quarantine ~/Downloads/karaoke
+         chmod +x ~/Downloads/karaoke/*.command
+
+Taking the repository with "git clone" instead of a ZIP avoids all of
+this: files that arrive through git are never marked.
+
+
 2. THE LYRICS FILE
 ==================
 

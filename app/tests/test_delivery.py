@@ -274,6 +274,17 @@ def main():
     readme = open(os.path.join(HOME, "README.md"), encoding="utf-8").read()
     check("the screenshot is embedded in the README", "app/docs/studio.png" in readme)
 
+    # The first double-click on a Mac is refused by macOS, and a person who
+    # does not know why puts the folder in the bin. Every document a newcomer
+    # opens has to say what the refusal is and how to get past it.
+    ru_readme = open(os.path.join(HOME, "README.ru.md"), encoding="utf-8").read()
+    for name, text in (("README.md", readme), ("README.ru.md", ru_readme),
+                       ("START-HERE.txt", guide)):
+        check(f"{name} explains the macOS refusal",
+              "com.apple.quarantine" in text and "studio.command" in text)
+        check(f"{name} names a way through without the Terminal",
+              "Open Anyway" in text or "Всё равно открыть" in text)
+
     print("\nNames of the song folders")
     from kstudio.project import slugify
     for title, want in (("Мамины Усы — Я вынул из головы шар", "maminy-usy"),
