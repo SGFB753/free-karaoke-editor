@@ -39,6 +39,24 @@ and will come out piled in one spot.
 is written to `projects/last-error.txt` with the time, and the log says where it
 is. One line of it was always shown; the rest used to scroll away.
 
+**The setup on macOS stopped after every single step.** `install.command`
+installs ffmpeg with pip and then, in the same breath, asks Python whether it is
+there. On macOS pip puts the package into the user's own site-packages — a
+folder that often did not exist when the window opened, so it is not on the
+search path and what was installed a second ago is invisible. The setup decided
+the install had failed and gave up; the next step was reachable only by starting
+the whole thing again, and then the same thing happened there. Each package is
+now checked by a fresh Python, which reads the folders as they are now, and the
+search path is refreshed after every install. On Windows nothing changed —
+there pip writes where the program is already looking.
+
+**One unfinished step no longer ends the setup.** Whatever could not be done is
+named once at the end, and the steps below it — down to making your
+`settings.ini` — run anyway. The advice now fits the machine it is printed on:
+macOS used to be told `winget install Gyan.FFmpeg`, a command that exists only
+on Windows, and the closing lines pointed at `.bat` files that a Mac cannot
+open.
+
 **Words with no audio under them are no longer laid over wordless singing.**
 When a piled-up run repeats, word for word, a block of lines that IS timed, the
 program leaves it where it is instead of spreading it: there is a reason no

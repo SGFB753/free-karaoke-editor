@@ -131,6 +131,63 @@ def main():
     check("the setup run does not fall over", r.returncode == 0, r.stderr[-120:])
     check("and it says what happened to the settings file",
           "settings" in (r.stdout or "").lower(), (r.stdout or "")[-160:])
+
+    print("\nThe setup walks all the way through")
+    # A package installed a second ago lives in a folder this process may not
+    # have in sys.path at all — on macOS the user site-packages is often made
+    # by that very install. Asking a fresh Python is what lets the setup carry
+    # on to the next step instead of ending and being started again.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "setup_check", os.path.join(ROOT, "tools", "setup_check.py"))
+    setup = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(setup)
+    late = tempfile.mkdtemp(prefix="karaoke_late_")
+    open(os.path.join(late, "karaoke_late_arrival.py"), "w").write("value = 1\n")
+    os.environ["PYTHONPATH"] = late + os.pathsep + os.environ.get("PYTHONPATH", "")
+    try:
+        importlib.invalidate_caches()
+        try:
+            importlib.import_module("karaoke_late_arrival")
+            here = True
+        except ImportError:
+            here = False
+        check("a package that arrived later is invisible to the running process", not here)
+        check("but the setup sees it", setup.installed("karaoke_late_arrival"))
+        check("and it does not invent packages that are not there",
+              not setup.installed("karaoke_never_installed_at_all"))
+    finally:
+        os.environ["PYTHONPATH"] = os.environ["PYTHONPATH"][len(late) + 1:]
+        shutil.rmtree(late, ignore_errors=True)
+
+    # ffmpeg missing and refused: the steps below have nothing to do with it,
+    # so they must still run — the settings file among them.
+    empty = tempfile.mkdtemp(prefix="karaoke_nopath_")
+    blocker = tempfile.mkdtemp(prefix="karaoke_noffmpeg_")
+    open(os.path.join(blocker, "sitecustomize.py"), "w").write(
+        "import sys\n"
+        "class Gone:\n"
+        "    def find_spec(self, name, path=None, target=None):\n"
+        "        if name == 'imageio_ffmpeg':\n"
+        "            raise ImportError(name)\n"
+        "        return None\n"
+        "sys.meta_path.insert(0, Gone())\n")
+    r = run([sys.executable, os.path.join(ROOT, "tools", "setup_check.py")],
+            env={"KARAOKE_UI_LANG": "en", "PATH": empty, "PYTHONPATH": blocker,
+                 "KARAOKE_FFMPEG": os.path.join(empty, "no-such-ffmpeg")},
+            input="n\n" * 6)
+    out = r.stdout or ""
+    check("a refused ffmpeg does not end the setup", "Setup finished" in out,
+          r.stderr.strip()[-120:])
+    check("the settings step is still reached", "settings file" in out)
+    check("and the missing piece is named at the end",
+          "ffmpeg" in out.split("Setup finished")[-1])
+    check("the exit code says something is unfinished", r.returncode == 1)
+    if os.name != "nt":
+        check("no Windows-only advice on this system", "winget" not in out,
+              [ln for ln in out.splitlines() if "winget" in ln][:1])
+    shutil.rmtree(empty, ignore_errors=True)
+    shutil.rmtree(blocker, ignore_errors=True)
     tmp = tempfile.mkdtemp(prefix="karaoke_deliv_")
     import importlib.util
     spec = importlib.util.spec_from_file_location("auto", os.path.join(ROOT, "tools", "auto.py"))
@@ -196,6 +253,19 @@ def main():
     check("the program parses --host",
           _ST.parse_args(["--host", "0.0.0.0", "--port", "8770"])[2] == "0.0.0.0")
     check("by default we listen to ourselves only", _ST.parse_args([])[2] == "127.0.0.1")
+
+    print("\nThe version the program tells everyone")
+    # Three places name it, and a person comparing them has to get one answer:
+    # the program itself, the guide in the folder and the newest changelog entry.
+    from kstudio import __version__
+    guide = open(os.path.join(ROOT, "START-HERE.txt"), encoding="utf-8").read()
+    log = open(os.path.join(HOME, "CHANGELOG.md"), encoding="utf-8").read()
+    newest = re.search(r"^## (\d+\.\d+\.\d+)", log, re.M)
+    check("the guide names the same version", f"Version {__version__}" in guide,
+          guide.splitlines()[1] if guide else "")
+    check("and so does the newest changelog entry",
+          bool(newest) and newest.group(1) == __version__,
+          newest.group(1) if newest else "no version heading")
 
     print("\nScreenshots for the README")
     for shot in ("docs/studio.png", "docs/video.png"):
