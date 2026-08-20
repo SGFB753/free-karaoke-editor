@@ -3,9 +3,13 @@
 
 KARAOKE_STUB_AUDIO — the file it pretends to have downloaded.
 KARAOKE_STUB_FAIL   — say what a dead link says, and fail the way yt-dlp fails.
+KARAOKE_STUB_LOG    — a file to append one line per run to, so the checks can
+                      see how many times it was asked and with which arguments.
 
 A link with “fail” in it does the same thing, so that both endings can be
-walked through against one running studio.
+walked through against one running studio. A link with “reload” in it plays
+the refusal YouTube gives a client it does not like: it fails for everyone
+except the android player, exactly as the real site does.
 """
 
 import json
@@ -24,6 +28,16 @@ def main() -> int:
             out = args[i + 1]
     folder = os.path.dirname(out) or "."
     url = args[-1] if args else ""
+    log = os.environ.get("KARAOKE_STUB_LOG")
+    if log:
+        with open(log, "a", encoding="utf-8") as f:
+            f.write(" ".join(args) + "\n")
+
+    if "reload" in url and "player_client=android" not in " ".join(args):
+        print("[youtube] zzz123: Downloading webpage")
+        print("ERROR: [youtube] zzz123: The page needs to be reloaded.",
+              file=sys.stderr)
+        return 1
 
     if os.environ.get("KARAOKE_STUB_FAIL") or "fail" in url:
         print("[youtube] zzz123: Downloading webpage")

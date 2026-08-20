@@ -113,6 +113,41 @@ await sleep(300);
 ok('an empty box is not saved as a text', /пусто/.test($('lyricsNote').textContent),
    $('lyricsNote').textContent);
 
+console.log('\n--- lyrics pasted into the field made for a path ---');
+// A one-line field loses the line breaks, and the whole song arrives as one
+// long run — which is what a person actually does when they copy the words
+// off a lyrics site.
+const many = 'первая строка\nвторая строка\nтретья строка';
+const paste = (id, text) => {
+  const ev = new w.Event('paste', {bubbles:true, cancelable:true});
+  ev.clipboardData = { getData: () => text };
+  $(id).dispatchEvent(ev);
+};
+const was = $('inLyrics').value;
+paste('inLyrics', many);
+await until(() => $('inLyrics').value !== was);
+ok('the words do not stay in the one-line field', $('inLyrics').value !== many);
+ok('the lines are whole in the box below',
+   $('taLyrics').value.split('\n').length === 3, JSON.stringify($('taLyrics').value));
+ok('and they are saved as a file', /\.txt$/.test($('inLyrics').value),
+   $('inLyrics').value.slice(-30));
+ok('the window says what it did', /текст песни/.test($('lyricsNote').textContent),
+   $('lyricsNote').textContent.slice(0, 60));
+// The line breaks have to survive all the way to the disk, not just on screen.
+const rep = await (await fetch(API + '/api/report', {method:'POST',
+  headers:{'Content-Type':'application/json'},
+  body: JSON.stringify({audio: $('inAudio').value, lyrics: $('inLyrics').value,
+                        align:'energy', separate:false})})).json();
+ok('the file on the disk holds three lines, not one',
+   rep.text && rep.text.lines === 3, JSON.stringify(rep.text || rep).slice(0, 90));
+
+const keptAudio = $('inAudio').value;
+paste('inAudio', 'https://example.com/watch?v=zzz123');
+await sleep(200);
+ok('a link pasted into the file field goes to the link field',
+   $('inLink').value === 'https://example.com/watch?v=zzz123', $('inLink').value);
+ok('and the file that was already chosen stays', $('inAudio').value === keptAudio);
+
 console.log('\n--- the report sees both files ---');
 const reported = await until(() => !$('report').classList.contains('hide'), 25000);
 ok('the report came up on its own', reported);

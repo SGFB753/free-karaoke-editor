@@ -170,6 +170,21 @@ still there. If the download fails — a private video, a dead link, a country
 block — the reason the downloader gave is shown as it is, and the field is
 still open for another link.
 
+YouTube sometimes turns a player client away with something that says nothing
+about the video — “The page needs to be reloaded”, or a format list with
+nothing in it. The same link goes through as another client, so it is asked
+again (android, ios, tv) before you are told it did not work. If every one of
+them is turned away, two things are usually left: the downloader is older than
+the site — `pip install -U yt-dlp` — or the video wants you to be signed in,
+which means cookies:
+
+```ini
+yt-dlp-args = --cookies-from-browser chrome
+```
+
+That line goes into `app/settings.ini`; `KARAOKE_YTDLP_ARGS` does the same from
+the environment. Everything in it is passed to `yt-dlp` as it is.
+
 Once the sound is here, the words are looked for by the name of the song, on
 [LRCLIB](https://lrclib.net) — an open library that needs no key and no
 account. What comes back is a **suggestion**: each one says who sings it, how

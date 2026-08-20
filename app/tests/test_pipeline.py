@@ -945,6 +945,18 @@ def main():
     check("nothing half-downloaded is left behind",
           all(not n.startswith(".fetch-") for n in os.listdir(inbox)), os.listdir(inbox))
 
+    # A refusal aimed at the client, not at the video: YouTube tells one player
+    # “the page needs to be reloaded” and hands the sound to the next one.
+    attempts = os.path.join(tmp, "attempts.txt")
+    os.environ["KARAOKE_STUB_LOG"] = attempts
+    again = FE.download("https://example.com/watch?v=reload", inbox)
+    tried = open(attempts, encoding="utf-8").read().splitlines()
+    check("a client the site turned away is asked again as another one",
+          os.path.isfile(again["path"]) and len(tried) == 2, len(tried))
+    check("and the one that got through is the android player",
+          "player_client=android" in tried[-1], tried[-1][-40:])
+    os.remove(attempts)
+
     try:
         FE.download("https://example.com/watch?v=fail", inbox)
         check("a link that leads nowhere is an error, not a file", False)
@@ -953,6 +965,23 @@ def main():
               "Video unavailable" in str(e) and "ERROR" not in str(e), str(e))
     check("and it leaves no rubbish in the folder",
           all(not n.startswith(".fetch-") for n in os.listdir(inbox)), os.listdir(inbox))
+    # “This video is private” is about the video: asking again as another
+    # player would only make a person wait for the same answer four times.
+    check("a plain refusal is not asked again",
+          len(open(attempts, encoding="utf-8").read().splitlines()) == 1
+          if os.path.isfile(attempts) else False)
+    del os.environ["KARAOKE_STUB_LOG"]
+
+    # Cookies and the like: what the person adds themselves reaches the
+    # downloader, whatever the program decided on its own.
+    os.environ["KARAOKE_YTDLP_ARGS"] = "--cookies-from-browser chrome"
+    check("what the settings add is passed on",
+          FE.extra_args() == ["--cookies-from-browser", "chrome"], FE.extra_args())
+    os.environ["KARAOKE_STUB_LOG"] = attempts
+    FE.download("https://example.com/watch?v=cookie", inbox)
+    check("and it really lands in the command line",
+          "--cookies-from-browser chrome" in open(attempts, encoding="utf-8").read())
+    del os.environ["KARAOKE_YTDLP_ARGS"], os.environ["KARAOKE_STUB_LOG"]
     del os.environ["KARAOKE_YTDLP"]
 
     print("\nThe words, looked up by the name of the song")

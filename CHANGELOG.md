@@ -18,6 +18,24 @@ When a download fails — a private video, a dead link, nothing at that address
 — what the downloader itself said is shown, and the field stays open for
 another link.
 
+**“The page needs to be reloaded” is not about your ffmpeg.** YouTube answers a
+player client it does not care for with a refusal that says nothing about the
+video, and that refusal was handed straight to the person as the answer. The
+same link goes through as another client, so it is now asked again — android,
+then ios, then tv — before anyone is told it did not work. A refusal that is
+about the video (“this video is private”) is not asked again: it would only
+make you wait four times for one answer. If every client is turned away, the
+message says what is left to do — `pip install -U yt-dlp`, and cookies for a
+video that asks you to sign in, through the new `yt-dlp-args` in
+`settings.ini`.
+
+**Lyrics pasted into the field made for a path came out as one long run.** A
+one-line field cannot hold line breaks, and a song copied off a lyrics site
+arrived as a single line — with the site's own footer stuck to the end of it. A
+paste that is plainly the words themselves now goes to the box below, whole,
+and is saved as a text file from there. A link pasted into the field for the
+song file moves down to the field for links by itself.
+
 **And the words to go with it.** Once the sound is here, the lyrics are looked
 for by the name of the song on [LRCLIB](https://lrclib.net), an open library
 that needs neither key nor account. What comes back is a suggestion and is

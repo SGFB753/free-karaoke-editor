@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -41,8 +42,57 @@ NOISE = re.compile(
     re.I | re.X)
 
 
+# YouTube answers a client it does not like with a refusal that says nothing
+# about the video: “The page needs to be reloaded”, a format list with nothing
+# in it, a bot check. Another client walks straight in, so it is worth asking
+# again as a different one instead of handing that to a person as the answer.
+CLIENTS = ("", "android", "ios", "tv")
+
+TRY_AGAIN = re.compile(
+    r"page needs to be reloaded|sign in to confirm|not a bot|"
+    r"format is not available|unable to extract|player response|"
+    r"precondition check failed|sabr|failed to extract any player response", re.I)
+
+# What is left to try when every client was refused: almost always the
+# downloader itself is older than the site it is talking to.
+STALE = ("pip install -U yt-dlp",)
+
+
 class FetchError(RuntimeError):
     pass
+
+
+def extra_args() -> list:
+    """Whatever the person adds to the downloader themselves.
+
+    A locked-down video needs cookies, and that is not something the program
+    can decide for anyone: the way in is `yt-dlp-args` in settings.ini, or
+    KARAOKE_YTDLP_ARGS in the environment. For example:
+        yt-dlp-args = --cookies-from-browser chrome
+    """
+    raw = (os.environ.get("KARAOKE_YTDLP_ARGS") or "").strip()
+    if not raw:
+        app = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for ini in (os.path.join(app, "settings.ini"),
+                    os.path.join(os.path.dirname(app), "settings.ini")):
+            try:
+                with open(ini, encoding="utf-8-sig") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("#") or "=" not in line:
+                            continue
+                        key, _, val = line.partition("=")
+                        if key.strip().lower() in ("yt-dlp-args", "ключи-загрузчика"):
+                            raw = val.strip()
+                            break
+            except OSError:
+                continue
+            if raw:
+                break
+    try:
+        return shlex.split(raw)
+    except ValueError:
+        return []
 
 
 def tool() -> Optional[list]:
@@ -161,6 +211,60 @@ def _free_name(folder: str, name: str) -> str:
     return dst
 
 
+def _base_args(cmd: list, tmp: str) -> list:
+    args = list(cmd) + [
+        "--no-playlist",          # a link that also holds a playlist: one song
+        "--newline",              # progress in whole lines, not rewritten ones
+        "--no-colors",
+        "--retries", "3",
+        "--socket-timeout", "30",
+        "--max-filesize", f"{MAX_MB}m",
+        "--write-info-json",      # the name and the artist, for looking the lyrics up
+        "-f", "bestaudio/best",   # no audio-only format on offer: take the video's
+        "-x",                     # the sound alone; no format given = no re-encoding
+        "--restrict-filenames",   # Latin letters, like everywhere else here
+        "-o", os.path.join(tmp, "%(title).60s [%(id)s].%(ext)s"),
+    ]
+    try:                          # a pip-installed ffmpeg is not on PATH
+        args += ["--ffmpeg-location", os.path.dirname(AU.ffmpeg())]
+    except AU.AudioError:
+        pass
+    return args
+
+
+def _attempt(args: list, say: Callable, deadline: float) -> tuple:
+    """Run the downloader once and give back its code and its last words."""
+    try:
+        p = subprocess.Popen(args, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True,
+                             encoding="utf-8", errors="replace", bufsize=1)
+    except OSError as e:
+        raise FetchError(tr(f"could not start the downloader: {e}",
+                            f"не вышло запустить загрузчик: {e}"))
+    lines = []
+    for line in p.stdout:
+        line = line.rstrip()
+        if line:
+            lines.append(line)
+            del lines[:-40]
+            say(line)
+        if time.time() > deadline:
+            p.kill()
+            raise FetchError(tr(f"the download took longer than {TIMEOUT // 60} minutes",
+                                f"загрузка идёт дольше {TIMEOUT // 60} минут"))
+    return p.wait(), lines
+
+
+def _empty(folder: str) -> None:
+    """Wipe what a failed attempt left, so the next one starts on clean ground."""
+    for name in os.listdir(folder):
+        path = os.path.join(folder, name)
+        try:
+            os.remove(path) if os.path.isfile(path) else shutil.rmtree(path, True)
+        except OSError:
+            pass
+
+
 def download(url: str, dest_dir: str, log: Optional[Callable] = None) -> dict:
     """Put the sound of `url` into `dest_dir` and say what came out.
 
@@ -168,6 +272,10 @@ def download(url: str, dest_dir: str, log: Optional[Callable] = None) -> dict:
     video that is private or age-walled, no yt-dlp at all. The window shows
     that as it is — there is nothing better to say than what the downloader
     saw.
+
+    A refusal aimed at the client rather than at the video is not passed on
+    until every client has been turned away: YouTube says “the page needs to
+    be reloaded” to one and hands the sound over to the next.
     """
     say = log or (lambda _m: None)
     url = check_url(url)
@@ -177,51 +285,36 @@ def download(url: str, dest_dir: str, log: Optional[Callable] = None) -> dict:
 
     os.makedirs(dest_dir, exist_ok=True)
     tmp = tempfile.mkdtemp(prefix=".fetch-", dir=dest_dir)
-    args = list(cmd) + [
-        "--no-playlist",          # a link that also holds a playlist: one song
-        "--newline",              # progress in whole lines, not rewritten ones
-        "--no-colors",
-        "--retries", "3",
-        "--socket-timeout", "30",
-        "--max-filesize", f"{MAX_MB}m",
-        "--write-info-json",      # the name and the artist, for looking the lyrics up
-        "-f", "bestaudio/best",
-        "-x",                     # the sound alone; no format given = no re-encoding
-        "--restrict-filenames",   # Latin letters, like everywhere else here
-        "-o", os.path.join(tmp, "%(title).60s [%(id)s].%(ext)s"),
-    ]
-    try:                          # a pip-installed ffmpeg is not on PATH
-        args += ["--ffmpeg-location", os.path.dirname(AU.ffmpeg())]
-    except AU.AudioError:
-        pass
-    args += ["--", url]
-
+    deadline = time.time() + TIMEOUT
     say(tr("Taking the sound from the link…", "Достаю звук по ссылке…"))
-    lines = []
     try:
-        p = subprocess.Popen(args, stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT, text=True,
-                             encoding="utf-8", errors="replace", bufsize=1)
-    except OSError as e:
-        shutil.rmtree(tmp, ignore_errors=True)
-        raise FetchError(tr(f"could not start the downloader: {e}",
-                            f"не вышло запустить загрузчик: {e}"))
-
-    started = time.time()
-    try:
-        for line in p.stdout:
-            line = line.rstrip()
-            if line:
-                lines.append(line)
-                del lines[:-40]
-                say(line)
-            if time.time() - started > TIMEOUT:
-                p.kill()
-                raise FetchError(tr(f"the download took longer than {TIMEOUT // 60} minutes",
-                                    f"загрузка идёт дольше {TIMEOUT // 60} минут"))
-        code = p.wait()
-        if code != 0:
-            raise FetchError(_reason(lines, code))
+        for i, client in enumerate(CLIENTS):
+            args = _base_args(cmd, tmp)
+            if client:
+                args += ["--extractor-args", f"youtube:player_client={client}"]
+            args += extra_args() + ["--", url]
+            code, lines = _attempt(args, say, deadline)
+            if code == 0:
+                break
+            reason = _reason(lines, code)
+            again = bool(TRY_AGAIN.search("\n".join(lines[-8:])))
+            if again and i + 1 < len(CLIENTS):
+                say(tr(f"The site turned this client away ({reason}) — "
+                       f"asking again as “{CLIENTS[i + 1]}”…",
+                       f"Сайт отказал этому клиенту ({reason}) — "
+                       f"спрашиваю ещё раз как «{CLIENTS[i + 1]}»…"))
+                _empty(tmp)
+                continue
+            if again:
+                raise FetchError(reason + tr(
+                    f" — and every player was turned away. The downloader is "
+                    f"probably older than the site: {STALE[0]}. A video that "
+                    f"asks you to sign in needs cookies — see yt-dlp-args in "
+                    f"settings.ini.",
+                    f" — и отказано каждому клиенту. Скорее всего загрузчик "
+                    f"старше сайта: {STALE[0]}. Видео, которое просит войти, "
+                    f"требует куки — см. yt-dlp-args в settings.ini."))
+            raise FetchError(reason)
         info = _info(tmp)
         got = _pick(tmp)
         dst = _free_name(dest_dir, os.path.basename(got))

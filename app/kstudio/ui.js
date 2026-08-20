@@ -189,6 +189,9 @@ const STR = {
       ". Choose a file, or paste the text by hand.",
     lyricsUse: "Take it",
     lyricsTook: "The text is in the box below — read it, correct it if need be.",
+    pastedIntoBox: "That is the lyrics, not a path to a file: the lines are in the "
+      + "box below, whole, and saved as a text file.",
+    linkMoved: "That is a link — it has gone into the field below, press “Take the sound”.",
     jobBuild: "Building the song",
     jobFail: "It did not work",
     hotkeys: "Space — play · ← → seek · [ ] shift the line by 50 ms",
@@ -437,6 +440,9 @@ const STR = {
       " ничего не нашлось. Выберите файл или вставьте текст руками.",
     lyricsUse: "Взять",
     lyricsTook: "Текст в поле ниже — прочитайте, поправьте, если надо.",
+    pastedIntoBox: "Это текст песни, а не путь к файлу: строки целиком лежат в поле "
+      + "ниже и сохранены текстовым файлом.",
+    linkMoved: "Это ссылка — она перенесена в поле ниже, нажмите «Достать звук».",
     jobBuild: "Собираю песню",
     jobFail: "Не получилось",
     hotkeys: "Пробел — пуск · ← → перемотка · [ ] сдвиг строки на 50 мс",
@@ -970,7 +976,9 @@ async function takeLink(){
     askReport();
     findLyrics(got);
   }catch(e){
-    note("linkNote", T.linkFail(e.message), true);
+    // The job already says “It did not download”; the word “Error” in front of
+    // the downloader's own sentence only doubles it.
+    note("linkNote", T.linkFail(String(e.message).replace(/^(Error|Ошибка):\s*/, "")), true);
   }finally{
     btn.disabled = false;
   }
@@ -1030,6 +1038,33 @@ function countPasted(){
   const n = $("taLyrics").value.split("\n").filter(x => x.trim()).length;
   $("pasteCount").textContent = n ? T.countLines(n) : "";
 }
+// A one-line field cannot hold lyrics: the line breaks are lost on the way in
+// and the whole song arrives as one long run. So a paste that is plainly the
+// words themselves is taken to the box below, where the lines stay lines.
+function looksLikeText(s){
+  return /[\r\n\u2028\u2029]/.test(s) || (s.length > 200 && /\s/.test(s));
+}
+$("inLyrics").addEventListener("paste", e => {
+  const raw = (e.clipboardData || window.clipboardData || {}).getData
+    ? (e.clipboardData || window.clipboardData).getData("text") : "";
+  if (!looksLikeText(raw)) return;                  // a path: let it through
+  e.preventDefault();
+  $("taLyrics").value = raw.replace(/\r\n?/g, "\n").replace(/[\u2028\u2029]/g, "\n").trim();
+  $("pasteBox").classList.remove("hide");
+  countPasted();
+  note("lyricsNote", T.pastedIntoBox);
+  useTyped(true);
+});
+// And a link pasted into the field for a file belongs one row down.
+$("inAudio").addEventListener("paste", e => {
+  const raw = (e.clipboardData || window.clipboardData || {}).getData
+    ? (e.clipboardData || window.clipboardData).getData("text").trim() : "";
+  if (!/^https?:\/\//i.test(raw)) return;
+  e.preventDefault();
+  $("inLink").value = raw;
+  note("linkNote", T.linkMoved);
+  $("inLink").focus();
+});
 $("btnUseText").addEventListener("click", () => useTyped(false));
 async function useTyped(quiet){
   const text = $("taLyrics").value.trim();
