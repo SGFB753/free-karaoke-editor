@@ -284,6 +284,10 @@ def main():
               "com.apple.quarantine" in text and "studio.command" in text)
         check(f"{name} names a way through without the Terminal",
               "Open Anyway" in text or "Всё равно открыть" in text)
+        # And the other half of taking it with git: what an update does to the
+        # songs already made. Without that said, nobody dares to run git pull.
+        check(f"{name} says how to update",
+              "git pull" in text and "settings.ini" in text)
 
     print("\nNames of the song folders")
     from kstudio.project import slugify

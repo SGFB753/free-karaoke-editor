@@ -25,6 +25,14 @@ treated as one: each says who sings it, how many lines it has and where it came
 from, and it lands in a box to be read first. A wrong text lays wrong lines
 over the whole song, so nothing is ever taken silently.
 
+**How to update, in writing.** Taking the repository with `git clone` was
+mentioned as a way past the macOS refusal, and there it stopped: nothing said
+what an update does to the songs already made, so nobody had a reason to trust
+`git pull` with them. All three documents now say it — one command, and
+`projects/` and `app/settings.ini` are outside the repository and are not
+touched — along with how to carry songs over from a folder that came from a
+ZIP, and what to do when a pull refuses because a file was edited.
+
 **The lyrics now have three ways in.** A file, as before; a text that was found;
 or the words pasted into the window by hand — typed, corrected, taken from
 anywhere. Pasted text is written into `projects/_incoming` as a `.txt`, so

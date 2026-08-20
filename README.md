@@ -99,6 +99,41 @@ through git are never marked, updates included:
 git clone https://github.com/frdm666/free-karaoke-editor.git
 ```
 
+## Updating
+
+Taken with `git clone` once, the program updates with one command afterwards:
+
+```bash
+cd ~/Documents/karaoke && git pull
+```
+
+Nothing of yours is touched by it. The songs — `projects/`, with the timings
+and the finished pages — and your `app/settings.ini` are not in the repository
+at all: an update replaces the program and the documentation and never looks at
+those two. Files that arrive through git carry no quarantine mark either, so
+macOS does not have to be talked round again after every update.
+
+Coming from a downloaded ZIP that already has songs in it: clone next to it,
+carry the two things across, and the old folder can go.
+
+```bash
+cp -R ~/Downloads/karaoke/projects/. ~/Documents/karaoke/projects/
+```
+
+```bash
+cp ~/Downloads/karaoke/app/settings.ini ~/Documents/karaoke/app/settings.ini
+```
+
+Two things people trip over:
+
+* `git pull` refuses when a file of the program has been edited.
+  `git checkout -- <file>` puts that one back, `git reset --hard origin/main`
+  puts all of them back. Your songs and settings sit outside the repository and
+  are not affected by either.
+* When an update brings a new dependency — `yt-dlp` for links did — run the
+  setup once more: `python3 app/tools/setup_check.py`. It skips whatever is
+  already installed.
+
 ## What is in the folder
 
 ```

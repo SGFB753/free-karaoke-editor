@@ -63,6 +63,33 @@ Taking the repository with "git clone" instead of a ZIP avoids all of
 this: files that arrive through git are never marked.
 
 
+UPDATING
+========
+
+Taken with "git clone" once, the program updates with one command:
+
+    cd ~/Documents/karaoke
+    git pull
+
+Your songs and your settings are not touched by it: projects\ and
+app\settings.ini are not in the repository at all, so an update
+replaces the program and the documentation and leaves those alone.
+
+Already have songs in a folder that came from a ZIP? Clone next to it
+and carry the two things across:
+
+    cp -R ~/Downloads/karaoke/projects/. ~/Documents/karaoke/projects/
+    cp ~/Downloads/karaoke/app/settings.ini ~/Documents/karaoke/app/
+
+If "git pull" refuses because a file of the program was edited:
+"git checkout -- <file>" puts that one back, "git reset --hard
+origin/main" puts them all back. Songs and settings live outside the
+repository and are not affected.
+
+When an update brings something new to install - yt-dlp for links did -
+run the setup once more. It skips whatever is already there.
+
+
 2. THE LYRICS FILE
 ==================
 
