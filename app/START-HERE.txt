@@ -229,6 +229,20 @@ In the studio:
     The timing stays in place. If the instrumental starts elsewhere, the
     program finds the shift, moves the timing along and says by how much.
 
+SCREAMED OR GROWLED VOCAL
+  The program does not transcribe, it lays YOUR words on the audio, so an
+  unintelligible vocal is not hopeless. Three things decide how well it
+  goes:
+    1. leave the instrumental ON — the timing is made from the separated
+       voice, not from the mix;
+    2. the voice is levelled before the model hears it (automatic, and it
+       changes neither pitch nor time);
+    3. mark the stretches with no words in them — see just below.
+  Also: choose the language of the song by hand, and take a bigger model
+  if the machine has the memory. Re-timing uses the model the song was
+  built with and says which one that is.
+
+
 WHERE THERE ARE NO WORDS
   A vocalise, a wordless scream, a hummed intro are all voice: nothing
   measurable tells them from a sung line, so the timing crawls onto them

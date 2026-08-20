@@ -9,6 +9,17 @@ commits themselves are one click away in the history.
 
 ## 4.28.0
 
+**The checks now walk the hard road themselves.** Three of them were added
+where there was nothing: a whole song is built with wordless stretches marked
+and the lines are looked at afterwards — both when the marks come from the
+field and when they come from the lyrics file; a running studio is asked to
+re-time and must keep the model the song was built with, must heed the marks
+and must shrug off nonsense typed into the field; and a real browser fills the
+field, builds the song, checks that nothing landed on the marked stretch, that
+the marks come back into the editor, and that the labels keep off the colour
+swatches at three window widths. The old checks that read the source code
+instead of running it are gone — they were a stand-in for these.
+
 **The voice is levelled out before the aligner hears it.** A screamed vocal is
 the widest dynamic there is — a shout point-blank, then a strangled rasp — and
 the quiet half never reached the model at all. The separated voice now goes

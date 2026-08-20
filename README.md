@@ -292,6 +292,34 @@ is the loud one with no lines under it. Mark it, press “Re-time”, and the wo
 stay off. The marks are saved with the song, so the next re-time starts from
 them.
 
+## Screamed, growled, whispered
+
+The aligner does not transcribe: it takes the words you gave it and lays them
+on the audio. That is why an unintelligible vocal is not hopeless — but it is
+where the timing goes wrong most often, so the program leans on three things
+here, and two of them are yours to set.
+
+**Keep the instrumental on.** The timing is worked out from the separated voice,
+never from the mix: guitars and drums are simply not there for the model to
+mishear. Switching the instrumental off makes the timing much worse on a heavy
+song. Measured on a nine-minute deathcore track: segments the aligner gave up on
+fell from 27 to 22 the moment the voice was separated.
+
+**The voice is levelled before the model hears it.** A scream point-blank and a
+strangled rasp in the same song differ by a factor of thirty, and the quiet half
+used to reach the model as nothing at all. Levelling is automatic and touches
+neither pitch nor time — on the same track it took those 22 failed segments down
+to 19 and lifted confidence from 0.125 to 0.138. Nothing to switch on.
+
+**Say where there are no words.** A vocalise, a wordless scream, a hummed intro
+— see the section above. This is the one thing no measurement can do for you,
+and on this kind of music it is worth the minute it takes.
+
+Beyond that: pick the language of the song by hand instead of leaving it to be
+worked out, and give it a bigger model — `medium` or `large-v3` — if the machine
+has the memory. A re-time uses the model the song was built with, and says which
+one that is before it starts.
+
 ## The finished page
 
 * Space — play/pause, `←` `→` — seek, `F` — full screen, `M` — voice on/off.
@@ -384,6 +412,7 @@ timing
   --align {auto,whisper,energy,none}   alignment engine
   --whisper-model tiny|base|small|medium|large-v3
   --lang ru                            language of the lyrics
+  --no-text "0:00-0:42, 3:10-3:50"     stretches that hold no words at all
   --device cuda|cpu
   --timings timings.json               take ready timings (exported from the player)
 
@@ -506,7 +535,10 @@ in a real Chrome — hit-testing and layout, which jsdom does not do at all.
 
 * The lyrics must match the recording: alignment lines up text with audio, it
   does not transcribe it.
-* Rap and dense mixes are harder; an instrumental helps a lot.
+* Rap and dense mixes are harder; an instrumental helps a lot, and on screamed
+  vocals so does marking the stretches that hold no words.
+* Nothing can tell a vocalise from a sung line by listening: it is voice either
+  way. Only you can say where the words are not.
 * Syllables are exact for Russian (by vowels) and a heuristic for the Latin
   script — good enough to spread the time inside a line, and it still lies on
   loanwords: `karaoke` counts as 2, not 4.

@@ -6,6 +6,7 @@
 Нужен только ffmpeg. Нейросети не задействуются.
 """
 
+import json
 import math
 import os
 import re
@@ -1042,6 +1043,54 @@ def main():
     check("lines on the singing are left alone",
           A.repair_silent(lyr_ok, 30.0, voiced_wav, log=msgs3.append) == 0
           and lyr_ok.lines[2].start == 21.0)
+
+    print("\nA whole song built with wordless stretches marked")
+    # The road end to end, without a neural net in it: build a real project and
+    # look at where the lines actually landed. The test song sings at 2.0-4.6,
+    # 5.0-7.6, 8.0-10.6, 11.0-13.6, 16.0-18.6, 19.0-21.6 — mark the first two
+    # phrases as wordless and nothing may be laid on them.
+    from kstudio import project as P
+
+    built_root = os.path.join(tmp, "built")
+    song_for_build = os.path.join(tmp, "for-build.wav")
+    text_for_build = os.path.join(tmp, "for-build.txt")
+    make_song(song_for_build)
+    open(text_for_build, "w", encoding="utf-8").write(TEXT)
+
+    folder = P.create(song_for_build, text_for_build, built_root,
+                      align_engine="energy", separate=False, whisper_model="medium",
+                      skip="0:00-0:08")
+    made = json.load(open(os.path.join(folder, "project.json"), encoding="utf-8"))
+    starts = [ln["start"] for ln in made["lines"]]
+    check("no line is laid on the marked stretch",
+          all(st >= 7.8 for st in starts), [round(x, 1) for x in starts])
+    check("and the song still holds every line",
+          len(made["lines"]) == len(L.parse(TEXT).lines), len(made["lines"]))
+    check("the marks are written down with the song",
+          made.get("noText", "").startswith("0.0-8.0"), made.get("noText"))
+    check("and so is the model it was timed with",
+          made.get("model") == "medium", made.get("model"))
+
+    # the same thing said in the lyrics file instead of the field
+    text_marked = os.path.join(tmp, "for-build-marked.txt")
+    open(text_marked, "w", encoding="utf-8").write(
+        TEXT.replace("[Куплет]", "[Вступление 0:00-0:08]\n[Куплет]"))
+    folder2 = P.create(song_for_build, text_marked, built_root,
+                       align_engine="energy", separate=False)
+    made2 = json.load(open(os.path.join(folder2, "project.json"), encoding="utf-8"))
+    starts2 = [ln["start"] for ln in made2["lines"]]
+    check("a mark inside the lyrics file works the same",
+          all(st >= 7.8 for st in starts2), [round(x, 1) for x in starts2])
+    check("and it does not become a line of the song",
+          len(made2["lines"]) == len(made["lines"]), len(made2["lines"]))
+
+    # and with nothing marked the same song uses its whole length
+    folder3 = P.create(song_for_build, text_for_build, built_root,
+                       align_engine="energy", separate=False)
+    made3 = json.load(open(os.path.join(folder3, "project.json"), encoding="utf-8"))
+    check("without marks the early phrases are used",
+          min(ln["start"] for ln in made3["lines"]) < 7.8,
+          round(min(ln["start"] for ln in made3["lines"]), 1))
 
     print("\nSigns of life during long steps")
     import time

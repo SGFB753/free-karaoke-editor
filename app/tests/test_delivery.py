@@ -267,19 +267,6 @@ def main():
           _ST.parse_args(["--host", "0.0.0.0", "--port", "8770"])[2] == "0.0.0.0")
     check("by default we listen to ourselves only", _ST.parse_args([])[2] == "127.0.0.1")
 
-    print("\nA re-time keeps the model it was built with")
-    # A person picked medium, pressed “Re-time”, and got small: the re-timing
-    # path had its own default and never looked at what the song was made with.
-    src = open(os.path.join(ROOT, "studio.py"), encoding="utf-8").read()
-    body = src[src.index("def realign("):]
-    body = body[:body.index("\ndef ")]
-    check("the model comes from the song, not from a default",
-          'data.get("model")' in body and 'opts.get("model", "small")' not in body)
-    check("and it is written down for the next time", 'data["model"] = model' in body)
-    check("the log names the model it is using", "Модель:" in body or "Model:" in body)
-    made = open(os.path.join(ROOT, "kstudio", "project.py"), encoding="utf-8").read()
-    check("a fresh song records the model too", '"model": whisper_model' in made)
-
     print("\nThe version the program tells everyone")
     # Three places name it, and a person comparing them has to get one answer:
     # the program itself, the guide in the folder and the newest changelog entry.
