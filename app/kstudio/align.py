@@ -13,7 +13,7 @@ import difflib
 import re
 import sys
 import warnings
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from .i18n import tr
 from .lyrics import Lyrics, Word, normalize_token
@@ -193,7 +193,8 @@ def align_energy(lyrics: Lyrics, audio_path: str, duration: float,
 
 def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                   model_name: str = "medium", language: str = "ru",
-                  device: Optional[str] = None, log: Log = _noop) -> Lyrics:
+                  device: Optional[str] = None, log: Log = _noop,
+                  isolated: bool = False) -> Lyrics:
     import stable_whisper
 
     from . import sysinfo
@@ -373,6 +374,11 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     if pile_runs(lyrics.lines):
         repair_piles(lyrics, duration, log=log, floor=first_sound(audio_path),
                      untexted=untexted)
+    # Only on a separated vocal: there silence is silence. On a mix a “quiet”
+    # stretch may simply be a quieter verse, and moving lines off it would do
+    # the damage it is meant to prevent.
+    if isolated:
+        repair_silent(lyrics, duration, audio_path, log=log)
     repair_order(lyrics, log=log)
     _fill_lines(lyrics, duration)      # after repairs the bounds may exceed the track
 
@@ -779,6 +785,108 @@ def repair_piles(lyrics: Lyrics, duration: float, log: Log = _noop,
     return fixed
 
 
+def _voiced_windows(lo: float, hi: float, quiet: List[Dict]) -> List[List[float]]:
+    """The parts of [lo, hi] where the voice is heard: the gaps between silences."""
+    out, at = [], lo
+    for q in sorted(quiet, key=lambda q: q["start"]):
+        a, b = max(lo, q["start"]), min(hi, q["end"])
+        if a > at:
+            out.append([at, min(a, hi)])
+        at = max(at, b)
+        if at >= hi:
+            break
+    if at < hi:
+        out.append([at, hi])
+    return [w for w in out if w[1] - w[0] > 0.2]
+
+
+def repair_silent(lyrics: Lyrics, duration: float, audio_path: str,
+                  log: Log = _noop) -> int:
+    """Move lines off the stretches where the separated voice is silent.
+
+    The aligner is made to place every word somewhere, and over an interlude or
+    a solo it places them on the music: the line looks timed, the karaoke shows
+    words, and nobody sings. On the separated vocal such a stretch is real
+    silence — so it can be known, not guessed.
+
+    A run of lines sitting wholly inside that silence is moved to the nearest
+    stretch of actual singing between its timed neighbours, at a sung pace,
+    against the line that follows — the same reasoning as with piles: the exact
+    words are lost, but their order is not, and singing beats silence as a place
+    to put them. When there is no singing between the neighbours at all, the
+    lines stay put and the log names them: perhaps they are simply not sung.
+    """
+    try:
+        from . import audio as AU
+        from . import report as R
+        env, hop = AU.rms_envelope(audio_path)
+        quiet = R.quiet_stretches(env, hop, least=2.5)
+    except Exception:
+        return 0
+    if not quiet:
+        return 0
+
+    lines = lyrics.lines
+
+    def sits_in_silence(ln) -> bool:
+        if ln.start is None or ln.end is None or not ln.words:
+            return False
+        return any(ln.start >= q["start"] - 0.25 and ln.end <= q["end"] + 0.25
+                   for q in quiet)
+
+    flags = [sits_in_silence(ln) for ln in lines]
+    moved, stuck = 0, []
+    i = 0
+    while i < len(lines):
+        if not flags[i]:
+            i += 1
+            continue
+        j = i
+        while j + 1 < len(lines) and flags[j + 1]:
+            j += 1
+        run = lines[i:j + 1]
+        lo = lines[i - 1].end if i and lines[i - 1].end is not None else 0.0
+        hi = lines[j + 1].start if j + 1 < len(lines) and lines[j + 1].start is not None             else duration
+        lo, hi = max(0.0, min(lo, duration)), max(0.0, min(hi, duration))
+        total = sum(_syl(ln) for ln in run)
+        need = total * _MIN_PER_SYLLABLE
+        pick = None
+        # nearest to the following line: that is where the aligner re-locks
+        for w in reversed(_voiced_windows(lo, hi, quiet)):
+            if w[1] - w[0] >= need + 0.05:
+                pick = w
+                break
+        if not pick:
+            stuck.append((i, j, run[0].start or 0.0))
+            i = j + 1
+            continue
+        span = min(pick[1] - pick[0], max(_SUNG_PER_SYLLABLE * total, need))
+        base = (pick[1] - span) if j + 1 < len(lines) else pick[0]
+        acc = 0.0
+        for ln in run:
+            t0 = base + span * acc / total
+            acc += _syl(ln)
+            t1 = base + span * acc / total
+            _spread(ln.words, t0, max(t1 - 0.05, t0 + 0.05))
+            ln.start, ln.end = ln.words[0].start, ln.words[-1].end
+        moved += len(run)
+        i = j + 1
+
+    if moved:
+        log(tr(f"  lines that sat where the voice is silent, moved onto singing: {moved}",
+               f"  строк, лежавших там, где вокал молчит, перенесено на пение: {moved}"))
+    for a, b, at in stuck:
+        log(tr(f"  NOTE: lines {a + 1}–{b + 1} sit at {at // 60:.0f}:{at % 60:04.1f}, "
+               f"where the voice is silent — and there is no singing between their "
+               f"neighbours to move them to. Perhaps they are simply not sung in this "
+               f"recording; check them, or remove them from the lyrics.",
+               f"  ВНИМАНИЕ: строки {a + 1}–{b + 1} стоят на {at // 60:.0f}:{at % 60:04.1f}, "
+               f"где вокал молчит, — а пения между соседями, куда их перенести, нет. "
+               f"Возможно, в этой записи они просто не поются; проверьте их или уберите "
+               f"из текста."))
+    return moved
+
+
 def repair_order(lyrics: Lyrics, log: Log = _noop) -> int:
     """Pull overlapping lines apart: a line must not end past the start of the
     next one, or the highlight jumps around."""
@@ -836,7 +944,8 @@ def _fill_lines(lyrics: Lyrics, duration: float, min_word: float = 0.12) -> None
 
 def align(lyrics: Lyrics, audio_path: str, duration: float, engine: str = "auto",
           model_name: str = "medium", language: str = "ru",
-          device: Optional[str] = None, log: Log = _noop) -> tuple:
+          device: Optional[str] = None, log: Log = _noop,
+          isolated: bool = False) -> tuple:
     """Returns (lyrics, engine_used)."""
     if lyrics.has_manual_times:
         log(tr("The text already has [mm:ss.dd] timings — skipping alignment.",
@@ -864,7 +973,8 @@ def align(lyrics: Lyrics, audio_path: str, duration: float, engine: str = "auto"
         else:
             try:
                 return align_whisper(lyrics, audio_path, duration, model_name,
-                                     language, device, log), "whisper"
+                                     language, device, log,
+                                     isolated=isolated), "whisper"
             except Exception as e:
                 if engine == "whisper":
                     raise

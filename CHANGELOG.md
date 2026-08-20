@@ -9,6 +9,20 @@ commits themselves are one click away in the history.
 
 ## 4.28.0
 
+**Lines laid where nobody sings are moved onto the singing.** The aligner has
+to put every word somewhere, and over an interlude or a solo it puts them on
+the music: the line looks timed, the karaoke shows words, and no voice is
+there. On the separated vocal such a stretch is real silence — so after the
+timing the program now checks every line against that silence, and a run of
+lines lying wholly inside it is moved to the nearest stretch of actual singing
+between its timed neighbours, at a sung pace, pressed against the line that
+follows. When there is no singing between the neighbours at all, the lines stay
+and the log says so: perhaps this recording simply does not sing them. On a
+plain mix, with no separation, nothing is moved — a quiet verse must not be
+mistaken for an interlude. For screamed and growled vocal, where the aligner
+loses its footing most, this is the difference between words over a guitar solo
+and words where the voice is.
+
 **A song from a link.** Under the field for the song file there is now a field
 for a link: paste one, press “Take the sound”, and the audio is pulled out of
 the video and put where a dropped file goes. The work is done by `yt-dlp` —

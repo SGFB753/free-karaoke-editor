@@ -180,7 +180,8 @@ def main(argv=None) -> int:
             engine = "json"
         else:
             lyr, engine = A.align(lyr, align_src, dur, args.align,
-                                  args.whisper_model, args.lang, args.device, log)
+                                  args.whisper_model, args.lang, args.device, log,
+                                  isolated=bool(vocals))
         log(tr(f"Timing ready ({B.ENGINE_LABEL.get(engine, engine)}).",
            f"Разметка готова ({B.ENGINE_LABEL.get(engine, engine)})."))
 

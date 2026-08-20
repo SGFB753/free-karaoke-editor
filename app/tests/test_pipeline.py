@@ -874,6 +874,79 @@ def main():
             os.environ["XDG_CACHE_HOME"] = old_xdg
         shutil_rm(fake)
 
+    print("\nLines that lie where the voice is silent")
+    # The aligner must put every word somewhere, and over an interlude it puts
+    # them on the music: the line looks timed, and nobody sings. On the
+    # separated vocal that stretch is real silence, so it can be known.
+    import wave as _wv
+
+    def _tone_and_silence(path, spans, total=30.0, sr=8000):
+        """A wav that is loud inside `spans` and silent elsewhere."""
+        import math
+        frames = bytearray()
+        for i in range(int(total * sr)):
+            t = i / sr
+            loud = any(a <= t < b for a, b in spans)
+            v = int(12000 * math.sin(2 * math.pi * 220 * t)) if loud else 0
+            frames += int(v).to_bytes(2, "little", signed=True)
+        with _wv.open(path, "wb") as f:
+            f.setnchannels(1)
+            f.setsampwidth(2)
+            f.setframerate(sr)
+            f.writeframes(bytes(frames))
+
+    voiced_wav = os.path.join(tmp, "voiced.wav")
+    # singing at 0–8 s and 20–30 s; 8–20 s is a solo with no voice at all
+    _tone_and_silence(voiced_wav, [(0.0, 8.0), (20.0, 30.0)])
+
+    def _timed_lyrics():
+        lyr = L.parse("первая строка тут\nвторая строка тут\nтретья строка тут\n"
+                      "четвёртая строка тут")
+        times = [(1.0, 3.0), (4.0, 6.0), (11.0, 13.0), (25.0, 28.0)]
+        for ln, (a, b) in zip(lyr.lines, times):
+            A._spread(ln.words, a, b)
+            ln.start, ln.end = a, b
+        return lyr
+
+    msgs = []
+    lyr_s = _timed_lyrics()
+    n = A.repair_silent(lyr_s, 30.0, voiced_wav, log=msgs.append)
+    third = lyr_s.lines[2]
+    check("the line on the solo is moved", n == 1, n)
+    check("and it lands where the singing is",
+          third.start >= 19.5 and third.end <= 25.5,
+          f"{third.start:.1f}–{third.end:.1f}")
+    check("its neighbours are not touched",
+          lyr_s.lines[1].end == 6.0 and lyr_s.lines[3].start == 25.0)
+    check("the order of lines survives",
+          all(lyr_s.lines[k].start <= lyr_s.lines[k + 1].start for k in range(3)))
+    check("and the log says what happened",
+          any("перенес" in m or "moved" in m for m in msgs), msgs[:1])
+
+    # nowhere to go: the neighbours press right against the silence, and every
+    # second of singing between them is already spoken for
+    msgs2 = []
+    lyr_n = _timed_lyrics()
+    lyr_n.lines[1].start, lyr_n.lines[1].end = 5.0, 8.0
+    A._spread(lyr_n.lines[1].words, 5.0, 8.0)
+    lyr_n.lines[2].start, lyr_n.lines[2].end = 11.0, 13.0
+    lyr_n.lines[3].start, lyr_n.lines[3].end = 20.0, 23.0
+    A._spread(lyr_n.lines[3].words, 20.0, 23.0)
+    n2 = A.repair_silent(lyr_n, 30.0, voiced_wav, log=msgs2.append)
+    check("with no singing to move to, the lines stay put",
+          n2 == 0 and lyr_n.lines[2].start == 11.0, n2)
+    check("and they are named out loud",
+          any("ВНИМАНИЕ" in m or "NOTE" in m for m in msgs2), msgs2[:1])
+
+    # lines that sit on singing are never dragged anywhere
+    msgs3 = []
+    lyr_ok = _timed_lyrics()
+    lyr_ok.lines[2].start, lyr_ok.lines[2].end = 21.0, 23.0
+    A._spread(lyr_ok.lines[2].words, 21.0, 23.0)
+    check("lines on the singing are left alone",
+          A.repair_silent(lyr_ok, 30.0, voiced_wav, log=msgs3.append) == 0
+          and lyr_ok.lines[2].start == 21.0)
+
     print("\nSigns of life during long steps")
     import time
 

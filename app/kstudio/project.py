@@ -148,8 +148,11 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
                                               device=device, log=log)
 
         align_src = vocals or work
+        # On the separated vocal silence is real silence — the repairs may
+        # trust it and move lines that lie where nobody sings.
         lyr, engine = A.align(lyr, align_src, dur, align_engine,
-                              whisper_model, language, device, log)
+                              whisper_model, language, device, log,
+                              isolated=bool(vocals))
         log(tr(f"Timing ready ({B.ENGINE_LABEL.get(engine, engine)}).",
            f"Разметка готова ({B.ENGINE_LABEL.get(engine, engine)})."))
 
