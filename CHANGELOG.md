@@ -31,6 +31,18 @@ found, the window and page suites were skipped and the run still ended with
 Where the whole set is asked for — `KARAOKE_REQUIRE_BROWSER=1`, which is how it
 runs on the server — a missing jsdom is now a failure that says so.
 
+**The name of the ffmpeg file was enough to stop a download.** yt-dlp is handed
+a folder and looks inside it for “ffmpeg” and “ffprobe”. The copy pip installs
+— imageio-ffmpeg, which the setup offers when the system has none — is a single
+file named after its platform and version, with no ffprobe beside it at all.
+Given that folder, yt-dlp fell over an empty path and said “expected str,
+bytes or os.PathLike object, not NoneType”, and the window passed that on as
+the reason the song had not downloaded. Now it is handed a folder where those
+two names really do point at whatever was found, and when there is no ffprobe
+anywhere the video simply comes down whole — the program takes the sound out of
+it afterwards, as it always did. A real ffmpeg, which brings ffprobe with it,
+is now preferred over the pip copy.
+
 **Where the program looks for what it did not install.** A window opened by
 double-clicking inherits a bare `PATH`: Homebrew is not in it, and neither is
 the folder pip writes commands into — though the person has both and both work

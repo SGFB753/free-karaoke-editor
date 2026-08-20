@@ -38,12 +38,6 @@ COMMON = ("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin",
 def _probe_candidates(name: str):
     yield os.environ.get(f"KARAOKE_{name.upper()}")
     yield shutil.which(name)
-    try:  # pip install imageio-ffmpeg — a fallback without a system install
-        import imageio_ffmpeg
-        if name == "ffmpeg":
-            yield imageio_ffmpeg.get_ffmpeg_exe()
-    except Exception:
-        pass
     # Next to the running Python. sys.executable is not always there to be
     # had — an embedded or oddly launched interpreter leaves it empty, and
     # os.path.dirname(None) is a crash, not a missing ffmpeg.
@@ -51,6 +45,15 @@ def _probe_candidates(name: str):
         yield os.path.join(os.path.dirname(sys.executable), name)
     for folder in COMMON:
         yield os.path.join(folder, name)
+    # Last: the copy pip can install. It is one file called something like
+    # ffmpeg-macos-arm64-v7.0.2 and it brings no ffprobe at all, so a real
+    # install is worth preferring wherever there is one.
+    try:
+        import imageio_ffmpeg
+        if name == "ffmpeg":
+            yield imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        pass
 
 
 def ffmpeg() -> str:

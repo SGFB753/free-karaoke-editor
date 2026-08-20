@@ -256,6 +256,46 @@ def _free_name(folder: str, name: str) -> str:
     return dst
 
 
+def _tools(tmp: str) -> tuple:
+    """A folder where ffmpeg and ffprobe answer to those very names.
+
+    yt-dlp is handed a folder and looks inside it for “ffmpeg” and “ffprobe”.
+    The copy pip installs is one file named after its platform and version, and
+    it brings no ffprobe at all — give yt-dlp that folder and it falls over an
+    empty path, saying only “expected str, bytes or os.PathLike object, not
+    NoneType”, which tells a person nothing about their song.
+
+    Gives back the folder to point at (or None) and whether the sound can be
+    pulled out of the video on the spot, which needs ffprobe.
+    """
+    try:
+        ff = AU.ffmpeg()
+    except AU.AudioError:
+        return None, False
+    fp = AU.ffprobe()
+    exe = ".exe" if os.name == "nt" else ""
+    if (os.path.basename(ff) == "ffmpeg" + exe and fp
+            and os.path.basename(fp) == "ffprobe" + exe
+            and os.path.dirname(ff) == os.path.dirname(fp)):
+        return os.path.dirname(ff), True          # an ordinary install: as is
+    # Everything else gets a small folder of its own, with the names yt-dlp
+    # expects pointing at whatever was actually found.
+    folder = os.path.join(tmp, "bin")
+    try:
+        os.makedirs(folder, exist_ok=True)
+        for src, name in ((ff, "ffmpeg" + exe), (fp, "ffprobe" + exe)):
+            if not src:
+                continue
+            link = os.path.join(folder, name)
+            if not os.path.exists(link):      # a second try reuses the folder
+                os.symlink(src, link)
+    except (OSError, AttributeError, NotImplementedError):
+        # No links to be had (Windows without the right, say): better to let
+        # yt-dlp look for itself than to point it at half a folder.
+        return None, False
+    return folder, bool(fp)
+
+
 def _base_args(cmd: list, tmp: str) -> list:
     args = list(cmd) + [
         "--no-playlist",          # a link that also holds a playlist: one song
@@ -266,14 +306,17 @@ def _base_args(cmd: list, tmp: str) -> list:
         "--max-filesize", f"{MAX_MB}m",
         "--write-info-json",      # the name and the artist, for looking the lyrics up
         "-f", "bestaudio/best",   # no audio-only format on offer: take the video's
-        "-x",                     # the sound alone; no format given = no re-encoding
         "--restrict-filenames",   # Latin letters, like everywhere else here
         "-o", os.path.join(tmp, "%(title).60s [%(id)s].%(ext)s"),
     ]
-    try:                          # a pip-installed ffmpeg is not on PATH
-        args += ["--ffmpeg-location", os.path.dirname(AU.ffmpeg())]
-    except AU.AudioError:
-        pass
+    where, can_extract = _tools(tmp)
+    if where:                     # a pip-installed ffmpeg is not on PATH
+        args += ["--ffmpeg-location", where]
+    if can_extract:
+        # The sound alone; no format named = no re-encoding. Without ffprobe
+        # yt-dlp cannot do this at all, and the video comes down whole — the
+        # program takes the sound out of it later anyway.
+        args.append("-x")
     return args
 
 

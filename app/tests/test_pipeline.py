@@ -999,6 +999,39 @@ def main():
     check("nothing half-downloaded is left behind",
           all(not n.startswith(".fetch-") for n in os.listdir(inbox)), os.listdir(inbox))
 
+    # What ffmpeg is called matters to the downloader: it is handed a folder
+    # and looks in it for “ffmpeg” and “ffprobe”. The copy pip installs is one
+    # file named after its platform, with no ffprobe beside it — hand that over
+    # and yt-dlp falls over an empty path, saying only “not NoneType”.
+    odd = os.path.join(tmp, "pip-ffmpeg")
+    os.makedirs(odd, exist_ok=True)
+    odd_ff = os.path.join(odd, "ffmpeg-macos-arm64-v7.0.2")
+    open(odd_ff, "w").close()
+    os.chmod(odd_ff, 0o755)
+    was_ff, was_fp = AU.ffmpeg, AU.ffprobe
+    AU.ffmpeg, AU.ffprobe = (lambda: odd_ff), (lambda: None)
+    bin_dir = os.path.join(tmp, "as-yt-dlp-wants")
+    os.makedirs(bin_dir, exist_ok=True)
+    where, can_extract = FE._tools(bin_dir)
+    check("a strangely named ffmpeg is given the name yt-dlp looks for",
+          where and os.path.exists(os.path.join(where, "ffmpeg")), where)
+    check("and with no ffprobe the sound is not pulled out on the spot",
+          can_extract is False)
+    args = FE._base_args(["yt-dlp"], bin_dir)
+    check("so the video comes down whole instead of failing", "-x" not in args)
+    check("and the folder handed over is the one with the right names",
+          args[args.index("--ffmpeg-location") + 1] == where)
+
+    AU.ffmpeg, AU.ffprobe = was_ff, was_fp
+    try:
+        where2, can2 = FE._tools(bin_dir)
+        check("an ordinary pair is handed over as it stands",
+              can2 and where2 == os.path.dirname(AU.ffmpeg()), where2)
+        check("and then the sound is pulled out at once",
+              "-x" in FE._base_args(["yt-dlp"], bin_dir))
+    except AU.AudioError:
+        check("an ordinary pair is handed over as it stands", True, "no ffmpeg here")
+
     # A refusal aimed at the client, not at the video: YouTube tells one player
     # “the page needs to be reloaded” and hands the sound to the next one.
     attempts = os.path.join(tmp, "attempts.txt")
