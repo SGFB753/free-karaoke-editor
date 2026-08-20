@@ -26,9 +26,13 @@
   button.pri{background:var(--accent); color:#08111c; border-color:transparent; font-weight:600}
   button.pri:hover{background:#7feaff}
   button.on{background:rgba(77,225,255,.16); border-color:rgba(77,225,255,.45); color:#bff2ff}
-  input,select{font:inherit; font-size:0.8438rem; color:var(--text); background:rgba(0,0,0,.3);
-    border:1px solid var(--line); border-radius:8px; padding:7px 10px}
-  input:focus,select:focus{outline:2px solid rgba(77,225,255,.5); outline-offset:-1px}
+  input,select,textarea{font:inherit; font-size:0.8438rem; color:var(--text);
+    background:rgba(0,0,0,.3); border:1px solid var(--line); border-radius:8px;
+    padding:7px 10px}
+  input:focus,select:focus,textarea:focus{outline:2px solid rgba(77,225,255,.5);
+    outline-offset:-1px}
+  textarea{width:100%; resize:vertical; line-height:1.6; user-select:text;
+    font-family:inherit; min-height:120px}
   .muted{color:var(--muted)}
   .hide{display:none !important}
 
@@ -65,6 +69,16 @@
   .pickrow input{flex:1}
   .opts{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
   .warn{font-size:0.8438rem; color:var(--accent2); line-height:1.6}
+  /* Lyrics found by the name of the song: a suggestion to read, not an answer.
+     Each one says where it came from and how many lines it has. */
+  .found{display:grid; gap:8px}
+  .found .one{display:flex; align-items:center; gap:12px; padding:10px 12px;
+    border:1px solid var(--line); border-radius:10px; background:rgba(0,0,0,.22)}
+  .found .one .t{flex:1; min-width:0}
+  .found .one .t b{display:block; font-size:0.875rem; font-weight:600}
+  .found .one .t span{font-size:0.7812rem; color:var(--muted)}
+  .found .one .first{font-size:0.7812rem; color:var(--muted); font-style:italic;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%}
   .hint{font-size:0.8438rem; color:var(--muted); line-height:1.6; margin-top:6px}
   .hint.warnish{color:var(--accent2)}
   /* The report before building: the song, the text, what to expect. */
@@ -354,12 +368,28 @@
           <input id="inAudio" placeholder="mp3, wav, flac, m4a…">
           <button data-pick="audio" data-t="choose">Choose…</button>
         </div>
+        <div class="pickrow">
+          <input id="inLink" data-tp="linkPh" placeholder="…or a link to a video — the sound will be taken out of it">
+          <button id="btnFetch" data-t="fetchGo">Take the sound</button>
+        </div>
+        <div class="hint" id="linkNote"></div>
       </div>
       <div class="field">
         <label data-t="fileLyrics">Lyrics file</label>
         <div class="pickrow">
           <input id="inLyrics" data-tp="lyricsPh" placeholder="txt — one line of the song per line of the file">
           <button data-pick="lyrics" data-t="choose">Choose…</button>
+          <button id="btnPaste" data-t="pasteText">Paste the text</button>
+        </div>
+        <div class="hint" id="lyricsNote"></div>
+        <div class="found hide" id="lyricsFound"></div>
+        <div class="hide" id="pasteBox">
+          <textarea id="taLyrics" data-tp="pastePh" placeholder="One line of the song per line. Repeats written out as many times as they are sung."></textarea>
+          <div class="opts" style="margin-top:8px">
+            <button class="pri" id="btnUseText" data-t="useText">Use this text</button>
+            <button id="btnPasteHide" data-t="hideText">Hide</button>
+            <span class="hint" id="pasteCount"></span>
+          </div>
         </div>
       </div>
       <div class="field">

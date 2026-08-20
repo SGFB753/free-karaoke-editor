@@ -38,6 +38,8 @@ from kstudio.i18n import tr
 from kstudio import __version__            # noqa: E402
 from kstudio import audio as AU            # noqa: E402
 from kstudio import build as B             # noqa: E402
+from kstudio import fetch as FE            # noqa: E402
+from kstudio import findlyrics as FL       # noqa: E402
 from kstudio import lang as LG            # noqa: E402
 from kstudio import project as P           # noqa: E402
 from kstudio import separate as S          # noqa: E402
@@ -130,6 +132,21 @@ def project_dir(pid: str) -> str:
     return folder
 
 
+def incoming_dir() -> str:
+    """Where everything that has no folder of its own lands: files dropped into
+    the window, sound taken from a link, lyrics pasted by hand."""
+    # In Latin letters: Cyrillic folder names break on non-Russian systems.
+    inbox = os.path.join(PROJECTS, "_incoming")
+    old = os.path.join(PROJECTS, "_входящие")
+    if os.path.isdir(old) and not os.path.isdir(inbox):
+        try:
+            os.rename(old, inbox)                # an existing one moves by itself
+        except OSError:
+            inbox = old
+    os.makedirs(inbox, exist_ok=True)
+    return inbox
+
+
 def capabilities() -> dict:
     have_ts = True
     try:
@@ -149,6 +166,10 @@ def capabilities() -> dict:
     from kstudio import sysinfo
     return {"ffmpeg": ff, "whisper": have_ts, "demucs": S.available(),
             "pillow": have_pil, "version": __version__,
+            # taking the sound out of a link, and where a suggested text
+            # would come from — the window says both before it is asked
+            "fetch": FE.available(), "fetchHelp": FE.how_to_install(),
+            "lyricsSource": FL.SOURCE,
             "models": downloaded_models(),
             # how much memory is free and how much each model needs — so the
             # window can say “this one is heavy for your machine” beforehand
@@ -444,15 +465,7 @@ class Handler(BaseHTTPRequestHandler):
         if size > 600 * 1024 * 1024:
             return self._err(413, tr("the file is larger than 600 MB", "файл больше 600 МБ"))
 
-        # In Latin letters: Cyrillic folder names break on non-Russian systems.
-        inbox = os.path.join(PROJECTS, "_incoming")
-        old_inbox = os.path.join(PROJECTS, "_входящие")
-        if os.path.isdir(old_inbox) and not os.path.isdir(inbox):
-            try:
-                os.rename(old_inbox, inbox)      # an existing one moves by itself
-            except OSError:
-                inbox = old_inbox
-        os.makedirs(inbox, exist_ok=True)
+        inbox = incoming_dir()
         dst = os.path.join(inbox, name)
         stem, ext = os.path.splitext(dst)
         n = 2
@@ -507,6 +520,53 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json(make_report(audio, lyrics, body))
                 except Exception as e:
                     return self._err(400, tr(f"could not make sense of the files: {e}", f"не вышло разобрать файлы: {e}"))
+
+            if path == "/api/fetch":
+                # The sound from a link. It is a long job with a log of its
+                # own: a download can take a minute and can fail halfway.
+                url = (body.get("url") or "").strip()
+                try:
+                    FE.check_url(url)
+                except FE.FetchError as e:
+                    return self._err(400, str(e))
+                if not FE.available():
+                    return self._err(400, FE.how_to_install())
+                jid = start_job(tr("Taking the sound from the link",
+                                   "Достаю звук по ссылке"),
+                                lambda log: FE.download(url, incoming_dir(), log))
+                return self._json({"job": jid})
+
+            if path == "/api/lyrics/find":
+                # A suggestion, not an answer: the words are shown to be read
+                # before they are used.
+                try:
+                    found = FL.search(body.get("track", ""), body.get("artist", ""),
+                                      float(body.get("duration") or 0))
+                except FL.LyricsError as e:
+                    return self._err(400, str(e))
+                except Exception as e:
+                    return self._err(400, str(e))
+                return self._json({"source": FL.SOURCE, "found": found})
+
+            if path == "/api/lyrics/save":
+                # Lyrics pasted into the window. Everything downstream works
+                # with a file on disk, so this makes one.
+                text = (body.get("text") or "").strip()
+                if not text:
+                    return self._err(400, tr("the lyrics are empty", "текст пустой"))
+                if len(text) > 400_000:
+                    return self._err(413, tr("that is too much text for a song",
+                                             "для песни это слишком много текста"))
+                stem = re.sub(r'[<>:"|?*\\/\x00-\x1f]', "_",
+                              (body.get("name") or "").strip())[:60].strip() or "lyrics"
+                dst = os.path.join(incoming_dir(), stem + ".txt")
+                base, n = dst[:-4], 2
+                while os.path.exists(dst):
+                    dst = f"{base}-{n}.txt"
+                    n += 1
+                with open(dst, "w", encoding="utf-8") as f:
+                    f.write(text.replace("\r\n", "\n").rstrip() + "\n")
+                return self._json({"path": dst, "name": os.path.basename(dst)})
 
             if path == "/api/new":
                 audio, lyrics = body.get("audio", ""), body.get("lyrics", "")

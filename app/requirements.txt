@@ -11,6 +11,9 @@ soundfile>=0.12
 # --- speeds up the loudness analysis (optional) ---
 numpy>=1.21
 
+# --- a song from a link: the studio takes the sound out of a video link ---
+yt-dlp>=2024.1.1
+
 # --- rendering the MP4 video (tools/video.py) ---
 pillow>=9.0
 

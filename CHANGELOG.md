@@ -7,6 +7,37 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.28.0
+
+**A song from a link.** Under the field for the song file there is now a field
+for a link: paste one, press “Take the sound”, and the audio is pulled out of
+the video and put where a dropped file goes. The work is done by `yt-dlp` —
+a few megabytes, no neural nets, offered by the setup as step six. Without it
+the window says so before a link is pasted, and choosing a file still works.
+When a download fails — a private video, a dead link, nothing at that address
+— what the downloader itself said is shown, and the field stays open for
+another link.
+
+**And the words to go with it.** Once the sound is here, the lyrics are looked
+for by the name of the song on [LRCLIB](https://lrclib.net), an open library
+that needs neither key nor account. What comes back is a suggestion and is
+treated as one: each says who sings it, how many lines it has and where it came
+from, and it lands in a box to be read first. A wrong text lays wrong lines
+over the whole song, so nothing is ever taken silently.
+
+**The lyrics now have three ways in.** A file, as before; a text that was found;
+or the words pasted into the window by hand — typed, corrected, taken from
+anywhere. Pasted text is written into `projects/_incoming` as a `.txt`, so
+everything downstream treats it exactly like a file of your own.
+
+**A job that fell over let you out.** The progress screen had one way to end
+badly: it kept spinning, with no “← To the list”. The job's own error came back
+through the reader that treats an error as a broken request, which stopped the
+polling on the very answer that had to be shown. Now the failure is named, the
+reason stays in the log, and the way back is there.
+
+---
+
 ## 4.27.1
 
 **A licence.** [LICENSE](LICENSE) — MIT. Without one, an open repository says

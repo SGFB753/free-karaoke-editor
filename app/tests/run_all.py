@@ -41,7 +41,7 @@ UI_DIR = os.path.join(ROOT, "tests", "ui")
 # These suites need a real browser: they check what the cursor actually hits,
 # and jsdom does not do hit-testing at all.
 def NEEDS_BROWSER(name: str) -> bool:
-    return any(k in name for k in ("real-mouse", "word-length", "replace-track", "scroll-and-end", "quiet-and-voice", "two-lanes", "requirements", "duo-layout", "multiselect"))
+    return any(k in name for k in ("real-mouse", "word-length", "replace-track", "scroll-and-end", "quiet-and-voice", "two-lanes", "requirements", "duo-layout", "multiselect", "link-live"))
 sys.path.insert(0, ROOT)
 
 
@@ -184,11 +184,28 @@ def fake_model_cache(root: str) -> str:
     return cache
 
 
-def start_studio(port: int, projects: str):
+def start_lyrics_stub():
+    """The lyrics library, played by a local stand-in.
+
+    Nothing here may reach the internet: a check that depends on a live site
+    fails on a bad day and proves nothing on a good one.
+    """
+    p = subprocess.Popen([sys.executable, os.path.join(ROOT, "tests", "stub_lyrics.py")],
+                         stdout=subprocess.PIPE, text=True)
+    url = (p.stdout.readline() or "").strip()
+    return p, url
+
+
+def start_studio(port: int, projects: str, song: str = "", lyrics_api: str = ""):
     # The studio window is bilingual now; the suites were written against the
     # Russian labels, so the stand runs in Russian. English has its own suite.
     env = dict(os.environ, KARAOKE_PROJECTS=projects, KARAOKE_UI_LANG="ru",
-               XDG_CACHE_HOME=fake_model_cache(os.path.dirname(projects)))
+               XDG_CACHE_HOME=fake_model_cache(os.path.dirname(projects)),
+               # A link is “downloaded” by a stand-in that hands over the test
+               # song, and the words come from a stand-in library next door.
+               KARAOKE_YTDLP=os.path.join(ROOT, "tests", "stub_ytdlp.py"),
+               KARAOKE_STUB_AUDIO=song,
+               KARAOKE_LYRICS_API=lyrics_api or "http://127.0.0.1:9")
     return subprocess.Popen(
         [sys.executable, os.path.join(ROOT, "studio.py"),
          "--port", str(port), "--no-browser"],
@@ -307,7 +324,7 @@ def main() -> int:
     tmp = tempfile.mkdtemp(prefix="karaoke_tests_")
     projects = os.path.join(tmp, "projects")
     os.makedirs(projects, exist_ok=True)
-    srv = None
+    srv = lyr = None
     failed = []
     try:
         head("2. The test song and the pages")
@@ -317,7 +334,8 @@ def main() -> int:
         head("3. The studio on a free port")
         port = free_port()
         api = f"http://127.0.0.1:{port}"
-        srv = start_studio(port, projects)
+        lyr, lyrics_api = start_lyrics_stub()
+        srv = start_studio(port, projects, song=song, lyrics_api=lyrics_api)
         if not wait_for(api + "/"):
             say("  the studio did not start — the window suites were skipped")
             return 1
@@ -329,7 +347,8 @@ def main() -> int:
 
         env = dict(os.environ, KARAOKE_API=api, KARAOKE_ROOT=ROOT, KARAOKE_PAGE_MIX=mix,
                    KARAOKE_PAGE_STEMS=stems, KARAOKE_PAGE_EN=eng, PAGE=stems,
-                   KARAOKE_SONG=song, KARAOKE_TEXT=text)
+                   KARAOKE_SONG=song, KARAOKE_TEXT=text,
+                   KARAOKE_LYRICS_API=lyrics_api)
 
         head("4. The window and the page (jsdom)")
         for name in sorted(os.listdir(UI_DIR)):
@@ -363,12 +382,14 @@ def main() -> int:
             if os.environ.get("KARAOKE_REQUIRE_BROWSER"):
                 failed.append("the browser suites were skipped")
     finally:
-        if srv:
-            srv.terminate()
+        for proc in (srv, lyr):
+            if not proc:
+                continue
+            proc.terminate()
             try:
-                srv.wait(timeout=5)
+                proc.wait(timeout=5)
             except Exception:
-                srv.kill()
+                proc.kill()
         shutil.rmtree(tmp, ignore_errors=True)
 
     head("Summary")

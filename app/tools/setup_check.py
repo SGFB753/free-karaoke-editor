@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import shutil
 import site
 import subprocess
 import sys
@@ -174,7 +175,21 @@ def main() -> int:
                   "   Поставить numpy (небольшой, заметно ускоряет)?")):
             pip_install("numpy")
 
-    print(tr("\n6. Your own settings file", "\n6. Свой файл настроек"))
+    print(tr("\n6. A song from a link (yt-dlp)",
+             "\n6. Песня по ссылке (yt-dlp)"))
+    if installed("yt_dlp") or shutil.which("yt-dlp"):
+        print(tr("   Already installed.", "   Уже стоит."))
+    else:
+        print(tr("   Not installed. With it the studio takes the sound out of a "
+                 "link to a video; without it a file has to be picked by hand.",
+                 "   Не установлен. С ним студия достаёт звук из ссылки на видео; "
+                 "без него файл выбирается вручную."))
+        print(tr("   It is small — a few megabytes, no neural nets.",
+                 "   Он небольшой — несколько мегабайт, без нейросетей."))
+        if ask(tr("   Install it?", "   Поставить?")):
+            pip_install("yt-dlp")
+
+    print(tr("\n7. Your own settings file", "\n7. Свой файл настроек"))
     # settings.ini belongs to whoever runs the program: it is not in the
     # repository, so an update can never overwrite what they chose. The example
     # next to it is the reference, and this is the copy made from it.

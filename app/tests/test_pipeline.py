@@ -907,7 +907,93 @@ def main():
         time.sleep(0.2)
     check("an empty counter is not shown", beats2 and "%" not in beats2[0])
 
+    print("\nA song from a link")
+    # Nothing here touches the internet: the downloader is a stand-in that
+    # hands over a file, and the lyrics library is a stand-in next door.
     import shutil
+    from kstudio import fetch as FE
+
+    check("a name written for a page becomes a name for a song",
+          FE.clean_title("Nirvana - Smells Like Teen Spirit (Official Music Video)")
+          == "Nirvana - Smells Like Teen Spirit"
+          and FE.clean_title("ДДТ — Что такое осень [HD]") == "ДДТ — Что такое осень")
+    check("the artist and the song are told apart",
+          FE.split_name("Кино - Группа крови (Remastered 2021)") == ("Кино", "Группа крови"))
+    check("a name with no dash stays whole",
+          FE.split_name("Плачу на техно") == ("", "Плачу на техно"))
+    for bad in ("", "   ", "ftp://example.com/x", "file:///etc/passwd", "-x"):
+        try:
+            FE.check_url(bad)
+            check(f"a link that is not a link is refused: {bad!r}", False)
+        except FE.FetchError:
+            check(f"a link that is not a link is refused: {bad or 'empty'}", True)
+
+    app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    inbox = os.path.join(tmp, "inbox")
+    stub = os.path.join(app_dir, "tests", "stub_ytdlp.py")
+    os.environ["KARAOKE_YTDLP"] = stub
+    os.environ["KARAOKE_STUB_AUDIO"] = song            # the test song stands in
+    check("the downloader is the one we pointed at", FE.tool() == [stub] and FE.available())
+    got = FE.download("https://example.com/watch?v=zzz123", inbox)
+    check("the sound lands next to the projects",
+          os.path.isfile(got["path"]) and os.path.dirname(got["path"]) == inbox)
+    check("and it is the audio, not an empty file",
+          os.path.getsize(got["path"]) == os.path.getsize(song))
+    check("the artist and the song came with it",
+          (got["artist"], got["track"]) == ("Stub Artist", "Stub Song"),
+          got["artist"] + " — " + got["track"])
+    check("nothing half-downloaded is left behind",
+          all(not n.startswith(".fetch-") for n in os.listdir(inbox)), os.listdir(inbox))
+
+    try:
+        FE.download("https://example.com/watch?v=fail", inbox)
+        check("a link that leads nowhere is an error, not a file", False)
+    except FE.FetchError as e:
+        check("a link that leads nowhere says why",
+              "Video unavailable" in str(e) and "ERROR" not in str(e), str(e))
+    check("and it leaves no rubbish in the folder",
+          all(not n.startswith(".fetch-") for n in os.listdir(inbox)), os.listdir(inbox))
+    del os.environ["KARAOKE_YTDLP"]
+
+    print("\nThe words, looked up by the name of the song")
+    import importlib.util
+    import threading
+
+    from kstudio import findlyrics as FL
+    spec = importlib.util.spec_from_file_location(
+        "stub_lyrics", os.path.join(app_dir, "tests", "stub_lyrics.py"))
+    stub_lyrics = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(stub_lyrics)
+    from http.server import ThreadingHTTPServer
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), stub_lyrics.Handler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    FL.BASE = f"http://127.0.0.1:{srv.server_port}"
+    try:
+        check("timed words are stripped down to words",
+              FL.plain({"syncedLyrics": "[00:12.34] раз\n[00:15.00] два"}) == "раз\nдва")
+        found = FL.search("Stub Song", "Stub Artist", duration=21)
+        check("the nearest recording comes first",
+              found and found[0]["duration"] == 21, [f["duration"] for f in found])
+        check("a record with no words at all is not offered",
+              all(f["text"].strip() for f in found), len(found))
+        check("the lines are counted for the person reading",
+              found[0]["lines"] == 3, found[0]["lines"])
+        check("the source is named", all(f["source"] == "LRCLIB" for f in found))
+        check("a song nobody knows finds nothing", FL.search("nothing at all") == [])
+        try:
+            FL.search("")
+            check("a search with no name is refused", False)
+        except FL.LyricsError:
+            check("a search with no name is refused", True)
+    finally:
+        srv.shutdown()
+    FL.BASE = "http://127.0.0.1:9"       # a port nothing listens on
+    try:
+        FL.search("Stub Song")
+        check("an unreachable library is an error, not a crash", False)
+    except FL.LyricsError as e:
+        check("an unreachable library is an error, not a crash", True, str(e)[:60])
+
     shutil.rmtree(tmp, ignore_errors=True)
 
     print("\n" + ("FAILED: " + ", ".join(failures) if failures else "All checks passed"))

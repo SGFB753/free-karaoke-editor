@@ -11,3 +11,7 @@ torchaudio==2.8.0
 numpy==2.0.2
 numba==0.60.0
 pillow==11.3.0
+
+# A song from a link. This one is deliberately not pinned: video sites change,
+# and an old yt-dlp stops being able to download at all. Update it, do not fix it.
+yt-dlp>=2024.1.1

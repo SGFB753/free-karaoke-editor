@@ -1,5 +1,5 @@
 KARAOKE FROM A SONG AND ITS LYRICS
-Version 4.27.1
+Version 4.28.0
 
 
 WHAT YOU NEED
@@ -115,6 +115,16 @@ Run:  Studio.bat
 The program window opens.
 
 DRAG THE SONG AND THE LYRICS RIGHT INTO THAT WINDOW — both files at once.
+
+OR PASTE A LINK. Under the song field there is a field for a link to a
+video: press "Take the sound" and the audio is pulled out of it. That
+needs yt-dlp (Install.bat offers it, or: pip install yt-dlp). If the
+download fails, the reason is shown and another link can be tried.
+
+THE WORDS CAN COME THREE WAYS. A file, as always. Or the text found by
+the name of the song right after the download — read it first, it is a
+suggestion and it can be wrong. Or "Paste the text": type or paste the
+words into the box and press "Use this text".
 
 As soon as both files are picked, a REPORT appears: the length, the tempo,
 how many lines and words, which language, what the program is going to do

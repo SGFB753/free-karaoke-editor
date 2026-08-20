@@ -120,6 +120,40 @@ Song folders are named in Latin letters: “Мамины Усы” becomes `mami
 they open the same way on any system. The finished HTML and MP4 follow the same
 rule.
 
+## A song from a link
+
+Next to the field for the song file there is a field for a link. Paste one,
+press **Take the sound**, and the audio is pulled out of the video and put next
+to the projects — the same place a dropped file lands. It needs `yt-dlp`:
+
+```bash
+pip install yt-dlp
+```
+
+Without it the window says so before anything is pasted, and the file picker is
+still there. If the download fails — a private video, a dead link, a country
+block — the reason the downloader gave is shown as it is, and the field is
+still open for another link.
+
+Once the sound is here, the words are looked for by the name of the song, on
+[LRCLIB](https://lrclib.net) — an open library that needs no key and no
+account. What comes back is a **suggestion**: each one says who sings it, how
+many lines it has and where it came from, and it lands in a box to be read
+before it is used. A wrong text lays wrong lines over the whole song, which is
+why it is never taken silently.
+
+The lyrics have three ways in, and all three end in the same place:
+
+* **a file** — the `Choose…` button, an ordinary `.txt`;
+* **a suggestion** — `Take it` next to one of the texts that were found;
+* **by hand** — `Paste the text`, type or paste it into the box, `Use this
+  text`. What you paste is written into `projects/_incoming` as a `.txt`, so
+  everything downstream works exactly as it does with a file of your own.
+
+Whether you may download a particular recording, and what you may do with the
+words, is yours to judge: the program runs `yt-dlp` and asks an open library,
+and neither of those decides that for you.
+
 ## The lyrics file
 
 One line of the song per line of the file. Blank lines are ignored.

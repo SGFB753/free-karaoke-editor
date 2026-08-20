@@ -166,6 +166,29 @@ const STR = {
     filesHalf: "The second file is missing",
     dropFail: "Could not take the file: ",
     pickBoth: "Point to both files",
+    // a link instead of a file, and the lyrics that go with it
+    linkPh: "…or a link to a video — the sound will be taken out of it",
+    fetchGo: "Take the sound",
+    linkNeedUrl: "Paste a link into the field first",
+    linkWorking: "Taking the sound from the link…",
+    linkGot: n => "The sound is here: " + n,
+    linkFail: m => "It did not download: " + m +
+      " — try another link, or choose a file on the disk",
+    pasteText: "Paste the text",
+    pastePh: "One line of the song per line. Repeats written out as many times as they are sung.",
+    useText: "Use this text",
+    hideText: "Hide",
+    pasteEmpty: "There is nothing in the box yet",
+    textSaved: "The lyrics are in place",
+    countLines: n => n + (n === 1 ? " line" : " lines"),
+    lyricsSearching: "Looking for the lyrics by the name of the song…",
+    lyricsFoundN: (n, src) => "Found on " + src + ": " + n +
+      (n === 1 ? " text. Read it before using — " : " texts. Read before using — ") +
+      "a wrong one lays wrong lines over the whole song.",
+    lyricsNone: src => "Nothing was found on " + src +
+      ". Choose a file, or paste the text by hand.",
+    lyricsUse: "Take it",
+    lyricsTook: "The text is in the box below — read it, correct it if need be.",
     jobBuild: "Building the song",
     jobFail: "It did not work",
     hotkeys: "Space — play · ← → seek · [ ] shift the line by 50 ms",
@@ -389,6 +412,31 @@ const STR = {
     filesHalf: "Не хватает второго файла",
     dropFail: "Не получилось принять файл: ",
     pickBoth: "Укажите оба файла",
+    // ссылка вместо файла и текст к ней
+    linkPh: "…или ссылка на видео — звук достанется из неё",
+    fetchGo: "Достать звук",
+    linkNeedUrl: "Сначала вставьте ссылку в поле",
+    linkWorking: "Достаю звук по ссылке…",
+    linkGot: n => "Звук на месте: " + n,
+    linkFail: m => "Не скачалось: " + m +
+      " — попробуйте другую ссылку или выберите файл на диске",
+    pasteText: "Вставить текст",
+    pastePh: "Строка песни — строка файла. Повторы выписаны столько раз, сколько поются.",
+    useText: "Взять этот текст",
+    hideText: "Свернуть",
+    pasteEmpty: "В поле пока пусто",
+    textSaved: "Текст на месте",
+    countLines: n => n + " " + (n % 10 === 1 && n % 100 !== 11 ? "строка"
+      : ([2,3,4].includes(n % 10) && ![12,13,14].includes(n % 100)) ? "строки" : "строк"),
+    lyricsSearching: "Ищу текст по названию песни…",
+    lyricsFoundN: (n, src) => "Нашлось на " + src + ": " + n +
+      (n % 10 === 1 && n % 100 !== 11 ? " текст" :
+       ([2,3,4].includes(n % 10) && ![12,13,14].includes(n % 100)) ? " текста" : " текстов") +
+      ". Прочитайте перед тем, как брать: чужой текст ляжет неправильными строками на всю песню.",
+    lyricsNone: src => "На " + src +
+      " ничего не нашлось. Выберите файл или вставьте текст руками.",
+    lyricsUse: "Взять",
+    lyricsTook: "Текст в поле ниже — прочитайте, поправьте, если надо.",
     jobBuild: "Собираю песню",
     jobFail: "Не получилось",
     hotkeys: "Пробел — пуск · ← → перемотка · [ ] сдвиг строки на 50 мс",
@@ -731,6 +779,7 @@ $("btnAdd").addEventListener("click", () => {
   $("selLang").value = "auto";        // every song starts from its own text
   $("chkSep").checked = !!caps.demucs;
   fillLangs(); markModels(); modelNote();
+  resetLink();
   reportKey = ""; askReport();
   screen("scrNew");
 });
@@ -856,6 +905,144 @@ async function upload(file){
   return j;
 }
 
+/* ================= a link instead of a file =================
+   The sound is taken out of the link by yt-dlp, and once it is here the words
+   are looked for by the name of the song. Both can fail, and neither failure
+   is a dead end: the file picker and the box for pasting the text are right
+   there. */
+let lastSong = null;
+
+function resetLink(){
+  $("inLink").value = "";
+  $("lyricsFound").innerHTML = "";
+  $("lyricsFound").classList.add("hide");
+  $("pasteBox").classList.add("hide");
+  $("taLyrics").value = "";
+  $("pasteCount").textContent = "";
+  $("lyricsNote").textContent = "";
+  lastSong = null;
+  // Without yt-dlp the link cannot be taken, and saying so beforehand is
+  // better than letting a person paste one and wait for the refusal.
+  note("linkNote", caps.fetch === false ? (caps.fetchHelp || "") : "", true);
+}
+function note(id, msg, warn){
+  const e = $(id);
+  e.textContent = msg || "";
+  e.classList.toggle("warnish", !!warn && !!msg);
+}
+// A job that fell over carries its own “error”, and that is not the request
+// failing — reading it through api() would throw on the very answer that has
+// to be shown. So the job is read as it is.
+async function jobState(jid){
+  const r = await fetch("/api/job?id=" + encodeURIComponent(jid),
+                        {headers: {"X-Karaoke-Lang": LANG}});
+  return await r.json().catch(() => ({error: T.badReply, done: true}));
+}
+// The job screen takes the whole window; a download belongs where it was
+// started, next to the field with the link.
+function followJob(jid, onLine){
+  return new Promise((resolve, reject) => {
+    const tick = async () => {
+      let j;
+      try { j = await jobState(jid); }
+      catch(e){ return setTimeout(tick, 900); }   // the server will be back
+      const log = j.log || [];
+      if (log.length && onLine) onLine(log[log.length - 1]);
+      if (!j.done && !j.error) return setTimeout(tick, 600);
+      if (j.done && j.ok) resolve(j.result);
+      else reject(new Error(j.error || T.jobFail));
+    };
+    tick();
+  });
+}
+async function takeLink(){
+  const url = $("inLink").value.trim();
+  if (!url) return note("linkNote", T.linkNeedUrl, true);
+  const btn = $("btnFetch");
+  btn.disabled = true;
+  note("linkNote", T.linkWorking);
+  try{
+    const j = await api("/api/fetch", {url});
+    const got = await followJob(j.job, line => note("linkNote", line));
+    lastSong = got;
+    $("inAudio").value = got.path;
+    note("linkNote", T.linkGot(got.name));
+    askReport();
+    findLyrics(got);
+  }catch(e){
+    note("linkNote", T.linkFail(e.message), true);
+  }finally{
+    btn.disabled = false;
+  }
+}
+$("btnFetch").addEventListener("click", takeLink);
+$("inLink").addEventListener("keydown", e => { if (e.key === "Enter") takeLink(); });
+
+async function findLyrics(song){
+  const box = $("lyricsFound");
+  box.innerHTML = ""; box.classList.add("hide");
+  if ($("inLyrics").value.trim()) return;      // a text is already chosen
+  note("lyricsNote", T.lyricsSearching);
+  try{
+    const r = await api("/api/lyrics/find", {track: song.track || song.title,
+      artist: song.artist || "", duration: song.duration || 0});
+    const found = r.found || [];
+    if (!found.length) return note("lyricsNote", T.lyricsNone(r.source));
+    note("lyricsNote", T.lyricsFoundN(found.length, r.source));
+    found.forEach(f => box.appendChild(foundRow(f)));
+    box.classList.remove("hide");
+  }catch(e){
+    note("lyricsNote", T.lyricsNone(caps.lyricsSource || "") + " " + e.message);
+  }
+}
+function foundRow(f){
+  const e = document.createElement("div");
+  e.className = "one";
+  e.innerHTML = '<div class="t"><b></b><span></span><div class="first"></div></div>' +
+                '<button></button>';
+  e.querySelector("b").textContent = f.artist ? f.artist + " — " + f.title : f.title;
+  e.querySelector("span").textContent =
+    [T.countLines(f.lines), f.duration ? fmt(f.duration) : "", f.source]
+      .filter(Boolean).join(" · ");
+  e.querySelector(".first").textContent = (f.text || "").split("\n")[0] || "";
+  const btn = e.querySelector("button");
+  btn.textContent = T.lyricsUse;
+  btn.addEventListener("click", () => takeFound(f));
+  return e;
+}
+// Taking a found text puts it in the box AND straight into the field: it works
+// with one press, and it is still there to be read and corrected.
+async function takeFound(f){
+  $("taLyrics").value = f.text || "";
+  $("pasteBox").classList.remove("hide");
+  countPasted();
+  note("lyricsNote", T.lyricsTook);
+  await useTyped(true);
+}
+$("btnPaste").addEventListener("click", () => {
+  const box = $("pasteBox");
+  box.classList.toggle("hide");
+  if (!box.classList.contains("hide")){ $("taLyrics").focus(); countPasted(); }
+});
+$("btnPasteHide").addEventListener("click", () => $("pasteBox").classList.add("hide"));
+$("taLyrics").addEventListener("input", countPasted);
+function countPasted(){
+  const n = $("taLyrics").value.split("\n").filter(x => x.trim()).length;
+  $("pasteCount").textContent = n ? T.countLines(n) : "";
+}
+$("btnUseText").addEventListener("click", () => useTyped(false));
+async function useTyped(quiet){
+  const text = $("taLyrics").value.trim();
+  if (!text) return note("lyricsNote", T.pasteEmpty, true);
+  try{
+    const name = lastSong ? (lastSong.track || lastSong.title || "lyrics") : "lyrics";
+    const r = await api("/api/lyrics/save", {text, name});
+    $("inLyrics").value = r.path;
+    if (!quiet) note("lyricsNote", T.textSaved);
+    askReport();
+  }catch(e){ note("lyricsNote", e.message, true); }
+}
+
 /* ================= building a song ================= */
 $("btnBuild").addEventListener("click", async () => {
   const audio = $("inAudio").value.trim(), lyrics = $("inLyrics").value.trim();
@@ -875,11 +1062,13 @@ function watchJob(jid, title, onDone){
   screen("scrJob");
   const tick = async () => {
     let j;
-    try { j = await api("/api/job?id="+jid); } catch(e){ return; }
+    // A failed job used to leave this screen spinning with no way back: its
+    // “error” came through api() as a thrown request, and the tick stopped.
+    try { j = await jobState(jid); } catch(e){ return setTimeout(tick, 900); }
     $("jobLog").textContent = (j.log||[]).join("\n");
     $("jobLog").scrollTop = 1e9;
-    if (!j.done) return setTimeout(tick, 600);
-    if (j.ok) onDone(j.result);
+    if (!j.done && !j.error) return setTimeout(tick, 600);
+    if (j.done && j.ok) onDone(j.result);
     else {
       $("jobTitle").textContent = T.jobFail;
       $("btnJobBack").classList.remove("hide");
