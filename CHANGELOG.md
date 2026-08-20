@@ -9,6 +9,42 @@ commits themselves are one click away in the history.
 
 ## 4.28.0
 
+**The voice is levelled out before the aligner hears it.** A screamed vocal is
+the widest dynamic there is — a shout point-blank, then a strangled rasp — and
+the quiet half never reached the model at all. The separated voice now goes
+through a levelling pass on its way to the aligner: pitch and time are
+untouched, so every timing still means exactly what it says, and only what the
+model hears is changed. Measured on a nine-minute deathcore track with its real
+lyrics: segments the aligner gave up on 27 → 22 → 19 for mix → separated voice
+→ levelled voice, and confidence 0.114 → 0.125 → 0.138.
+
+**A re-time no longer quietly swaps the model.** A song built with medium came
+back timed with small: the re-timing path had a default of its own and never
+looked at what the song was made with. The model is now written down with the
+song, re-timing uses it, and the question that asks whether to re-time names it
+outright.
+
+**A label printed itself over the colour swatches.** In a narrow window the
+“background and text” caption was squeezed into the swatches next to it instead
+of the row wrapping. It cannot be squeezed any more.
+
+**“There are no words here” — now you can say it, and it is heeded.** A
+vocalise, a scream with nothing to write down, a hummed intro: all of it is
+voice, nothing measurable tells it from a sung line, and the timing crawled onto
+it. The window now has a field for such stretches — `0:00-0:42, 3:10-3:50` —
+under the model and the language, and the same field sits in the editor next to
+“Re-time”, where the timeline is already in front of you. The same can be
+written in the lyrics file, as a heading carrying a time range: `[Guitar solo
+3:10-3:50]`, `[нет текста 1:02-1:40]`, or the bare `[6:20-7:05]` — the heading
+still names the part of the song.
+
+Those stretches are cut out of the audio the aligner is given, so there is
+nothing there to lay words on, and afterwards the repairs treat them as silence:
+a line that landed inside is moved onto real singing between its neighbours. It
+is a “keep off” and nothing more — marking one solo claims no words for the rest
+of the song. The marks are saved with the song, so the next re-time starts from
+them.
+
 **Lines laid where nobody sings are moved onto the singing.** The aligner has
 to put every word somewhere, and over an interlude or a solo it puts them on
 the music: the line looks timed, the karaoke shows words, and no voice is

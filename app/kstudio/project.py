@@ -106,7 +106,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
            align_engine: str = "auto", whisper_model: str = "small",
            language: str = "ru", separate: bool = True,
            device: Optional[str] = None, codec: str = "mp3",
-           log: Log = _noop) -> str:
+           skip=None, log: Log = _noop) -> str:
     """Build a project. Returns the path to its folder."""
     lyr = L.load(lyrics_path)
     if not lyr.lines:
@@ -150,9 +150,12 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
         align_src = vocals or work
         # On the separated vocal silence is real silence — the repairs may
         # trust it and move lines that lie where nobody sings.
+        # Stretches with no words: from the window, and from the lyrics file
+        # itself where a heading carries a time range — “[Solo 3:10-3:50]”.
+        holes = A.spans(skip, dur) + A.spans(getattr(lyr, "skips", []), dur)
         lyr, engine = A.align(lyr, align_src, dur, align_engine,
                               whisper_model, language, device, log,
-                              isolated=bool(vocals))
+                              isolated=bool(vocals), skip=holes)
         log(tr(f"Timing ready ({B.ENGINE_LABEL.get(engine, engine)}).",
            f"Разметка готова ({B.ENGINE_LABEL.get(engine, engine)})."))
 
@@ -176,10 +179,15 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             "artist": lyr.artist or "",
             "duration": round(dur, 3),
             "engine": engine,
+            # which model timed it: a re-time must not quietly drop to another
+            "model": whisper_model,
             "source_audio": os.path.abspath(audio_path),
             "source_lyrics": os.path.abspath(lyrics_path),
             "created": time.time(),
             "tracks": tracks,
+            # what was said to hold no words: the editor shows it again, and a
+            # re-time starts from what you told it last time
+            "noText": ", ".join(f"{a:.1f}-{b:.1f}" for a, b in holes),
             "envelope": envelope,
             "lines": [ln.to_json() for ln in lyr.lines],
         }

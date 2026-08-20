@@ -229,6 +229,25 @@ In the studio:
     The timing stays in place. If the instrumental starts elsewhere, the
     program finds the shift, moves the timing along and says by how much.
 
+WHERE THERE ARE NO WORDS
+  A vocalise, a wordless scream, a hummed intro are all voice: nothing
+  measurable tells them from a sung line, so the timing crawls onto them
+  and the karaoke shows words where nobody sings. Say where they are:
+
+    - the "Where there are no words" field, under the model and the
+      language:   0:00-0:42, 3:10-3:50
+    - or in the lyrics file, as a heading with a time range in it:
+          [Guitar solo 3:10-3:50]
+          [нет текста 1:02-1:40]
+    - or in the editor, next to "Re-time", with the timeline in front of
+      you: mark, press "Re-time", the words stay off.
+
+  Those stretches are cut out of what the aligner hears, and the repairs
+  treat them as silence. It says nothing about the rest of the song: it
+  keeps words off the marked places, it does not promise them elsewhere.
+  The marks are saved with the song.
+
+
 A MISTAKE IN THE LYRICS THEMSELVES
   - a typo in a line: select the line and press "✎ Line text" (or double
     click — on the line on stage or on its block on the timeline). Fix it,

@@ -99,6 +99,7 @@ const STR = {
     offsetDiff: v => `the start differed by ${v} s`,
     lengthDiff: v => `the length differs by ${v} s — check the end`,
     realignStats: (was, now) => `Done: ${was} lines before, ${now} now`,
+    withModel: m => `\n\nThe timing is made with the “${m}” model, the same one it was built with.`,
     serverDown: "The server is not answering",
     model_tiny: "tiny — 75 MB", model_base: "base — 140 MB",
     model_small: "small — 480 MB", model_medium: "medium — 1.5 GB",
@@ -166,6 +167,13 @@ const STR = {
     filesHalf: "The second file is missing",
     dropFail: "Could not take the file: ",
     pickBoth: "Point to both files",
+    noTextLabel: "Where there are no words",
+    noTextPh: "0:00-0:42, 3:10-3:50 — an intro, a vocalise, a solo",
+    noTextHint: "A vocalise, a wordless scream and a sung line are all voice: no "
+      + "measurement tells them apart, and the timing crawls onto them. Naming a "
+      + "stretch keeps words off it — it says nothing about the rest of the song, "
+      + "and claims no words for it. The same can be written in the lyrics file: "
+      + "<b>[Solo 3:10-3:50]</b>.",
     // a link instead of a file, and the lyrics that go with it
     linkPh: "…or a link to a video — the sound will be taken out of it",
     fetchGo: "Take the sound",
@@ -348,6 +356,7 @@ const STR = {
     offsetDiff: v => `начало отличалось на ${v} с`,
     lengthDiff: v => `длина отличается на ${v} с — проверьте конец`,
     realignStats: (was, now) => `Готово: строк было ${was}, стало ${now}`,
+    withModel: m => `\n\nРазметка считается моделью «${m}» — той же, что и при сборке.`,
     serverDown: "Сервер не отвечает",
     model_tiny: "tiny — 75 МБ", model_base: "base — 140 МБ",
     model_small: "small — 480 МБ", model_medium: "medium — 1,5 ГБ",
@@ -415,6 +424,12 @@ const STR = {
     filesHalf: "Не хватает второго файла",
     dropFail: "Не получилось принять файл: ",
     pickBoth: "Укажите оба файла",
+    noTextLabel: "Где текста нет",
+    noTextPh: "0:00-0:42, 3:10-3:50 — вступление, вокализ, соло",
+    noTextHint: "Вокализ, крик без слов и спетая строка — всё это голос: ничем их "
+      + "не отличить, и разметка на них наползает. Названный кусок слова обойдут — "
+      + "про остальную песню это не говорит ничего и текста ей не приписывает. "
+      + "То же можно написать прямо в файле с текстом: <b>[Соло 3:10-3:50]</b>.",
     // ссылка вместо файла и текст к ней
     linkPh: "…или ссылка на видео — звук достанется из неё",
     fetchGo: "Достать звук",
@@ -1092,7 +1107,7 @@ $("btnBuild").addEventListener("click", async () => {
   try{
     const j = await api("/api/new", {audio, lyrics, align: $("selAlign").value,
       model: $("selModel").value, lang: $("selLang").value,
-      separate: $("chkSep").checked});
+      separate: $("chkSep").checked, noText: $("inNoText").value.trim()});
     watchJob(j.job, T.jobBuild, id => openProject(id));
   }catch(e){ toast(e.message); }
 });
@@ -1208,6 +1223,7 @@ async function openProject(id){
   onsets = findOnsets();
   sel = -1; curLine = -2; waOffset = 0; playing = false;
   $("edTitle").textContent = data.title + (data.artist ? " — " + data.artist : "");
+  fillNoText(data);
   $("hint").textContent = T.hotkeys;
   showMade("");
   colors = (Array.isArray(data.colors) && data.colors.length === 2)
@@ -2433,7 +2449,8 @@ async function realign(lyricsPath){
   await flush();
   try{
     const j = await api(`/api/project/${encodeURIComponent(pid)}/realign`,
-      {align: caps.whisper ? "auto" : "energy", lang: langOf(), lyrics: lyricsPath || ""});
+      {align: caps.whisper ? "auto" : "energy", lang: langOf(),
+       lyrics: lyricsPath || "", noText: ($("edNoText").value || "").trim()});
     watchJob(j.job, lyricsPath ? T.realignNew : T.realignSame,
       r => {
         openProject(pid);
@@ -2442,6 +2459,10 @@ async function realign(lyricsPath){
               : T.realignDone);
       });
   }catch(e){ toast(e.message); }
+}
+function fillNoText(d){
+  const el = $("edNoText");
+  if (el) el.value = (d && d.noText) || "";
 }
 function langOf(){
   // Re-timing has no picker of its own, and the language of a song belongs to
@@ -2454,8 +2475,10 @@ $("btnLyrics").addEventListener("click", () => {
 });
 $("btnRealign").addEventListener("click", async () => {
   // A common case: the same file, simply edited. It is re-read from disk —
-  // nothing has to be picked again.
-  if (!confirm(T.askRealign)) return;
+  // nothing has to be picked again. The model is named in the question: it
+  // used to change to another one without a word.
+  const m = (data && data.model) ? T.withModel(data.model) : "";
+  if (!confirm(T.askRealign + m)) return;
   realign("");
 });
 

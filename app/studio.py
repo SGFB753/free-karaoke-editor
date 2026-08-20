@@ -576,7 +576,8 @@ class Handler(BaseHTTPRequestHandler):
                 opts = dict(align_engine=body.get("align", "auto"),
                             whisper_model=body.get("model", "small"),
                             language=body.get("lang", "auto"),
-                            separate=bool(body.get("separate", True)))
+                            separate=bool(body.get("separate", True)),
+                            skip=body.get("noText") or "")
                 jid = start_job(tr("Building the song", "Собираю песню"), lambda log: os.path.basename(
                     P.create(audio, lyrics, PROJECTS, log=log, **opts)))
                 return self._json({"job": jid})
@@ -719,11 +720,22 @@ def realign(folder: str, opts: dict, log) -> dict:
     stem = tracks.get("vocals") or tracks.get("mix") or tracks.get("instrumental")
     audio = os.path.join(folder, stem)
     AU.ensure_on_path()
+    holes = A.spans(opts.get("noText") or "", data["duration"]) + \
+        A.spans(getattr(lyr, "skips", []), data["duration"])
+    # The model the song was built with, unless another is asked for outright.
+    # It used to fall back to “small” here: a person picked medium, pressed
+    # “Re-time”, and got a worse timing than the one they were fixing.
+    model = (opts.get("model") or data.get("model") or "small")
+    log(tr(f"Model: {model}", f"Модель: {model}"))
     lyr, engine = A.align(lyr, audio, data["duration"],
-                          opts.get("align", "auto"), opts.get("model", "small"),
-                          opts.get("lang", "auto"), None, log)
+                          opts.get("align", "auto"), model,
+                          opts.get("lang", "auto"), None, log,
+                          isolated=bool((data.get("tracks") or {}).get("vocals")),
+                          skip=holes)
     data["lines"] = [ln.to_json() for ln in lyr.lines]
     data["engine"] = engine
+    data["noText"] = ", ".join(f"{a:.1f}-{b:.1f}" for a, b in holes)
+    data["model"] = model
     data["source_lyrics"] = os.path.abspath(src)
     data["title"] = lyr.title or data.get("title") or ""
     if lyr.artist:

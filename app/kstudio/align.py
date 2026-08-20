@@ -17,6 +17,7 @@ from typing import Callable, Dict, List, Optional
 
 from .i18n import tr
 from .lyrics import Lyrics, Word, normalize_token
+from .progress import mmss
 
 Log = Callable[[str], None]
 
@@ -147,8 +148,80 @@ def _fit_lines_to_phrases(lines, segs) -> None:
             i = k
 
 
+def spans(value, duration: float = 0.0) -> List[tuple]:
+    """Stretches with no words in them, as a person writes them.
+
+    “0:00-0:42, 3:10-3:50”, a list of pairs, seconds or mm:ss — all the same
+    thing. Overlapping ones are merged; nonsense is dropped rather than guessed
+    at, because a wrong stretch here silently hides a piece of the song.
+    """
+    raw = []
+    if not value:
+        return []
+    if isinstance(value, str):
+        for part in re.split(r"[;,\n]+", value):
+            m = re.match(r"^\s*([\d:.,]+)\s*[-–—]{1,2}\s*([\d:.,]+)\s*$", part)
+            if m:
+                raw.append((clock(m.group(1)), clock(m.group(2))))
+    else:
+        for item in value:
+            if isinstance(item, dict):
+                raw.append((clock(item.get("start")), clock(item.get("end"))))
+            elif len(item) == 2:
+                raw.append((clock(item[0]), clock(item[1])))
+    out = []
+    for a, b in sorted(raw):
+        if duration:
+            a, b = max(0.0, min(a, duration)), max(0.0, min(b, duration))
+        if b - a < 0.3:
+            continue
+        if out and a <= out[-1][1] + 0.05:
+            out[-1] = (out[-1][0], max(out[-1][1], b))
+        else:
+            out.append((a, b))
+    return [tuple(x) for x in out]
+
+
+def keep_windows(skip: List[tuple], duration: float) -> List[tuple]:
+    """The other side of the coin: where the words are allowed to be."""
+    out, at = [], 0.0
+    for a, b in skip:
+        if a > at:
+            out.append((at, a))
+        at = max(at, b)
+    if at < duration:
+        out.append((at, duration))
+    return [w for w in out if w[1] - w[0] > 0.2]
+
+
+def clock(value, duration: float = 0.0) -> float:
+    """A moment as a person writes it: 83, “1:23”, “1:23.5”, “0:01:23”.
+
+    Anything that is not a time at all is no time: better to ignore a typo than
+    to build the whole song around it.
+    """
+    if value is None:
+        return 0.0
+    if isinstance(value, (int, float)):
+        out = float(value)
+    else:
+        text = str(value).strip().replace(",", ".")
+        if not text:
+            return 0.0
+        try:
+            parts = [float(p) for p in text.split(":")]
+        except ValueError:
+            return 0.0
+        out = 0.0
+        for p in parts:
+            out = out * 60 + p
+    if out < 0 or out != out:                 # negative, or a nan
+        return 0.0
+    return min(out, duration) if duration else out
+
+
 def align_energy(lyrics: Lyrics, audio_path: str, duration: float,
-                 log: Log = _noop) -> Lyrics:
+                 log: Log = _noop, skip=None) -> Lyrics:
     """Lay lines over sung phrases; inside a line, words go by syllable."""
     from . import audio as A
 
@@ -165,6 +238,16 @@ def align_energy(lyrics: Lyrics, audio_path: str, duration: float,
         log(tr("  no phrases stood out — spreading the text evenly",
             "  фразы не выделились — раскладываю текст равномерно"))
         segs = [[0.0, duration]]
+    # Phrases inside a stretch the person called wordless are not phrases to
+    # put text on: a vocalise is as loud as singing, which is the whole trouble.
+    skip = spans(skip, duration)
+    if skip:
+        segs = [g for g in segs
+                if not any(g[0] >= a - 0.2 and g[1] <= b + 0.2 for a, b in skip)]
+        if not segs:
+            segs = [[w[0], w[1]] for w in keep_windows(skip, duration)]
+        log(tr(f"  wordless stretches taken out: {len(skip)}",
+               f"  выброшено участков без текста: {len(skip)}"))
     segs = _limit_phrases(segs, max(3 * len(lines) + 8, 24))
     log(tr(f"  phrases found: {len(segs)}, lines of text: {len(lines)}",
            f"  найдено фраз: {len(segs)}, строк текста: {len(lines)}"))
@@ -194,7 +277,7 @@ def align_energy(lyrics: Lyrics, audio_path: str, duration: float,
 def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                   model_name: str = "medium", language: str = "ru",
                   device: Optional[str] = None, log: Log = _noop,
-                  isolated: bool = False) -> Lyrics:
+                  isolated: bool = False, skip: Optional[List[tuple]] = None) -> Lyrics:
     import stable_whisper
 
     from . import sysinfo
@@ -262,16 +345,46 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     # Windows answers “WinError 2”. So we decode ourselves and hand over ready
     # samples: 16 kHz mono float32 in [-1, 1], exactly what the model expects.
     audio_input = audio_path
+    decoded = False
     try:
         import numpy as np
         from . import audio as A
-        pcm = A.read_pcm_mono(audio_path, 16000)
+        # On the separated voice the levels are levelled first: a screamed
+        # vocal swings from a shout to a rasp, and the quiet half never reaches
+        # the model otherwise. Only what the model hears changes — the sound of
+        # the karaoke itself is untouched.
+        pcm = A.read_pcm_mono(audio_path, 16000, af=A.LEVEL_VOICE if isolated else None)
         audio_input = np.frombuffer(pcm.tobytes(), dtype="<i2").astype("float32") / 32768.0
-        log(tr(f"  audio decoded with our own ffmpeg ({len(audio_input) / 16000:.0f} s)",
-               f"  звук декодирован своим ffmpeg ({len(audio_input) / 16000:.0f} с)"))
+        decoded = True
+        log(tr(f"  audio decoded with our own ffmpeg ({len(audio_input) / 16000:.0f} s)"
+               + (", the voice levelled out for the model" if isolated else ""),
+               f"  звук декодирован своим ffmpeg ({len(audio_input) / 16000:.0f} с)"
+               + (", вокал выровнен по громкости для модели" if isolated else "")))
     except Exception as e:
         log(tr(f"  could not decode in advance ({e}) — handing Whisper the file path",
                f"  не вышло декодировать заранее ({e}) — отдаю Whisper путь к файлу"))
+
+    # A wordless intro, a vocalise, a scream with nothing to write down are all
+    # voice: no measurement tells them from singing, and only a person can say
+    # which is which. Where they have said it, those stretches are cut out of
+    # what the model hears — what it never hears, it cannot lay words on — and
+    # the times are put back into the whole song afterwards.
+    skip = spans(skip, duration)
+    keep = keep_windows(skip, duration) if skip else []
+    if skip and decoded and keep:
+        import numpy as np
+        pieces = [audio_input[int(a * 16000):int(b * 16000)] for a, b in keep]
+        audio_input = np.concatenate(pieces)
+        log(tr(f"  no words in: {', '.join(mmss(a) + '–' + mmss(b) for a, b in skip)}"
+               f" — {sum(b - a for a, b in skip):.0f} s not shown to the model",
+               f"  без текста: {', '.join(mmss(a) + '–' + mmss(b) for a, b in skip)}"
+               f" — {sum(b - a for a, b in skip):.0f} с модели не показываю"))
+    elif skip:
+        keep = []
+        log(tr("  the wordless stretches cannot be cut out without decoding — "
+               "the whole song goes to the model, and they only guide the repairs",
+               "  вырезать куски без текста не вышло — модели уходит вся песня, "
+               "они учтутся только при ремонте"))
 
     log(tr("Lining the text up with the audio…", "Выравниваю текст по звуку…"))
     try:
@@ -329,6 +442,18 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
         raise RuntimeError(tr("Whisper returned no timed words at all",
                               "Whisper не вернул ни одного слова с таймингом"))
 
+    if keep:
+        def whole(t: float) -> float:
+            """From the stitched audio back into the song it was cut from."""
+            at = 0.0
+            for a, b in keep:
+                if t <= at + (b - a):
+                    return a + (t - at)
+                at += b - a
+            return keep[-1][1]
+
+        rec = [(k, whole(a), whole(b)) for k, a, b in rec]
+
     matched = _apply_recognized(lyrics.words, rec)
     # This is NOT a “is it the right text” check: align() forces the given text
     # onto the audio, so the words always match. It catches a tokenisation
@@ -368,17 +493,20 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     repair_lines(lyrics, log=log)      # Whisper sometimes drops a word far away
     # …and sometimes drops a dozen of them in one spot. Looking at the audio is
     # only worth it once we know there is a pile to spread.
-    sung_end = last_sound(audio_path, duration)
+    # The same stretches bound the repairs: spreading a pile over a vocalise is
+    # exactly what the person said not to do.
+    sung_end = min(last_sound(audio_path, duration), keep[-1][1] if keep else duration)
     text_end = max((ln.end for ln in lyrics.lines if ln.end is not None), default=0.0)
     untexted = max(0.0, sung_end - text_end)
     if pile_runs(lyrics.lines):
-        repair_piles(lyrics, duration, log=log, floor=first_sound(audio_path),
+        repair_piles(lyrics, duration, log=log,
+                     floor=max(first_sound(audio_path), keep[0][0] if keep else 0.0),
                      untexted=untexted)
     # Only on a separated vocal: there silence is silence. On a mix a “quiet”
     # stretch may simply be a quieter verse, and moving lines off it would do
     # the damage it is meant to prevent.
-    if isolated:
-        repair_silent(lyrics, duration, audio_path, log=log)
+    if isolated or skip:
+        repair_silent(lyrics, duration, audio_path, log=log, skip=skip)
     repair_order(lyrics, log=log)
     _fill_lines(lyrics, duration)      # after repairs the bounds may exceed the track
 
@@ -801,7 +929,7 @@ def _voiced_windows(lo: float, hi: float, quiet: List[Dict]) -> List[List[float]
 
 
 def repair_silent(lyrics: Lyrics, duration: float, audio_path: str,
-                  log: Log = _noop) -> int:
+                  log: Log = _noop, skip: Optional[List[tuple]] = None) -> int:
     """Move lines off the stretches where the separated voice is silent.
 
     The aligner is made to place every word somewhere, and over an interlude or
@@ -823,6 +951,19 @@ def repair_silent(lyrics: Lyrics, duration: float, audio_path: str,
         quiet = R.quiet_stretches(env, hop, least=2.5)
     except Exception:
         return 0
+    # Quiet is measured against the song itself, so on a recording that is loud
+    # nearly throughout — a wall of guitars, a scream from end to end — the
+    # measure says “all of it is quiet”. That is not knowledge, it is the
+    # absence of it: acting on it would drag the whole text somewhere.
+    if sum(q["end"] - q["start"] for q in quiet) > 0.85 * duration:
+        quiet = []
+
+    # A stretch a person marked as wordless counts as silence, whatever the
+    # loudness says: a vocalise is voice, and only they can know it holds no
+    # words.
+    for a, b in (skip or []):
+        quiet.append({"start": a, "end": b})
+    quiet.sort(key=lambda q: q["start"])
     if not quiet:
         return 0
 
@@ -945,7 +1086,7 @@ def _fill_lines(lyrics: Lyrics, duration: float, min_word: float = 0.12) -> None
 def align(lyrics: Lyrics, audio_path: str, duration: float, engine: str = "auto",
           model_name: str = "medium", language: str = "ru",
           device: Optional[str] = None, log: Log = _noop,
-          isolated: bool = False) -> tuple:
+          isolated: bool = False, skip=None) -> tuple:
     """Returns (lyrics, engine_used)."""
     if lyrics.has_manual_times:
         log(tr("The text already has [mm:ss.dd] timings — skipping alignment.",
@@ -973,8 +1114,8 @@ def align(lyrics: Lyrics, audio_path: str, duration: float, engine: str = "auto"
         else:
             try:
                 return align_whisper(lyrics, audio_path, duration, model_name,
-                                     language, device, log,
-                                     isolated=isolated), "whisper"
+                                     language, device, log, isolated=isolated,
+                                     skip=skip), "whisper"
             except Exception as e:
                 if engine == "whisper":
                     raise
@@ -986,7 +1127,7 @@ def align(lyrics: Lyrics, audio_path: str, duration: float, engine: str = "auto"
         _fill_lines(lyrics, duration)
         return lyrics, "none"
 
-    return align_energy(lyrics, audio_path, duration, log), "energy"
+    return align_energy(lyrics, audio_path, duration, log, skip=skip), "energy"
 
 
 def _spread_manual(lyrics: Lyrics, duration: float) -> None:

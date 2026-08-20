@@ -257,6 +257,41 @@ The program spreads it into four lines by itself. `x4`, `×4` and the Russian
 A section heading is not repeated with the line, and if the file has manual LRC
 timings, repeats are left alone: every line there has its own time.
 
+## Where there are no words
+
+A vocalise, a scream with nothing to write down, a hummed intro — all of that is
+voice. Nothing measurable tells it from a sung line, so the timing crawls onto
+it and the karaoke shows words over music nobody sings. Only a person knows the
+difference, and there are two places to say it.
+
+In the window, under the model and the language, a field takes the stretches:
+
+```
+0:00-0:42, 3:10-3:50
+```
+
+The same can be written in the lyrics file itself — a heading with a time range
+in it. The heading still names the part, and the range says nothing is sung
+there:
+
+```
+[Guitar solo 3:10-3:50]
+[нет текста 1:02-1:40]
+[6:20-7:05]
+```
+
+What it does: those stretches are cut out of what the aligner hears, so nothing
+can be laid on them, and the repairs afterwards treat them as silence — a line
+that landed there is moved onto real singing between its neighbours. What it
+does **not** do: it makes no claim about the rest of the song. Marking one solo
+does not promise words everywhere else; it only keeps them off the solo.
+
+The same field sits in the editor next to “Re-time”, where the timeline is in
+front of you: the shaded stretches are the ones without singing, and a vocalise
+is the loud one with no lines under it. Mark it, press “Re-time”, and the words
+stay off. The marks are saved with the song, so the next re-time starts from
+them.
+
 ## The finished page
 
 * Space — play/pause, `←` `→` — seek, `F` — full screen, `M` — voice on/off.

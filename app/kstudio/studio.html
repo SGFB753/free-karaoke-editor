@@ -69,6 +69,8 @@
   .pickrow input{flex:1}
   .opts{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
   .warn{font-size:0.8438rem; color:var(--accent2); line-height:1.6}
+  /* Marking wordless stretches with the timeline in front of you */
+  header .notext{width:15rem; font-size:0.7812rem; padding:6px 9px}
   /* Lyrics found by the name of the song: a suggestion to read, not an answer.
      Each one says where it came from and how many lines it has. */
   .found{display:grid; gap:8px}
@@ -192,10 +194,14 @@
   /* Four swatches in a row read as one set. A label and a divider say which
      pair is responsible for what. */
   .pick{display:flex; align-items:center; gap:6px; font-size:0.7812rem; color:var(--muted);
-    padding-left:9px; border-left:1px solid var(--line)}
-  .pick b{font-weight:600; letter-spacing:.04em; text-transform:uppercase; font-size:0.7188rem}
+    padding-left:9px; border-left:1px solid var(--line);
+    /* Never squeezed: under pressure the label used to shrink into the
+       swatches and print itself over them. The row wraps instead. */
+    flex:none; white-space:nowrap}
+  .pick b{font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+    font-size:0.7188rem; flex:none; white-space:nowrap}
   .pick input[type=color]{width:26px; height:22px; padding:0; border-radius:6px;
-    border:1px solid var(--line); background:none; cursor:pointer}
+    border:1px solid var(--line); background:none; cursor:pointer; flex:none}
 
   .side{width:290px; flex:none; border-left:1px solid var(--line); display:flex;
     flex-direction:column; background:rgba(0,0,0,.2)}
@@ -411,6 +417,13 @@
         </div>
         <div class="hint" id="modelNote"></div>
       </div>
+      <div class="field">
+        <label data-t="noTextLabel">Where there are no words</label>
+        <div class="pickrow">
+          <input id="inNoText" data-tp="noTextPh" placeholder="0:00-0:42, 3:10-3:50 — an intro, a vocalise, a solo">
+        </div>
+        <div class="hint" data-t="noTextHint">A vocalise, a wordless scream and a sung line are all voice: no measurement tells them apart, and the timing crawls onto them. Naming a stretch keeps words off it — it says nothing about the rest of the song, and claims no words for it. The same can be written in the lyrics file: <b>[Solo 3:10-3:50]</b>.</div>
+      </div>
       <div class="warn" id="newWarn"></div>
       <div class="report hide" id="report"></div>
       <div><button class="pri" id="btnBuild" data-t="build">Build</button></div>
@@ -436,6 +449,8 @@
             title="Take a different lyrics file and time the song to it">⇄ Other lyrics</button>
     <button id="btnTrack" data-tt="trackHint" data-t="ownTrack"
             title="Use the artist's real instrumental instead of the separated one">♪ My instrumental</button>
+    <input id="edNoText" class="notext" data-tp="noTextPh" data-tt="noTextLabel"
+           placeholder="0:00-0:42, 3:10-3:50 — an intro, a vocalise, a solo">
     <button id="btnRealign" data-tt="realignHint" data-t="realign"
             title="Re-read the same lyrics file from disk and time it again — if you edited it">↻ Re-time</button>
     <button id="btnExportHtml" data-t="exportHtml">Standalone HTML</button>

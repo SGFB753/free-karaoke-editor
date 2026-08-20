@@ -73,6 +73,9 @@ def parse_args(argv=None):
                    help="alignment engine (auto by default)")
     g.add_argument("--whisper-model", default="medium",
                    help="Whisper model: tiny/base/small/medium/large-v3")
+    g.add_argument("--no-text", default="", metavar="SPANS",
+                   help="stretches with no words in them, so the timing stays "
+                        "off them: \"0:00-0:42, 3:10-3:50\"")
     g.add_argument("--colors", default="#4de1ff,#ff8ad1",
                    help="highlight colours: main voice and second voice, comma separated")
     g.add_argument("--theme", default="",
@@ -179,9 +182,11 @@ def main(argv=None) -> int:
             B.apply_timings(lyr, args.timings)
             engine = "json"
         else:
+            holes = A.spans(getattr(args, "no_text", ""), dur) + \
+                A.spans(getattr(lyr, "skips", []), dur)
             lyr, engine = A.align(lyr, align_src, dur, args.align,
                                   args.whisper_model, args.lang, args.device, log,
-                                  isolated=bool(vocals))
+                                  isolated=bool(vocals), skip=holes)
         log(tr(f"Timing ready ({B.ENGINE_LABEL.get(engine, engine)}).",
            f"Разметка готова ({B.ENGINE_LABEL.get(engine, engine)})."))
 

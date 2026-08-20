@@ -26,6 +26,14 @@ SECTION_WORDS = (
 )
 
 
+# A heading that carries a time range — “[Guitar solo 3:10-3:50]”, “[нет текста
+# 1:02–1:40]”, or the bare “[3:10-3:50]” — says there are no words in that
+# stretch of the song. Only a person knows this: a vocalise, a scream with
+# nothing to write down and a sung line are all voice, and no measurement tells
+# them apart.
+NOTEXT_RE = re.compile(
+    r"(\d{1,3}:\d{1,2}(?:[.,]\d{1,3})?|\d+(?:[.,]\d+)?)\s*[-–—]{1,2}\s*"
+    r"(\d{1,3}:\d{1,2}(?:[.,]\d{1,3})?|\d+(?:[.,]\d+)?)")
 # “2: line” — this line is sung by the second voice. “[voice 2]” switches
 # every following line until told otherwise.
 VOICE_LINE_RE = re.compile(r"^\s*([12])\s*[:>]\s+(.+)$")
@@ -157,6 +165,8 @@ class Lyrics:
     title: Optional[str] = None
     artist: Optional[str] = None
     has_manual_times: bool = False
+    # stretches the person marked as holding no words: [Solo 3:10-3:50]
+    skips: List[tuple] = field(default_factory=list)
 
     @property
     def words(self) -> List[Word]:
@@ -235,6 +245,17 @@ def parse(raw: str) -> Lyrics:
                 if d:                       # [voice 2] switches, it is not a heading
                     cur_voice = int(d.group(1))
                     continue
+                span = NOTEXT_RE.search(m.group(1))
+                if span:
+                    # “[Solo 3:10-3:50]”: a heading and a fact about the song —
+                    # keep the heading for the line that follows, and remember
+                    # that nothing is sung in between.
+                    lyr.skips.append((_clock(span.group(1)), _clock(span.group(2))))
+                    rest = NOTEXT_RE.sub("", m.group(1)).strip(" -–—:,")
+                    if _is_notext_word(rest):
+                        rest = ""       # “[нет текста 1:02-1:40]” is not a heading
+                    pending_section = rest or pending_section
+                    continue
                 # a line like [Chorus] is a heading for the lines that follow
                 pending_section = m.group(1).strip()
                 continue
@@ -281,6 +302,28 @@ def parse(raw: str) -> Lyrics:
             ln.end = nxt.start if nxt else None
 
     return lyr
+
+
+# What people write when they mean “nothing is sung here”, rather than naming
+# a part of the song. Such a marker is not a heading for the lines after it.
+NOTEXT_WORDS = ("нет текста", "без текста", "no text", "no lyrics", "нет слов",
+                "instrumental", "инструментал", "проигрыш", "без слов")
+
+
+def _is_notext_word(text: str) -> bool:
+    low = re.sub(r"\s+", " ", (text or "").strip().lower())
+    return any(low == w or low.startswith(w) for w in NOTEXT_WORDS)
+
+
+def _clock(text: str) -> float:
+    """“3:50”, “230”, “3:50.5” → seconds."""
+    out = 0.0
+    for part in str(text).replace(",", ".").split(":"):
+        try:
+            out = out * 60 + float(part)
+        except ValueError:
+            return out
+    return out
 
 
 def decode_text(raw: bytes) -> str:

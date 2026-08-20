@@ -874,10 +874,40 @@ def main():
             os.environ["XDG_CACHE_HOME"] = old_xdg
         shutil_rm(fake)
 
+    print("\nStretches a person marked as holding no words")
+    # A vocalise is voice: nothing measurable tells it from a sung line, so the
+    # only source of truth is the person. Marking a stretch must keep words off
+    # it — and must claim nothing about the rest of the song.
+    check("a written span is read as one",
+          A.spans("0:00-0:42, 3:10-3:50", 600) == [(0.0, 42.0), (190.0, 230.0)],
+          A.spans("0:00-0:42, 3:10-3:50", 600))
+    check("seconds, minutes and a dash all pass",
+          A.spans("12-30", 600) == [(12.0, 30.0)]
+          and A.spans("0:12–0:30", 600) == [(12.0, 30.0)])
+    check("overlapping spans merge", A.spans([(10, 20), (15, 30)], 600) == [(10.0, 30.0)])
+    check("nonsense is dropped, not guessed at", A.spans("который час", 600) == [])
+    check("a span outside the song is clipped to it", A.spans("0-9999", 600) == [(0.0, 600.0)])
+    check("what is left is the other side of it",
+          A.keep_windows([(0.0, 42.0), (190.0, 230.0)], 600)
+          == [(42.0, 190.0), (230.0, 600)])
+
+    # …and the same thing written in the lyrics file itself
+    marked = L.parse("первая строка тут\n[Соло 3:10-3:50]\nвторая строка тут\n"
+                     "[нет текста 1:02–1:40]\nтретья строка тут")
+    check("a heading with a time range marks a wordless stretch",
+          A.spans(marked.skips, 600) == [(62.0, 100.0), (190.0, 230.0)],
+          marked.skips)
+    check("and it does not eat the lines around it", len(marked.lines) == 3)
+    check("a heading keeps being a heading",
+          marked.lines[1].section == "Соло", marked.lines[1].section)
+    check("while “no text” is not shown as one",
+          marked.lines[2].section in (None, ""), marked.lines[2].section)
+
     print("\nLines that lie where the voice is silent")
     # The aligner must put every word somewhere, and over an interlude it puts
     # them on the music: the line looks timed, and nobody sings. On the
-    # separated vocal that stretch is real silence, so it can be known.
+    # separated vocal that stretch is real silence, so it can be known — and
+    # where the voice is loud but wordless, the person's own mark says so.
     import wave as _wv
 
     def _tone_and_silence(path, spans, total=30.0, sr=8000):
@@ -894,6 +924,72 @@ def main():
             f.setsampwidth(2)
             f.setframerate(sr)
             f.writeframes(bytes(frames))
+
+    # Levelling the voice for the model: a screamed vocal swings from a shout
+    # to a rasp, and the quiet half never reaches it. The one thing that must
+    # never happen is a change in length — every timing would shift with it.
+    steps = os.path.join(tmp, "loud-and-quiet.wav")
+    import math as _math
+    with _wv.open(steps, "wb") as f:
+        f.setnchannels(1)
+        f.setsampwidth(2)
+        f.setframerate(8000)
+        fr = bytearray()
+        for i in range(8000 * 12):
+            t = i / 8000
+            amp = 12000 if t < 6 else 400          # a shout, then a rasp
+            fr += int(amp * _math.sin(2 * _math.pi * 220 * t)).to_bytes(2, "little", signed=True)
+        f.writeframes(bytes(fr))
+    plain = AU.read_pcm_mono(steps, 16000)
+    level = AU.read_pcm_mono(steps, 16000, af=AU.LEVEL_VOICE)
+    check("levelling does not change the length by a sample",
+          len(plain) == len(level), f"{len(plain)} vs {len(level)}")
+
+    def _loudness(data, a, b):
+        part = data[int(a * 16000):int(b * 16000)]
+        return sum(abs(v) for v in part[::17]) / max(1, len(part[::17]))
+
+    was = _loudness(plain, 7.0, 11.0) / max(1.0, _loudness(plain, 1.0, 5.0))
+    now = _loudness(level, 7.0, 11.0) / max(1.0, _loudness(level, 1.0, 5.0))
+    check("and the quiet half comes up towards the loud one", now > was * 3,
+          f"{was:.3f} → {now:.3f}")
+
+    # the loudness engine must not lay lines on a marked stretch
+    tone = os.path.join(tmp, "vocalise.wav")
+    _tone_and_silence(tone, [(0.0, 9.0), (12.0, 30.0)])
+    lyr_e = L.parse("раз строка тут\nдва строка тут\nтри строка тут")
+    A.align_energy(lyr_e, tone, 30.0, skip=[(0.0, 9.0)])
+    check("the loudness engine keeps off the marked stretch",
+          all(ln.start >= 8.5 for ln in lyr_e.lines),
+          [round(ln.start, 1) for ln in lyr_e.lines])
+
+    # singing at 0–8 s and 20–30 s; 8–20 s is a solo with no voice at all
+    voiced_wav = os.path.join(tmp, "voiced.wav")
+    _tone_and_silence(voiced_wav, [(0.0, 8.0), (20.0, 30.0)])
+
+    # a marked stretch counts as silence even where the voice is loud:
+    # 0–8 s here is a vocalise, as loud as anything, with no words in it
+    msgs4 = []
+    lyr_v = L.parse("раз строка тут\nдва строка тут")
+    for ln, (a, b) in zip(lyr_v.lines, [(2.0, 5.0), (22.0, 26.0)]):
+        A._spread(ln.words, a, b)
+        ln.start, ln.end = a, b
+    moved4 = A.repair_silent(lyr_v, 30.0, voiced_wav, log=msgs4.append, skip=[(0.0, 8.0)])
+    check("a line on a vocalise is moved off it",
+          moved4 == 1 and lyr_v.lines[0].start >= 8.0,
+          f"{lyr_v.lines[0].start:.1f}")
+    check("and the line that was fine is left alone", lyr_v.lines[1].start == 22.0)
+
+    # A song loud from end to end tells us nothing about where the voice is;
+    # taking that as “all silent” would drag the whole text somewhere.
+    loud = os.path.join(tmp, "wall.wav")
+    _tone_and_silence(loud, [(0.0, 30.0)])
+    lyr_w = L.parse("раз строка тут\nдва строка тут")
+    for ln, (a, b) in zip(lyr_w.lines, [(2.0, 5.0), (20.0, 24.0)]):
+        A._spread(ln.words, a, b)
+        ln.start, ln.end = a, b
+    check("a wall of sound moves nothing",
+          A.repair_silent(lyr_w, 30.0, loud) == 0 and lyr_w.lines[0].start == 2.0)
 
     voiced_wav = os.path.join(tmp, "voiced.wav")
     # singing at 0–8 s and 20–30 s; 8–20 s is a solo with no voice at all
