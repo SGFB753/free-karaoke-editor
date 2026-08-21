@@ -116,6 +116,50 @@ def main():
           and video.pips_lit(1.0, 2.0) == 0)
     check("and it never jumps past three", video.pips_lit(10.0, 0.01) == 3)
 
+    print("\nThe frame reads forward, not back")
+    # The sung line is gone from the frame; the current line has the next one
+    # under it and the one after that fainter still — a queue, not a history.
+    frames_song = {"colors": ["#00ff00", "#ff00ff"],
+                   "theme": {"bg": "#000000", "text": "#ffffff"},
+                   "data": {"title": "T", "duration": 20.0, "lines": [
+                       {"text": "spent line", "start": 1.0, "end": 3.0, "voice": 1,
+                        "words": [{"w": "spent", "t": 1.0, "d": 1.0, "s": 1},
+                                  {"w": "line", "t": 2.0, "d": 1.0, "s": 1}]},
+                       {"text": "current one", "start": 5.0, "end": 8.0, "voice": 1,
+                        "words": [{"w": "current", "t": 5.0, "d": 1.5, "s": 2},
+                                  {"w": "one", "t": 6.5, "d": 1.5, "s": 1}]},
+                       {"text": "coming next", "start": 9.0, "end": 11.0, "voice": 1,
+                        "words": [{"w": "coming", "t": 9.0, "d": 1.0, "s": 2},
+                                  {"w": "next", "t": 10.0, "d": 1.0, "s": 1}]},
+                       {"text": "after that", "start": 12.0, "end": 14.0, "voice": 1,
+                        "words": [{"w": "after", "t": 12.0, "d": 1.0, "s": 2},
+                                  {"w": "that", "t": 13.0, "d": 1.0, "s": 1}]}]}}
+    wavq = tone(os.path.join(tmp, "q.wav"), 220.0, 20.0)
+    class AQ:
+        width, height, fps, crf = 640, 360, 5, 30
+        preset, font = "ultrafast", None
+        start, seconds, audio, timings = 5.5, 2.0, "minus", None
+        output = os.path.join(tmp, "queue.mp4")
+    video.render(frames_song, wavq, AQ.output, AQ())
+    pngq = os.path.join(tmp, "queue.png")
+    subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "1.0", "-i", AQ.output,
+                    "-frames:v", "1", pngq], check=True)
+    imq = Image.open(pngq).convert("RGB")
+    Wq, Hq = imq.size
+    def band_ink(y0, y1):
+        return sum(1 for y in range(int(Hq * y0), int(Hq * y1))
+                   for x in range(0, Wq, 2) if sum(imq.getpixel((x, y))) > 90)
+    top = band_ink(0.25, 0.40)          # where the spent line used to sit
+    mainb = band_ink(0.40, 0.52)
+    nextb = band_ink(0.55, 0.66)
+    next2b = band_ink(0.67, 0.78)
+    check("the sung line is gone from the frame", top < mainb * 0.15,
+          f"top {top} vs main {mainb}")
+    check("the current line is the brightest thing", mainb > 100, mainb)
+    check("the next line waits under it", nextb > 40, nextb)
+    check("and the one after that is present but fainter",
+          0 < next2b < nextb, f"{next2b} vs {nextb}")
+
     print("\nThe intro countdown in the video")
     # The wait has to be a real one: a countdown is shown from ten seconds up,
     # because anything shorter is a breath between lines, not an interlude.

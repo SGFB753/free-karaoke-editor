@@ -40,6 +40,13 @@ VOICE_LINE_RE = re.compile(r"^\s*([12])\s*[:>]\s+(.+)$")
 VOICE_DIR_RE = re.compile(r"^\s*(?:voice|голос|вокал)\s*([12])\s*$", re.I)
 # “Chorus x4” — the line is sung four times in a row. There is no need to
 # write it out four times: the repeats are expanded here.
+# “Some girls try too hard (Na-na-na)” — a lead line with the backing tacked on
+# its tail. The tail is a line of its own, sung by someone else, usually at the
+# same time: left inside, the lead singer would be shown na-na-na as their own
+# words. Brackets in the MIDDLE of a line stay put — an aside is part of the
+# line it interrupts.
+TRAIL_RE = re.compile(r"^(.*\S)\s+(\([^()]{1,60}\))$")
+
 REPEAT_RE = re.compile(r"^(.*?)\s*[\(\[]?\s*[x×хХ]\s*(\d{1,2})\s*[\)\]]?\s*$", re.I)
 
 
@@ -298,6 +305,15 @@ def parse(raw: str) -> Lyrics:
         if start is None:
             line, times = _split_repeat(line)
 
+        # A backing tail on a lead line becomes a line of its own, second
+        # voice: “try too hard (Na-na-na)” is two people singing.
+        trail = None
+        if start is None and not backing:
+            m = TRAIL_RE.match(line)
+            if m and _split_words(m.group(2)) and not _is_section_name(
+                    m.group(2).strip("() ")):
+                line, trail = m.group(1).strip(), m.group(2)
+
         words = _split_words(line)
         if not words:
             continue
@@ -312,6 +328,10 @@ def parse(raw: str) -> Lyrics:
                                   section=pending_section if k == 0 else None,
                                   start=start, backing=backing,
                                   voice=voice or (2 if backing else cur_voice)))
+            if trail:
+                lyr.lines.append(Line(text=trail, words=_split_words(trail),
+                                      section=None, start=None, backing=True,
+                                      voice=2))
         pending_section = None
 
     # with manual timings, a line ends where the next one begins

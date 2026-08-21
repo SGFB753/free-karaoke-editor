@@ -66,6 +66,19 @@ selected lines by syllables within each line's own span; the edges stay put.
 It works on locked lines too: the lock guards against the model, not against
 you.
 
+**Two people singing at once is a duet, not a defect.** The na-na-na behind a
+lead line is meant to overlap it: lines of different voices are no longer
+pulled apart by the repairs, and the Check panel no longer flags them. And a
+backing tail written on the lead line — “try too hard (Na-na-na)” — is split
+off into a line of its own, second voice, so the lead singer is not shown the
+na-na-na as their own words. Brackets in the middle of a line stay put; `(x2)`
+is still a repeat, `(Chorus)` is still a heading.
+
+**The video frame reads forward, not back.** The line already sung is gone —
+the eye never returns to it. The current line sits just above centre, the next
+waits under it, and the one after that shows fainter still: a queue, not a
+history.
+
 **The Check panel scrolls, and warnings can be dismissed.** The list refused
 to shrink below its content, grew past the panel and was clipped — which read
 as “the scrolling is broken” and showed one warning of many. And every warning

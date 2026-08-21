@@ -294,6 +294,9 @@ class LineArt:
             return img
 
         self.dim = draw(COL_DIM if main else COL_SIDE)
+        # the line after the next one: present, but clearly further away
+        self.faint = self.dim.copy()
+        self.faint.putalpha(self.faint.getchannel("A").point(lambda v: v * 45 // 100))
         hot = COL_HOT2 if line.get("voice") == 2 else COL_HOT
         self.hot = draw(hot) if main else None
 
@@ -380,9 +383,13 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         return store[i]
 
     starts = [ln["start"] for ln in lines]
-    y_main = int(H * 0.50)
-    y_prev = int(H * 0.34)
-    y_next = int(H * 0.66)
+    # The line already sung is dead weight on the screen — the eye never goes
+    # back to it. The frame holds the current line and the queue ahead: the
+    # next line, and the one after it fainter still. Slightly above centre, so
+    # the group sits balanced.
+    y_main = int(H * 0.44)
+    y_next = int(H * 0.60)
+    y_next2 = int(H * 0.72)
 
     t_start = args.start
     if t_start >= duration:
@@ -442,9 +449,6 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                         d.text((margin, y_j - int(H * 0.055)),
                                lines[j]["section"].upper(), font=small, fill=COL_SECT)
 
-            if idx - 1 >= 0 and idx - 1 != duo:
-                p = get(idx - 1, False)
-                frame.paste(p.dim, (0, y_prev - p.h // 2), p.dim)
             # Guide dots between lines, as in the player: always visible so the
             # next line is expected, and they count down before it starts.
             def dots(cy, lit=0):
@@ -454,9 +458,6 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                     d.ellipse([x - r, cy - r, x + r, cy + r],
                               fill=COL_HOT if k < lit else COL_PIP)
 
-            if idx - 1 >= 0:
-                dots((y_prev + y_main) // 2)
-
             if idx + 1 < len(lines) and idx + 1 != duo:
                 nx = get(idx + 1, False)
                 frame.paste(nx.dim, (0, y_next - nx.h // 2), nx.dim)
@@ -465,6 +466,12 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 left = lines[idx + 1]["start"] - t
                 lit = pips_lit(gap, left)
                 dots((y_main + y_next) // 2, lit)
+
+                # …and one more ahead, fainter: the singer reads forward, never
+                # back, and the queue keeps the frame symmetric.
+                if idx + 2 < len(lines) and idx + 2 != duo:
+                    n2 = get(idx + 2, False)
+                    frame.paste(n2.faint, (0, y_next2 - n2.h // 2), n2.faint)
 
             # While nobody sings the screen is empty and it is unclear whether
             # the song is running. At the top — a countdown to the next line, as

@@ -1233,6 +1233,11 @@ def repair_order(lyrics: Lyrics, log: Log = _noop) -> int:
     lines = [ln for ln in lyrics.lines
              if ln.words and ln.start is not None and ln.end is not None]
     for a, b in zip(lines, lines[1:]):
+        # Two voices singing at once is a duet, not a defect: the na-na-na
+        # behind a lead line is MEANT to overlap it. Only lines of the same
+        # voice may not lie on each other.
+        if (a.voice or 1) != (b.voice or 1):
+            continue
         if b.start < a.start:
             conflicts += 1        # lines are out of order — trimming makes no sense
             continue

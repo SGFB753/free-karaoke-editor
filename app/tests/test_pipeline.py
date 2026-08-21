@@ -1232,6 +1232,73 @@ def main():
     check("and a trim that would leave nothing usable is not made",
           tiny.lines[0].end > 10.5, f"{tiny.lines[0].start:.1f}–{tiny.lines[0].end:.1f}")
 
+    print("\nA backing tail becomes a line of its own")
+    # “Some girls try too hard (Na-na-na)”: the tail is another person singing,
+    # usually at the same time. Left inside, the lead would be shown na-na-na
+    # as their own words.
+    party = L.parse("Лид поёт своё (на-на-на)\n"
+                    "(на-на-на, на-на-на)\n"
+                    "Скобки (внутри) строки остаются\n"
+                    "Повтор в конце (x2)\n"
+                    "Хвост-заголовок (Chorus)")
+    texts = [(ln.text, ln.voice, ln.backing) for ln in party.lines]
+    check("the tail split off as the second voice",
+          ("Лид поёт своё", 1, False) in texts and ("(на-на-на)", 2, True) in texts,
+          texts[:2])
+    check("a whole-bracket line is the second voice as before",
+          ("(на-на-на, на-на-на)", 2, True) in texts)
+    check("brackets in the middle stay where they are",
+          any(t == "Скобки (внутри) строки остаются" and v == 1 for t, v, _ in texts),
+          [t for t, v, _ in texts])
+    check("a repeat mark is a repeat, not a backing line",
+          sum(1 for t, _, _ in texts if t == "Повтор в конце") == 2,
+          [t for t, _, _ in texts])
+    check("and a section name in the tail is not turned into singing",
+          not any(t == "(Chorus)" for t, _, _ in texts),
+          [t for t, _, _ in texts])
+
+    print("\nA duet is not a defect")
+    # Blink-182, “The Party Song”: na-na-na behind the lead, two texts at once.
+    # The overlap is the point — only same-voice overlaps are trouble.
+    duet = L.parse("главная строка тут\n(на на на)\nвторая главная тут")
+    for ln, (a, b) in zip(duet.lines, [(10.0, 14.0), (10.5, 13.5), (14.5, 18.0)]):
+        A._spread(ln.words, a, b)
+        ln.start, ln.end = a, b
+    check("the brackets made it the second voice", duet.lines[1].voice == 2,
+          duet.lines[1].voice)
+    said_d2 = []
+    A.repair_order(duet, log=said_d2.append)
+    check("the backing line is not pulled off the lead",
+          duet.lines[1].start == 10.5 and duet.lines[0].end == 14.0,
+          f"{duet.lines[0].end} / {duet.lines[1].start}")
+    check("and nobody calls it a conflict", not said_d2, said_d2)
+
+    same_v = L.parse("раз строка тут\nдва строка тут")
+    A._spread(same_v.lines[0].words, 10.0, 11.8)     # words end early: a legal trim
+    same_v.lines[0].start, same_v.lines[0].end = 10.0, 14.0
+    A._spread(same_v.lines[1].words, 12.0, 16.0)
+    same_v.lines[1].start, same_v.lines[1].end = 12.0, 16.0
+    A.repair_order(same_v)
+    check("same-voice overlap is still pulled apart",
+          same_v.lines[0].end <= 12.0, same_v.lines[0].end)
+
+    from kstudio import project as PJ3
+    duet_lines = [
+        {"text": "главная", "start": 10.0, "end": 14.0, "voice": 1,
+         "words": [{"w": "главная", "t": 10.0, "d": 4.0, "s": 3}]},
+        {"text": "(на на на)", "start": 10.5, "end": 13.5, "voice": 2,
+         "words": [{"w": "на", "t": 10.5, "d": 3.0, "s": 1}]},
+        {"text": "хвост", "start": 13.0, "end": 15.0, "voice": 1,
+         "words": [{"w": "хвост", "t": 13.0, "d": 2.0, "s": 1}]},
+    ]
+    flagged2 = PJ3.problems({"lines": duet_lines})
+    kinds_flat = [k for p2 in flagged2 for k in p2.get("kinds", [])]
+    check("the Check panel does not flag the duet",
+          "overlap" not in kinds_flat or all(
+              p2["text"] != "(на на на)" for p2 in flagged2
+              if "overlap" in p2.get("kinds", [])),
+          [(p2["text"], p2.get("kinds")) for p2 in flagged2])
+
     print("\nA dismissed warning stays dismissed")
     # “Ignore”, the way a spell-checker has it. The key is the line's words,
     # not its number: numbers shift when lines are split or joined.

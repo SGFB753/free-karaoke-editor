@@ -374,7 +374,10 @@ def problems(data: Dict) -> List[Dict]:
             why.append((tr(f"words drift apart by {max(gaps):.1f} s",
                            f"слова разъехались на {max(gaps):.1f} с"), "gap"))
 
-        if i and lines[i - 1]["end"] > ln["start"] + 1e-6:
+        if i and lines[i - 1]["end"] > ln["start"] + 1e-6 \
+                and (lines[i - 1].get("voice") or 1) == (ln.get("voice") or 1):
+            # different voices overlapping is a duet — na-na-na behind the
+            # lead — and flagging it would bury real warnings under noise
             why.append((tr("overlaps the previous line", "налезает на предыдущую"),
                         "overlap"))
 
