@@ -66,6 +66,15 @@ selected lines by syllables within each line's own span; the edges stay put.
 It works on locked lines too: the lock guards against the model, not against
 you.
 
+**The aligner never hears the backing text.** Alignment is linear: asked to
+place the na-na-na BETWEEN the lead lines, it dragged whole choruses into
+silence it could hear perfectly well was empty, just to make room. The model
+is now given the lead lines alone — they anchor cleanly — and the backing is
+placed by rule: a tail split off a lead line lies over that line, a duet; a
+standalone backing line takes the gap after its lead, at a sung pace. Both are
+one drag away from anywhere better, and the log counts what was kept from the
+model and what was placed.
+
 **Two people singing at once is a duet, not a defect.** The na-na-na behind a
 lead line is meant to overlap it: lines of different voices are no longer
 pulled apart by the repairs, and the Check panel no longer flags them. And a

@@ -154,6 +154,9 @@ class Line:
     voice: int = 1                     # 1 or 2: the second voice gets its own colour
     keep: bool = False                 # keep the original voice on this stretch
     lock: bool = False                 # put right by hand: re-timing leaves it alone
+    # split off the tail of the line above: a duet with it, not a line after it.
+    # Not saved with the song — re-parsing the text derives it again.
+    tail: bool = False
 
     @property
     def syllables(self) -> int:
@@ -331,7 +334,7 @@ def parse(raw: str) -> Lyrics:
             if trail:
                 lyr.lines.append(Line(text=trail, words=_split_words(trail),
                                       section=None, start=None, backing=True,
-                                      voice=2))
+                                      voice=2, tail=True))
         pending_section = None
 
     # with manual timings, a line ends where the next one begins

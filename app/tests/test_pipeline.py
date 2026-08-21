@@ -1257,6 +1257,88 @@ def main():
           not any(t == "(Chorus)" for t, _, _ in texts),
           [t for t, _, _ in texts])
 
+    print("\nThe aligner never hears the backing text")
+    # Asked to place na-na-na BETWEEN the lead lines, a linear aligner drags
+    # whole choruses into silence to make room. So it is not asked.
+    import types as _t
+
+    heard = {}
+
+    class _R2:
+        segments = []
+
+    class _M2:
+        def align(self, audio, text, **kw):
+            heard["text"] = text
+            return _R2()
+
+    fake2 = _t.ModuleType("stable_whisper")
+    fake2.load_model = lambda *a, **k: _M2()
+    real2 = sys.modules.get("stable_whisper")
+    sys.modules["stable_whisper"] = fake2
+    try:
+        withback = L.parse("Лид один тут\nЛид два тут (на-на-на)\n(на-на-на, на-на-на)")
+        try:
+            A.align_whisper(withback, song, 26.0, model_name="small", language="ru")
+        except Exception:
+            pass                          # the fake returns no words; the text is the point
+    finally:
+        if real2 is not None:
+            sys.modules["stable_whisper"] = real2
+        else:
+            sys.modules.pop("stable_whisper", None)
+    check("the model hears the lead lines alone",
+          "на-на-на" not in heard.get("text", "на-на-на"), heard.get("text"))
+    check("and hears both of them", heard.get("text", "").count("\n") == 1,
+          heard.get("text"))
+
+    # the loudness engine keeps its phrases for the lead too
+    eb = L.parse("Лид один тут\n(на-на-на, на-на-на)\nЛид два тут")
+    A.align_energy(eb, song, 26.0)
+    mains_eb = [ln for ln in eb.lines if not ln.backing]
+    back_eb = next(ln for ln in eb.lines if ln.backing)
+    check("the lead lines take the sung phrases",
+          all(ln.start is not None and ln.end - ln.start > 0.3 for ln in mains_eb),
+          [(round(ln.start, 1), round(ln.end, 1)) for ln in mains_eb])
+    check("and the backing sits against its lead, not on a phrase of its own",
+          abs(back_eb.start - mains_eb[0].end) < 0.6 or back_eb.start >= mains_eb[0].start,
+          f"{back_eb.start:.1f} vs lead end {mains_eb[0].end:.1f}")
+
+    print("\nBacking lands with its lead, not where the model scattered it")
+    # The aligner is linear: it hunts the na-na-na BETWEEN the lead lines while
+    # the record sings it OVER them — so the leads come out right and the
+    # backing lands anywhere. Placement is a rule, not a guess.
+    pb = L.parse("Лид номер один тут\nЛид номер два тут (на-на-на)\n"
+                 "(на-на-на, на-на-на)\nЛид номер три тут")
+    mains = [ln for ln in pb.lines if not ln.backing]
+    for ln, (a, b) in zip(mains, [(10.0, 13.0), (15.0, 18.0), (26.0, 29.0)]):
+        A._spread(ln.words, a, b)
+        ln.start, ln.end = a, b
+    # the model's scattered guesses for the backing
+    for ln in pb.lines:
+        if ln.backing:
+            A._spread(ln.words, 2.0, 3.0)
+            ln.start, ln.end = 2.0, 3.0
+    said_pb = []
+    n_pb = A.place_backing(pb, 30.0, log=said_pb.append)
+    tail_ln = next(ln for ln in pb.lines if ln.tail)
+    solo_ln = next(ln for ln in pb.lines if ln.backing and not ln.tail)
+    check("both backing lines were placed", n_pb == 2, n_pb)
+    check("the split-off tail lies over its lead — a duet",
+          abs(tail_ln.start - 15.0) < 0.05 and abs(tail_ln.end - 18.0) < 0.3,
+          f"{tail_ln.start:.1f}–{tail_ln.end:.1f}")
+    check("the standalone backing takes the gap after its lead",
+          solo_ln.start >= 17.9 and solo_ln.end <= 26.1,
+          f"{solo_ln.start:.1f}–{solo_ln.end:.1f}")
+    check("the leads themselves are untouched",
+          mains[1].start == 15.0 and mains[2].start == 26.0)
+    check("and the log says what happened",
+          any("бэк-строк" in m or "backing lines" in m for m in said_pb), said_pb)
+
+    lonely = L.parse("(на-на-на)\nЛид после бэка")
+    check("a backing line with no lead above it is left to the model",
+          A.place_backing(lonely, 30.0) == 0)
+
     print("\nA duet is not a defect")
     # Blink-182, “The Party Song”: na-na-na behind the lead, two texts at once.
     # The overlap is the point — only same-voice overlaps are trouble.

@@ -232,7 +232,10 @@ def align_energy(lyrics: Lyrics, audio_path: str, duration: float,
         log(tr(f"  did not work ({e}) — spreading evenly", f"  не вышло ({e}) — раскладываю равномерно"))
         env, dt = [], 0.02
 
-    lines = [ln for ln in lyrics.lines if ln.words]
+    # the same rule as the neural path: phrases are for the lead lines, the
+    # backing is placed against them afterwards
+    lines = [ln for ln in lyrics.lines if ln.words and not ln.backing] \
+        or [ln for ln in lyrics.lines if ln.words]
     segs = _phrases(env, dt)
     if not segs or not lines:
         log(tr("  no phrases stood out — spreading the text evenly",
@@ -267,6 +270,8 @@ def align_energy(lyrics: Lyrics, audio_path: str, duration: float,
             w.end = ln.start + span * acc / ln.syllables
 
     _fill_lines(lyrics, duration)
+    if any(ln.backing for ln in lyrics.lines):
+        place_backing(lyrics, duration, log=log)
     if skip:
         enforce_marks(lyrics, skip, duration, log=log)
         _fill_lines(lyrics, duration)
@@ -397,6 +402,19 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                "  вырезать куски без текста не вышло — модели уходит вся песня, "
                "они учтутся только при ремонте"))
 
+    # The backing never reaches the model. Alignment is linear: asked to place
+    # the na-na-na BETWEEN the lead lines, it drags whole choruses into the
+    # silence it can hear perfectly well is empty, just to make room. The lead
+    # lines anchor cleanly on their own; the backing is placed by rule after.
+    main_lines = [ln for ln in lyrics.lines if not ln.backing] or lyrics.lines
+    main_words = [w for ln in main_lines for w in ln.words]
+    main_text = "\n".join(ln.text for ln in main_lines)
+    if len(main_lines) < len(lyrics.lines):
+        log(tr(f"  backing lines kept away from the aligner: "
+               f"{len(lyrics.lines) - len(main_lines)}",
+               f"  бэк-строк не показано разметчику: "
+               f"{len(lyrics.lines) - len(main_lines)}"))
+
     log(tr("Lining the text up with the audio…", "Выравниваю текст по звуку…"))
     try:
         # stable-ts complains through the warnings module — “12/34 segments failed
@@ -425,13 +443,13 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                 # own counter off, and then the progress it hands us is zero
                 # from beginning to end — which is how this step spent minutes
                 # saying only how long it had been running.
-                result = model.align(audio_input, lyrics.plain_text(),
+                result = model.align(audio_input, main_text,
                                      language=language, original_split=True,
                                      progress_callback=hb.progress, verbose=False)
             except TypeError:
                 # older stable-ts builds lack these parameters — the elapsed
                 # time still shows, it comes from Heartbeat itself
-                result = model.align(audio_input, lyrics.plain_text(),
+                result = model.align(audio_input, main_text,
                                      language=language, original_split=True)
         stack.__exit__(None, None, None)
         report_warnings(caught, len(lyrics.lines), log)
@@ -470,7 +488,7 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
 
         rec = [(k, whole(a), whole(b), pr) for k, a, b, pr in rec]
 
-    matched = _apply_recognized(lyrics.words, rec)
+    matched = _apply_recognized(main_words, rec)
     # This is NOT a “is it the right text” check: align() forces the given text
     # onto the audio, so the words always match. It catches a tokenisation
     # mismatch between our parser and Whisper's — without it such a failure
@@ -526,6 +544,8 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     # the damage it is meant to prevent.
     if isolated or skip:
         repair_silent(lyrics, duration, audio_path, log=log, skip=skip)
+    if any(ln.backing for ln in lyrics.lines):
+        place_backing(lyrics, duration, log=log)
     if skip:
         # A line may still reach across a hole from the outside: the aligner
         # had to end it somewhere, and the far side of the silence was the
@@ -1224,6 +1244,47 @@ def enforce_marks(lyrics: Lyrics, skip, duration: float, log: Log = _noop) -> in
                f"строка в правильном месте, чем слова поверх куска, который вы "
                f"отметили. Растащите их руками."))
     return moved
+
+
+def place_backing(lyrics: Lyrics, duration: float, log: Log = _noop) -> int:
+    """Put the backing lines where backing is sung: with their lead, not after.
+
+    The aligner is linear — it looks for the na-na-na BETWEEN the lead lines,
+    while the record sings it OVER them, so the model has nothing to hold on to
+    and scatters them. The lead comes out right for the same reason. So the
+    backing is placed by rule instead: a tail split off a lead line lies over
+    that line — a duet; a standalone backing line takes the gap after its lead,
+    at a sung pace. Both are one drag away from anywhere better.
+    """
+    lines = lyrics.lines
+    placed = 0
+    for i, ln in enumerate(lines):
+        if not ln.backing or not ln.words:
+            continue
+        j = i - 1
+        while j >= 0 and (lines[j].backing or lines[j].start is None):
+            j -= 1
+        if j < 0:
+            continue                      # nothing to lean on: leave the model's guess
+        lead = lines[j]
+        k = i + 1
+        while k < len(lines) and (lines[k].backing or lines[k].start is None):
+            k += 1
+        nxt = lines[k].start if k < len(lines) else duration
+        if ln.tail:
+            t0, t1 = lead.start, lead.end            # a duet with its own line
+        else:
+            t0 = lead.end
+            room = max(nxt - t0, 0.0)
+            want = max(_SUNG_PER_SYLLABLE * _syl(ln), 0.8)
+            t1 = t0 + (min(room, want) if room > 0.3 else want)
+        _spread(ln.words, t0, max(t1 - 0.05, t0 + 0.3))
+        ln.start, ln.end = ln.words[0].start, ln.words[-1].end
+        placed += 1
+    if placed:
+        log(tr(f"  backing lines placed with their leads: {placed}",
+               f"  бэк-строк поставлено к своим основным: {placed}"))
+    return placed
 
 
 def repair_order(lyrics: Lyrics, log: Log = _noop) -> int:
