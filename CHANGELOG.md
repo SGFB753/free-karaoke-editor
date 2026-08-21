@@ -66,6 +66,13 @@ selected lines by syllables within each line's own span; the edges stay put.
 It works on locked lines too: the lock guards against the model, not against
 you.
 
+**A duet is drawn as a duet.** On the studio stage the second voice sounding
+with the first used to sit unlit — one line of the two being sung. Both light
+up now, and the words of both fill as they are sung. In the video the two full-
+size rows used to collide with the countdown dots; the lead now sits exactly
+where a solo line sits, and the backing is smaller, right-aligned, tucked under
+it like a reply — with its own highlight, and the dots move out of its way.
+
 **The aligner never hears the backing text.** Alignment is linear: asked to
 place the na-na-na BETWEEN the lead lines, it dragged whole choruses into
 silence it could hear perfectly well was empty, just to make room. The model

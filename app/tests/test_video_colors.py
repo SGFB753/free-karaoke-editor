@@ -116,6 +116,51 @@ def main():
           and video.pips_lit(1.0, 2.0) == 0)
     check("and it never jumps past three", video.pips_lit(10.0, 0.01) == 3)
 
+    print("\nA duet frame: the backing smaller, to the right, off the dots")
+    # The second voice used to draw at full size and land on the countdown
+    # dots. Now the lead sits where a solo line sits, and the backing is
+    # smaller, right-aligned, tucked under it like a reply.
+    duet_song = {"colors": ["#00ff00", "#ff00ff"],
+                 "theme": {"bg": "#000000", "text": "#ffffff"},
+                 "data": {"title": "T", "duration": 20.0, "lines": [
+                     {"text": "lead line here", "start": 5.0, "end": 9.0, "voice": 1,
+                      "words": [{"w": "lead", "t": 5.0, "d": 1.3, "s": 1},
+                                {"w": "line", "t": 6.3, "d": 1.3, "s": 1},
+                                {"w": "here", "t": 7.6, "d": 1.3, "s": 1}]},
+                     {"text": "(na-na-na)", "start": 5.5, "end": 8.5, "voice": 2,
+                      "backing": True,
+                      "words": [{"w": "(na-na-na)", "t": 5.5, "d": 3.0, "s": 3}]},
+                     {"text": "next lead", "start": 12.0, "end": 14.0, "voice": 1,
+                      "words": [{"w": "next", "t": 12.0, "d": 1.0, "s": 1},
+                                {"w": "lead", "t": 13.0, "d": 1.0, "s": 1}]}]}}
+    wavd = tone(os.path.join(tmp, "d.wav"), 220.0, 20.0)
+    class AD:
+        width, height, fps, crf = 640, 360, 5, 30
+        preset, font = "ultrafast", None
+        start, seconds, audio, timings = 5.8, 2.0, "minus", None
+        output = os.path.join(tmp, "duet.mp4")
+    video.render(duet_song, wavd, AD.output, AD())
+    pngd = os.path.join(tmp, "duet.png")
+    subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "1.0", "-i", AD.output,
+                    "-frames:v", "1", pngd], check=True)
+    imd = Image.open(pngd).convert("RGB")
+    Wd, Hd = imd.size
+
+    def ink_at(y0, y1, x0=0.0, x1=1.0):
+        return sum(1 for y in range(int(Hd * y0), int(Hd * y1))
+                   for x in range(int(Wd * x0), int(Wd * x1), 2)
+                   if sum(imd.getpixel((x, y))) > 90)
+
+    lead_ink = ink_at(0.38, 0.50)
+    back_left = ink_at(0.50, 0.60, 0.0, 0.5)
+    back_right = ink_at(0.50, 0.60, 0.5, 1.0)
+    check("the lead is drawn where a solo line sits", lead_ink > 150, lead_ink)
+    check("the backing is there, under it", back_left + back_right > 30,
+          back_left + back_right)
+    check("and it leans right, smaller than the lead",
+          back_right > back_left * 1.5 and (back_left + back_right) < lead_ink,
+          f"left {back_left}, right {back_right}, lead {lead_ink}")
+
     print("\nThe frame reads forward, not back")
     # The sung line is gone from the frame; the current line has the next one
     # under it and the one after that fainter still — a queue, not a history.

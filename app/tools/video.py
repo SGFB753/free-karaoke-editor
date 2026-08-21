@@ -271,7 +271,7 @@ def extract_audio(payload: dict, html_path: str, tmp: str, mode: str) -> str:
 class LineArt:
     """Prepared images of a line: dim and lit, plus the word positions."""
 
-    def __init__(self, line, font_for, width, margin, main=True):
+    def __init__(self, line, font_for, width, margin, main=True, align="center"):
         from PIL import Image, ImageDraw
         words = [w["w"] for w in line["words"]] or [line["text"]]
         text = " ".join(words)
@@ -280,7 +280,9 @@ class LineArt:
         self.h = asc + desc + 8
 
         total = self.font.getlength(text)
-        x0 = (width - total) / 2
+        # the backing sits to the right, tucked under its lead like a reply
+        x0 = (width - margin - total) if align == "right" else (width - total) / 2
+        x0 = max(x0, margin)
         self.word_x, self.word_w = [], []
         prefix = ""
         for i, wd in enumerate(words):
@@ -298,7 +300,9 @@ class LineArt:
         self.faint = self.dim.copy()
         self.faint.putalpha(self.faint.getchannel("A").point(lambda v: v * 45 // 100))
         hot = COL_HOT2 if line.get("voice") == 2 else COL_HOT
-        self.hot = draw(hot) if main else None
+        # a duet's backing line fills as it is sung too — only the queue lines
+        # (drawn dim ahead of their time) never need a hot layer
+        self.hot = draw(hot) if (main or align == "right") else None
 
     def fill_x(self, line, t) -> float:
         """How far the line is filled in at moment t."""
@@ -374,12 +378,15 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
     art, art_side = {}, {}
 
-    def get(i, main=True):
-        store = art if main else art_side
+    art_duo = {}
+
+    def get(i, main=True, duo_side=False):
+        store = art_duo if duo_side else (art if main else art_side)
         if i not in store:
             if len(store) > 10:
                 store.clear()
-            store[i] = LineArt(lines[i], font_for, W, margin, main)
+            store[i] = LineArt(lines[i], font_for, W, margin, main,
+                               align="right" if duo_side else "center")
         return store[i]
 
     starts = [ln["start"] for ln in lines]
@@ -431,15 +438,22 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                         duo = j
                         break
 
+            duo_bottom = 0
             if idx >= 0:
-                # The order is fixed: first voice on top, second below.
-                # Otherwise they would swap places as the “current” line changes.
+                # The lead stays exactly where a solo line sits; the backing is
+                # smaller, to the right, tucked under it like a reply — two full
+                # rows used to collide with the dots and the queue.
                 pair = [idx] if duo < 0 else sorted(
                     [idx, duo], key=lambda j: lines[j].get("voice") == 2)
+                y_j = 0
                 for k, j in enumerate(pair):
-                    pic = get(j)
-                    y_j = (y_main - pic.h // 2 if duo < 0
-                           else (y_main - pic.h if k == 0 else y_main + pic.h // 4))
+                    is_back = k == 1
+                    pic = get(j, main=not is_back, duo_side=is_back)
+                    if not is_back:
+                        y_j = y_main - pic.h // 2
+                    else:
+                        y_j = y_j + get(pair[0]).h + int(H * 0.002)
+                        duo_bottom = y_j + pic.h
                     frame.paste(pic.dim, (0, y_j), pic.dim)
                     fx = int(pic.fill_x(lines[j], t))
                     if fx > 0:
@@ -465,7 +479,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 gap = lines[idx + 1]["start"] - (lines[idx]["end"] if idx >= 0 else 0)
                 left = lines[idx + 1]["start"] - t
                 lit = pips_lit(gap, left)
-                dots((y_main + y_next) // 2, lit)
+                dots(max((y_main + y_next) // 2, duo_bottom + int(H * 0.018)), lit)
 
                 # …and one more ahead, fainter: the singer reads forward, never
                 # back, and the queue keeps the frame symmetric.

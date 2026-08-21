@@ -301,6 +301,39 @@ await sleep(150);
 ok('back at 1× the song runs at full pace again', t3 - t2 > 0.75,
    (t3 - t2).toFixed(2) + ' s per 1.1 s');
 
+console.log('\n--- both duet lines light up on the stage ---');
+// The second voice sounding with the first used to sit unlit: the stage
+// showed one line of the two being sung.
+const duetState = await proj();
+const dl = JSON.parse(JSON.stringify(duetState.lines));
+// lead at 2–6, backing right over it
+dl[0].voice = 1; dl[0].backing = false;
+dl[0].start = 2.0; dl[0].end = 6.0;
+dl[0].words = dl[0].words.map((w, i) => ({...w, t: 2.0 + i, d: 0.9}));
+dl[1].voice = 2; dl[1].backing = true;
+dl[1].start = 2.5; dl[1].end = 5.5;
+dl[1].words = dl[1].words.map((w, i) => ({...w, t: 2.5 + i, d: 0.8}));
+await fetch(`${API}/api/project/${encodeURIComponent(PID)}/timings`, {method:'POST',
+  headers:{'Content-Type':'application/json'}, body: JSON.stringify({lines: dl})});
+await p.reload({waitUntil:'networkidle0'});
+await sleep(500);
+await p.waitForSelector('.card', {timeout:20000});
+await p.click('.card');
+await p.waitForSelector('#scrEdit:not(.hide)', {timeout:20000});
+await sleep(700);
+await p.keyboard.press('Space');
+await sleep(3200);                       // ~3.2 s in: inside the 2.5–5.5 overlap
+const litLines = await p.$$eval('#scroll .ln', els =>
+  els.map((e, i) => e.classList.contains('cur') ? i : -1).filter(i => i >= 0));
+await p.keyboard.press('Space');
+ok('both lines of the duet are lit at once',
+   litLines.includes(0) && litLines.includes(1), JSON.stringify(litLines));
+const fills = await p.$$eval('#scroll .ln',
+  els => els.slice(0, 2).map(e =>
+    [...e.querySelectorAll('.hl')].filter(h => parseFloat(h.style.width) > 0).length));
+ok('and the words of both are filling', fills[0] > 0 && fills[1] > 0,
+   JSON.stringify(fills));
+
 ok('no errors in the browser console', errs.length === 0, errs[0] || '');
 await b.close();
 console.log(fail ? `\nFAILED: ${fail}` : '\nAll checks passed');
