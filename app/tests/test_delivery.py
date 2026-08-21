@@ -267,6 +267,26 @@ def main():
           _ST.parse_args(["--host", "0.0.0.0", "--port", "8770"])[2] == "0.0.0.0")
     check("by default we listen to ourselves only", _ST.parse_args([])[2] == "127.0.0.1")
 
+    print("\nThe video keeps the original where the marks say so")
+    # The page says keepSpans; the MP4 is made from the page, and a vocalise
+    # muted in the video is a hole exactly where the song is loudest.
+    import importlib.util as _ilu
+    spec_v = _ilu.spec_from_file_location("video", os.path.join(ROOT, "tools", "video.py"))
+    video_mod = _ilu.module_from_spec(spec_v)
+    spec_v.loader.exec_module(video_mod)
+    got_spans = video_mod.keep_spans({"data": {
+        "lines": [{"keep": True, "start": 3.0, "end": 5.0},
+                  {"keep": False, "start": 6.0, "end": 8.0}],
+        "keepSpans": [[10.0, 40.0], [4.8, 5.6]]}})
+    check("the marked stretches are in the video's keep list",
+          any(abs(a - 10.0) < 0.01 and abs(b - 40.0) < 0.01 for a, b in got_spans),
+          got_spans)
+    check("and a mark touching a kept line merges with it",
+          any(abs(a - 3.0) < 0.01 and abs(b - 5.6) < 0.01 for a, b in got_spans),
+          got_spans)
+    check("a broken pair is dropped, not crashed on",
+          video_mod.keep_spans({"data": {"keepSpans": [["x"], None, [1.0]]}}) == [])
+
     print("\nThe version the program tells everyone")
     # Three places name it, and a person comparing them has to get one answer:
     # the program itself, the guide in the folder and the newest changelog entry.

@@ -747,9 +747,13 @@ def realign_part(folder: str, opts: dict, log) -> dict:
            f"моделью «{model}»"))
     # Everything outside the window is “no words here”: the model is shown the
     # stretch alone, and the times come back in the whole song's own reckoning.
+    # The marks made for the song hold inside the window too — a vocalise does
+    # not stop being one because only four lines are being retimed around it.
     outside = [(0.0, lo)] if lo > 0.05 else []
     if hi < dur - 0.05:
         outside.append((hi, dur))
+    outside += A.spans(opts.get("noText") if opts.get("noText") is not None
+                       else (data.get("noText") or ""), dur)
     piece, engine = A.align(piece, audio, dur, opts.get("align", "auto"), model,
                             opts.get("lang", "auto"), None, log,
                             isolated=bool(tracks.get("vocals")), skip=outside)
@@ -815,6 +819,28 @@ def realign(folder: str, opts: dict, log) -> dict:
     AU.ensure_on_path()
     holes = A.spans(opts.get("noText") or "", data["duration"]) + \
         A.spans(getattr(lyr, "skips", []), data["duration"])
+    # A line locked by hand is a peg for the aligner: the text around it cannot
+    # wander off across the song, because the model is only ever shown the
+    # stretch between two pegs. The line itself is put back exactly afterwards.
+    old_lines = data.get("lines") or []
+    if len(old_lines) == len(lyr.lines):
+        pegs = 0
+        for i, was_ln in enumerate(old_lines):
+            if was_ln.get("lock"):
+                lyr.lines[i].start = float(was_ln.get("start") or 0.0)
+                pegs += 1
+        if pegs and pegs < len(lyr.lines):
+            lyr.has_manual_times = True
+            log(tr(f"Locked lines are used as pegs: {pegs}",
+                   f"Запертые строки взяты как опорные точки: {pegs}"))
+        elif pegs:
+            # Everything is locked: there is nothing left for the aligner to do,
+            # and pretending otherwise would rewrite the words inside the lines.
+            log(tr("Every line is locked — nothing to time again.",
+                   "Заперты все строки — размечать нечего."))
+            return {"kind": "realign", "engine": data.get("engine", ""),
+                    "lines": len(lyr.lines), "was": was}
+
     # The model the song was built with, unless another is asked for outright.
     # It used to fall back to “small” here: a person picked medium, pressed
     # “Re-time”, and got a worse timing than the one they were fixing.

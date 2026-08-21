@@ -101,15 +101,17 @@ def main():
               f"first y={min(a)}, second y={min(b)}")
 
     print("\nThe intro countdown in the video")
+    # The wait has to be a real one: a countdown is shown from ten seconds up,
+    # because anything shorter is a breath between lines, not an interlude.
     intro = {"colors": ["#00ff00", "#ff00ff"], "theme": {"bg": "#000000", "text": "#ffffff"},
-             "data": {"title": "T", "duration": 20.0, "lines": [
-                 {"text": "aaa", "start": 6.0, "end": 9.5, "voice": 1,
-                  "words": [{"w": "aaa", "t": 6.0, "d": 3.5, "s": 1}]}]}}
-    wav2 = tone(os.path.join(tmp, "b.wav"), 220.0, 20.0)
+             "data": {"title": "T", "duration": 24.0, "lines": [
+                 {"text": "aaa", "start": 13.0, "end": 16.5, "voice": 1,
+                  "words": [{"w": "aaa", "t": 13.0, "d": 3.5, "s": 1}]}]}}
+    wav2 = tone(os.path.join(tmp, "b.wav"), 220.0, 24.0)
     class A3:
         width, height, fps, crf = 640, 360, 5, 30
         preset, font = "ultrafast", None
-        start, seconds, audio, timings = 0.0, 10.0, "minus", None
+        start, seconds, audio, timings = 0.0, 18.0, "minus", None
         output = os.path.join(tmp, "intro.mp4")
     video.render(intro, wav2, A3.output, A3())
     png2 = os.path.join(tmp, "intro.png")
@@ -125,7 +127,7 @@ def main():
     check("the countdown bar has its own colour", len(green) > 5, f"green pixels: {len(green)}")
     # while singing there must be no pill
     png3 = os.path.join(tmp, "sing.png")
-    subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "7.5", "-i", A3.output,
+    subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "14.5", "-i", A3.output,
                     "-frames:v", "1", png3], check=True)
     im3 = Image.open(png3).convert("RGB")
     top3 = [im3.getpixel((x, y)) for y in range(int(H2 * 0.06), int(H2 * 0.20))

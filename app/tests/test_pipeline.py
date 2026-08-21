@@ -1074,6 +1074,164 @@ def main():
           A.repair_silent(lyr_ok, 30.0, voiced_wav, log=msgs3.append) == 0
           and lyr_ok.lines[2].start == 21.0)
 
+    print("\nA time written in the text is a peg, not a timing")
+    # “[2:27] Remember this day” says: this line is sung about here. A line
+    # cannot then wander into a vocalise three minutes away — the model is only
+    # ever shown the stretch between two pegs.
+    import types
+
+    calls = []
+
+    class _Result:
+        segments = []
+
+    class _Model:
+        def align(self, audio, text, **kw):
+            calls.append({"text": text, "len": len(audio) / 16000})
+            return _Result()
+
+    fake = types.ModuleType("stable_whisper")
+    fake.load_model = lambda *a, **k: _Model()
+    real_mod = sys.modules.get("stable_whisper")
+    sys.modules["stable_whisper"] = fake
+    try:
+        pegged = L.parse("[0:02] раз строка тут\nдва строка тут\n"
+                         "[0:16] три строка тут\nчетыре строка тут")
+        check("the pegs are read, and the rest left open",
+              [ln.start for ln in pegged.lines] == [2.0, None, 16.0, None],
+              [ln.start for ln in pegged.lines])
+        said = []
+        A.align_anchored(pegged, song, 26.0, model_name="small", language="ru",
+                         log=said.append)
+        check("the song is aligned in as many stretches as there are pegs",
+              len(calls) == 2, len(calls))
+        check("each stretch gets its own lines and no others",
+              calls[0]["text"].count("\n") == 1 and calls[1]["text"].count("\n") == 1,
+              [c["text"].replace("\n", " | ") for c in calls])
+        check("and hears only the audio between its pegs",
+              all(c["len"] < 20 for c in calls), [round(c["len"], 1) for c in calls])
+        check("the log says which lines went with which stretch",
+              any("строки 1–2" in m for m in said), [m for m in said if "строки" in m][:2])
+    finally:
+        if real_mod is not None:
+            sys.modules["stable_whisper"] = real_mod
+        else:
+            sys.modules.pop("stable_whisper", None)
+
+    # Without stable-ts the pegs must still mean something: each stretch is
+    # laid out by loudness, but inside its own pegs. They used to be dropped
+    # on the floor the moment the import failed.
+    hidden = sys.modules.get("stable_whisper")
+    sys.modules["stable_whisper"] = None
+    try:
+        pegged2 = L.parse("[0:02] раз строка тут\nдва строка тут\n"
+                          "[0:16] три строка тут\nчетыре строка тут")
+        got2, engine2 = A.align(pegged2, song, 26.0, engine="auto")
+        check("without stable-ts the engine is named honestly",
+              engine2 == "energy", engine2)
+        check("and the pegs still hold: the late lines start after theirs",
+              all(ln.start >= 15.5 for ln in got2.lines[2:]),
+              [round(ln.start, 1) for ln in got2.lines])
+        check("while the early lines stay inside their own stretch",
+              all(ln.end <= 16.5 for ln in got2.lines[:2]),
+              [round(ln.end, 1) for ln in got2.lines[:2]])
+    finally:
+        if hidden is not None:
+            sys.modules["stable_whisper"] = hidden
+        else:
+            sys.modules.pop("stable_whisper", None)
+
+    # A peg written out of order is refused with a word, not obeyed.
+    disorder = L.parse("[0:16] раз строка тут\n[0:04] два строка тут\nтри строка тут")
+    said_d = []
+    sys.modules["stable_whisper"] = None
+    try:
+        A.align(disorder, song, 26.0, engine="auto", log=said_d.append)
+    finally:
+        if hidden is not None:
+            sys.modules["stable_whisper"] = hidden
+        else:
+            sys.modules.pop("stable_whisper", None)
+    check("a peg earlier than the one above it is dropped and named",
+          any("пропускаю" in m or "ignoring" in m for m in said_d),
+          [m for m in said_d if "привязан" in m or "pegged" in m][:1])
+
+    # a text where EVERY line is timed is a timing, not pegs — unchanged
+    everyone = L.parse("[0:02] раз строка тут\n[0:06] два строка тут")
+    got, engine_used = A.align(everyone, song, 26.0, engine="energy")
+    check("a fully timed text is still taken as it is", engine_used == "manual",
+          engine_used)
+
+    print("\nThe countdown waits for a real pause")
+    # A five-second gap between lines is a breath, not an interlude, and a
+    # countdown over it pulls the eye off the singing for nothing.
+    ui = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                           "kstudio", "ui.js"), encoding="utf-8").read()
+    m = re.search(r"const MIN_GAP = ([\d.]+)", ui)
+    check("the studio waits ten seconds before counting down",
+          m and float(m.group(1)) >= 10.0, m.group(1) if m else "not found")
+    vid = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "tools", "video.py"), encoding="utf-8").read()
+    m2 = re.search(r"if gap >= ([\d.]+):", vid)
+    check("and the video says the same", m2 and float(m2.group(1)) >= 10.0,
+          m2.group(1) if m2 else "not found")
+
+    print("\nLines do not reach across a marked hole")
+    # The aligner has to end a line somewhere, and next to a hole the nearest
+    # thing it finds is the far side of the silence: five words then last a
+    # minute and a half, and putting that right by hand means dragging an edge
+    # across the whole emptiness.
+    holes_here = [(10.0, 95.0)]
+
+    def _line_at(text, a, b):
+        lyr = L.parse(text)
+        A._spread(lyr.lines[0].words, a, b)
+        lyr.lines[0].start, lyr.lines[0].end = a, b
+        return lyr
+
+    over = _line_at("первая строка тут", 5.0, 95.0)
+    check("a line running into a hole ends where the hole begins",
+          A.clip_to_marks(over, holes_here) == 1
+          and abs(over.lines[0].end - 10.0) < 0.05,
+          f"{over.lines[0].start:.1f}–{over.lines[0].end:.1f}")
+    check("and its words are inside what is left",
+          over.lines[0].words[-1].end <= 10.05,
+          over.lines[0].words[-1].end)
+
+    after = _line_at("вторая строка тут", 20.0, 99.0)
+    check("a line starting inside a hole begins where the hole ends",
+          A.clip_to_marks(after, holes_here) == 1
+          and abs(after.lines[0].start - 95.0) < 0.05,
+          f"{after.lines[0].start:.1f}–{after.lines[0].end:.1f}")
+
+    # A line stretched over the whole hole keeps whichever side is longer:
+    # there is no telling which end the words really belong to, so the bigger
+    # piece of real singing wins.
+    across = _line_at("третья строка тут", 5.0, 99.0)      # 5 s before, 4 s after
+    A.clip_to_marks(across, holes_here)
+    check("a line spanning the whole hole keeps its longer half",
+          abs(across.lines[0].start - 5.0) < 0.05 and abs(across.lines[0].end - 10.0) < 0.05,
+          f"{across.lines[0].start:.1f}–{across.lines[0].end:.1f}")
+    other_way = _line_at("третья строка тут", 8.0, 110.0)  # 2 s before, 15 s after
+    A.clip_to_marks(other_way, holes_here)
+    check("and the other way round when the longer half is on the other side",
+          abs(other_way.lines[0].start - 95.0) < 0.05,
+          f"{other_way.lines[0].start:.1f}–{other_way.lines[0].end:.1f}")
+
+    inside = _line_at("четвёртая строка тут", 30.0, 40.0)
+    check("a line wholly inside a hole is left for the moving to deal with",
+          A.clip_to_marks(inside, holes_here) == 0
+          and inside.lines[0].start == 30.0)
+
+    clear = _line_at("пятая строка тут", 96.0, 98.0)
+    check("a line clear of every hole is not touched",
+          A.clip_to_marks(clear, holes_here) == 0 and clear.lines[0].end == 98.0)
+
+    tiny = _line_at("шестая строка тут", 9.9, 60.0)
+    A.clip_to_marks(tiny, holes_here)
+    check("and a trim that would leave nothing usable is not made",
+          tiny.lines[0].end > 10.5, f"{tiny.lines[0].start:.1f}–{tiny.lines[0].end:.1f}")
+
     print("\nA vocalise is heard, not muted")
     # “♪ Original” keeps the recorded voice on a line — but a vocalise has no
     # lines at all, so there was nothing to put the mark on, and the karaoke
@@ -1315,6 +1473,61 @@ def main():
     before = len(beats)
     time.sleep(0.4)
     check("it goes quiet after leaving", len(beats) == before)
+
+    # The share done, and what it means for the wait. A step that says only how
+    # long it has been running tells a person nothing about whether to wait.
+    beats_left = []
+    with Heartbeat(beats_left.append, "разметка", every=0.15) as hb3:
+        time.sleep(0.2)
+        hb3.progress(2, 100)
+        time.sleep(0.25)
+    said = " ".join(beats_left)
+    check("the share done is shown", "2%" in said, beats_left[-1] if beats_left else "")
+    check("and how long is left, measured at this machine's own pace",
+          "осталось примерно" in said or "left" in said, beats_left[-1] if beats_left else "")
+    near_end = []
+    with Heartbeat(near_end.append, "разметка", every=0.15) as hb4:
+        time.sleep(0.2)
+        hb4.progress(99, 100)
+        time.sleep(0.25)
+    check("a couple of seconds left is not worth saying",
+          not any("примерно" in b or "left" in b for b in near_end), near_end[-1:])
+
+    # And the call that produces those numbers: the library counts nothing when
+    # its own progress bar is switched off, and hands back zeros for minutes.
+    import types
+    seen_kw = {}
+
+    class _FakeResult:
+        segments = []
+
+    class _FakeModel:
+        def align(self, audio, text, **kw):
+            seen_kw.update(kw)
+            cb = kw.get("progress_callback")
+            if cb:
+                cb(30, 100)          # the library reporting its own progress
+            return _FakeResult()
+
+    fake = types.ModuleType("stable_whisper")
+    fake.load_model = lambda *a, **k: _FakeModel()
+    real_mod = sys.modules.get("stable_whisper")
+    sys.modules["stable_whisper"] = fake
+    said_lines = []
+    try:
+        A.align_whisper(L.parse("раз строка тут"), song, 26.0, model_name="small",
+                        language="ru", log=said_lines.append)
+    except Exception:
+        pass                          # the fake returns no words; the call is the point
+    finally:
+        if real_mod is not None:
+            sys.modules["stable_whisper"] = real_mod
+        else:
+            sys.modules.pop("stable_whisper", None)
+    check("the aligner is asked to report its progress",
+          callable(seen_kw.get("progress_callback")), sorted(seen_kw))
+    check("and its own counter is left switched on, or it reports zeros",
+          seen_kw.get("verbose") is False, repr(seen_kw.get("verbose")))
 
     # A sign of life must never bring the step down: if the log throws, stay quiet.
     def bad_log(_):

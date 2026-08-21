@@ -7,6 +7,50 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.31.0
+
+**The log now says how much is left.** The alignment used to report only how
+long it had been running: its own counter was switched off by the way we called
+the library, and the progress it handed us was zero from beginning to end. Now
+the line reads “running 2:30, done 34%, about 4:50 left” — the remainder
+measured at this machine's own pace, and not shown at all when the end is
+seconds away. The countdown to the next line, in the studio and in the video,
+now waits for a real pause: ten seconds, not five — anything shorter is a
+breath between lines.
+
+**Word chips no longer lie on each other.** A sung word runs into the next one
+more often than not, and drawn by their durations the chips overlapped at any
+zoom. A chip now stops where the next word begins — the times themselves are
+untouched. “⤢ Fit the line” zooms the timeline to the selected line in one
+press, and dragging an edge with **Alt** held squeezes the whole line instead
+of stretching its outermost word — which is what narrowing a line that
+swallowed an interlude actually means. When an edge meets the outermost word,
+the window now says so instead of silently refusing.
+
+**The marks now push back.** A line next to a marked stretch used to reach
+across it — the aligner has to end a line somewhere — and five words lasted a
+minute and a half. Line spans are now cut back out of the marked stretches
+during the timing, and “↹ Trim by the marks” does the same to an already built
+song, moving lines that sit wholly inside a hole onto the singing that follows.
+The MP4 keeps the original voice on the marked stretches too, as the page
+already did. And a partial re-timing heeds the marks inside its window — a
+vocalise does not stop being one because only four lines are retimed around it.
+
+**“This part is sung from about here.”** A time in square brackets before a
+line — `[2:27] Remember this day` — is a peg, not a timing: the song is aligned
+stretch by stretch between pegs, and the model never hears the audio beyond
+them, so a line cannot wander into a vocalise three minutes away. A locked line
+works as a peg on re-timing. Pegs out of order are dropped with a word in the
+log; without stable-ts each stretch is laid out by loudness, still inside its
+own pegs, and the engine is named honestly.
+
+**The window is watched for layout accidents now.** A suite drives the studio
+through five window sizes and three screens and fails on anything overlapping,
+anything running off the edge, and any control squeezed to a sliver — the two
+layout bugs that reached a person did so because nothing was looking.
+
+---
+
 ## 4.30.0
 
 **A vocalise is heard, not muted.** “♪ Original” keeps the recorded voice on a

@@ -74,6 +74,9 @@ ok('the lines around it were timed anew', data.lines[1].start > 1.4, data.lines[
 ok('the log says what was left alone',
    /заперт|locked/i.test((withLock.log || []).join('\n')),
    (withLock.log || []).find(l => /заперт|locked/i.test(l)) || '');
+ok('and it was used as a peg for the rest of the text',
+   /опорны|pegs/i.test((withLock.log || []).join('\n')),
+   (withLock.log || []).find(l => /опорны|pegs/i.test(l)) || '');
 
 // unlock it again, so the checks below see an ordinary song
 const back = JSON.parse(JSON.stringify(data.lines));
@@ -119,6 +122,23 @@ const sillyEnd = silly.job ? await finish(silly.job) : {ok: false, error: silly.
 ok('an impossible choice of lines is refused',
    !sillyEnd.ok && /не выбрано|no lines/i.test(JSON.stringify(sillyEnd)),
    JSON.stringify(sillyEnd).slice(0, 90));
+
+console.log('\n--- a partial re-timing heeds the marks too ---');
+// The test song sings at 2.0-4.6, 5.0-7.6, 8.0-10.6, 11.0-13.6, 16.0-18.6,
+// 19.0-21.6. Re-time lines 3–4 with the third phrase marked as wordless:
+// they must land on the fourth phrase and beyond, not on the marked one.
+const part2 = await finish((await post(`/api/project/${encodeURIComponent(pid)}/realign-part`,
+  {from: 2, to: 3, align: 'energy', noText: '0:08-0:10.7'})).job);
+ok('the re-timing goes through', part2.ok, (part2.log || []).slice(-1)[0]);
+data = await get('/api/project/' + encodeURIComponent(pid));
+const third = data.lines[2];
+ok('no re-timed line landed on the marked stretch',
+   third.start >= 10.55 || third.end <= 8.05,
+   `${third.start.toFixed(1)}–${third.end.toFixed(1)}`);
+const fourth = data.lines[3];
+ok('nor the one after it',
+   fourth.start >= 10.55 || fourth.end <= 8.05,
+   `${fourth.start.toFixed(1)}–${fourth.end.toFixed(1)}`);
 
 console.log('\n--- nonsense in the field is ignored, not obeyed ---');
 const junk = await finish((await post(`/api/project/${encodeURIComponent(pid)}/realign`,

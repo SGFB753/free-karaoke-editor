@@ -215,7 +215,11 @@
     border:1px solid var(--line); background:none; cursor:pointer; flex:none}
 
   .side{width:290px; flex:none; border-left:1px solid var(--line); display:flex;
-    flex-direction:column; background:rgba(0,0,0,.2)}
+    flex-direction:column; background:rgba(0,0,0,.2);
+    /* Without this the panel grows to fit its list instead of scrolling it,
+       and spills over the toolbar under it — the “Check” heading ended up
+       printed across the buttons. */
+    min-height:0; overflow:hidden}
   .side h3{font-size:0.8125rem; letter-spacing:1.4px; text-transform:uppercase;
     color:var(--muted); padding:14px 14px 8px}
   /* The song summary: the same as the pre-build report, but from the finished
@@ -500,6 +504,8 @@
     <div class="tlhead">
       <span data-t="timeline">Timeline</span>
       <button id="btnZoomOut">−</button><button id="btnZoomIn">＋</button>
+      <button id="btnFit" data-tt="fitHint" data-t="fitLine"
+              title="Zoom so the selected line fills the timeline">⤢ Fit the line</button>
       <span id="zoomNote">15 s</span>
       <span class="sp" style="flex:1"></span>
       <span id="selNote" data-t="noLine">no line selected</span>
@@ -543,6 +549,8 @@
               title="Play the selected line over and over">↻ Loop</button>
       <button id="btnSnap" data-tt="snapHint" data-t="snapAll"
               title="Move every line to the nearest moment singing starts">Snap all to the vocal</button>
+      <button id="btnClip" data-tt="clipHint" data-t="clipMarks"
+              title="Cut the line spans back out of the marked stretches">↹ Trim by the marks</button>
       <button id="btnMark" data-tt="markHint" data-t="markMode"
               title="Mark on the waveform the stretches that hold no words">✂ No words here</button>
       <label class="chk" data-tt="keepMarksHint"><input type="checkbox" id="chkKeepMarks" checked>

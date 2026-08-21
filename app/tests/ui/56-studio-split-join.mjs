@@ -81,6 +81,57 @@ ok('the song is exactly as it was found',
    restored.text.trim() === first.text.trim()
    && Math.abs(restored.start - first.start) < 0.001, restored.text);
 
+console.log('\n--- narrowing a line that swallowed an interlude ---');
+// The edge alone only stretches the outermost word: on a line that grabbed a
+// minute and a half that is no use. With Alt the whole line is squeezed.
+const wide = await proj();
+const idx = 0;
+const box = await p.$eval('#tlwrap', e => {
+  const r = e.getBoundingClientRect();
+  return {x: r.left, y: r.top, w: r.width, h: r.height};
+});
+// make line 1 absurdly long first, the way the aligner does over a hole
+const bent2 = JSON.parse(JSON.stringify(wide.lines));
+bent2[idx].end = bent2[idx].start + 12;
+bent2[idx].words = bent2[idx].words.map((w, i) => ({...w, d: i === bent2[idx].words.length - 1 ? 10 : w.d}));
+await fetch(`${API}/api/project/${encodeURIComponent(PID)}/timings`, {method:'POST',
+  headers:{'Content-Type':'application/json'}, body: JSON.stringify({lines: bent2})});
+await p.reload({waitUntil:'networkidle0'});
+await sleep(500);
+await p.waitForSelector('.card', {timeout:20000});
+await p.click('.card');
+await p.waitForSelector('#scrEdit:not(.hide)', {timeout:20000});
+await sleep(700);
+await p.click('#scroll .ln');
+await sleep(300);
+
+// Bring the line into view first, or its edge is off the timeline entirely.
+await p.click('#btnFit');
+await sleep(400);
+const blk = await p.$('#blocks .blk');
+const rect = await blk.boundingBox();
+ok('the long line is on the timeline', !!rect, JSON.stringify(rect || {}));
+if (rect){
+  // grab the right edge and pull it left with Alt held
+  await p.keyboard.down('Alt');
+  await p.mouse.move(rect.x + rect.width - 2, rect.y + rect.height / 2);
+  await p.mouse.down();
+  await p.mouse.move(rect.x + rect.width / 2, rect.y + rect.height / 2, {steps: 10});
+  await p.mouse.up();
+  await p.keyboard.up('Alt');
+  await sleep(1200);
+  const after = (await proj()).lines[idx];
+  const wasSpan = bent2[idx].end - bent2[idx].start;
+  const nowSpan = after.end - after.start;
+  ok('the line got shorter', nowSpan < wasSpan * 0.8, `${wasSpan.toFixed(1)} → ${nowSpan.toFixed(1)}`);
+  ok('and every word is inside it',
+     after.words.every(w => w.t >= after.start - 0.01 && w.t + w.d <= after.end + 0.01),
+     JSON.stringify(after.words.map(w => [w.t.toFixed(2), w.d.toFixed(2)])));
+  ok('the words did not pile up on each other',
+     after.words.every((w, i) => i === 0 || w.t >= after.words[i - 1].t),
+     JSON.stringify(after.words.map(w => w.t.toFixed(2))));
+}
+
 ok('no errors in the browser console', errs.length === 0, errs[0] || '');
 await b.close();
 console.log(fail ? `\nFAILED: ${fail}` : '\nAll checks passed');

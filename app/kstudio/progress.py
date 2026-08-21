@@ -68,11 +68,18 @@ class Heartbeat:
     def _line(self) -> str:
         with self._lock:
             done, total, extra = self._done, self._total, self._extra
-        s = "  …" + self._what + tr(": running ", ": идёт ") + mmss(time.time() - self._t0)
+        gone = time.time() - self._t0
+        s = "  …" + self._what + tr(": running ", ": идёт ") + mmss(gone)
         # Show the fraction only when it means something: a counter at zero or
         # at the very end says no more than no counter at all.
         if total > 0 and 0 < done < total:
-            s += tr(", done ", ", готово ") + f"{done / total * 100:.0f}%"
+            share = done / total
+            s += tr(", done ", ", готово ") + f"{share * 100:.0f}%"
+            # How long is left, at the pace this very machine has been keeping.
+            # An estimate, and an honest one: it is measured, not guessed at.
+            left = gone / share - gone
+            if left > 5:
+                s += tr(", about ", ", осталось примерно ") + mmss(left) + tr(" left", "")
         if extra:
             s += f" ({extra})"
         return s

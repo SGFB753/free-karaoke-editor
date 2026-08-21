@@ -277,7 +277,9 @@ def align_energy(lyrics: Lyrics, audio_path: str, duration: float,
 def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                   model_name: str = "medium", language: str = "ru",
                   device: Optional[str] = None, log: Log = _noop,
-                  isolated: bool = False, skip: Optional[List[tuple]] = None) -> Lyrics:
+                  isolated: bool = False, skip: Optional[List[tuple]] = None,
+                  model=None) -> Lyrics:
+    lent = model is not None
     import stable_whisper
 
     from . import sysinfo
@@ -299,7 +301,12 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
 
     # Say what is true: if the model is on disk, promising a download is a lie —
     # the window next to it says “already downloaded”, and one of the two lied.
-    log(M.load_note(model_name))
+    if model is not None:
+        # Handed in: a song aligned piece by piece must not load gigabytes anew
+        # for every piece.
+        pass
+    else:
+        log(M.load_note(model_name))
     try:
         # medium is a gigabyte and a half: both loading from disk and the first
         # download take minutes in silence, and the window looks frozen.
@@ -317,7 +324,8 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                            f"перекладывает данные на диск, и шаг растягивается "
                            f"в разы. Помогает модель поменьше: "
                            f"medium → small → base.")):
-            model = stable_whisper.load_model(model_name, device=device)
+            if model is None:
+                model = stable_whisper.load_model(model_name, device=device)
     except Exception as e:
         # Catch a failed download separately: “Connection refused” explains
         # nothing by itself, and the cause is almost always this machine's net.
@@ -410,9 +418,13 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                            "дольше. Прервать можно, разметка пересчитается "
                            "с другой моделью.")) as hb:
             try:
+                # verbose=False, not None: with None the library switches its
+                # own counter off, and then the progress it hands us is zero
+                # from beginning to end — which is how this step spent minutes
+                # saying only how long it had been running.
                 result = model.align(audio_input, lyrics.plain_text(),
                                      language=language, original_split=True,
-                                     progress_callback=hb.progress, verbose=None)
+                                     progress_callback=hb.progress, verbose=False)
             except TypeError:
                 # older stable-ts builds lack these parameters — the elapsed
                 # time still shows, it comes from Heartbeat itself
@@ -482,8 +494,11 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     else:
         log(tr(f"  words matched: {matched:.0%}", f"  сопоставлено слов: {matched:.0%}"))
 
-    # the model weighs gigabytes — let it go at once, it is not needed further
-    del result, model
+    # the model weighs gigabytes — let it go at once, it is not needed further.
+    # A lent one is its owner's business: pieces of one song share it.
+    del result
+    if not lent:
+        del model
     import gc
     gc.collect()
 
@@ -508,6 +523,11 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     # the damage it is meant to prevent.
     if isolated or skip:
         repair_silent(lyrics, duration, audio_path, log=log, skip=skip)
+    if skip:
+        # A line may still reach across a hole from the outside: the aligner
+        # had to end it somewhere, and the far side of the silence was the
+        # nearest thing it could find.
+        clip_to_marks(lyrics, skip, log=log)
     repair_order(lyrics, log=log)
     _fill_lines(lyrics, duration)      # after repairs the bounds may exceed the track
 
@@ -1066,6 +1086,53 @@ def repair_silent(lyrics: Lyrics, duration: float, audio_path: str,
     return moved
 
 
+def clip_to_marks(lyrics: Lyrics, skip: List[tuple], log: Log = _noop) -> int:
+    """Keep line spans out of the stretches that hold no words.
+
+    A line next to a marked stretch reaches across it: the aligner has to end a
+    line somewhere, and the nearest thing it can find is the far side of the
+    silence. On screen a line of five words then lasts a minute and a half, and
+    putting that right by hand means dragging its edge across the whole hole.
+
+    The marks already say where the emptiness is, so the span is simply cut
+    back to it: a line that ends inside a hole ends where the hole begins, one
+    that starts inside it starts where it ends. Words keep their order and are
+    squeezed into what is left; a line lying wholly inside a hole is not this
+    function's business — that is what moving it onto the singing is for.
+    """
+    fixed = 0
+    for ln in lyrics.lines:
+        if ln.start is None or ln.end is None or not ln.words:
+            continue
+        a, b = ln.start, ln.end
+        for lo, hi in skip:
+            if b <= lo or a >= hi:
+                continue                      # nowhere near this hole
+            if a >= lo and b <= hi:
+                continue                      # wholly inside: not ours to trim
+            if a < lo < b <= hi:
+                b = lo                        # runs into the hole: end sooner
+            elif lo <= a < hi < b:
+                a = hi                        # starts inside it: begin later
+            elif a < lo and hi < b:
+                # the line spans the whole hole: keep the longer half
+                if lo - a >= b - hi:
+                    b = lo
+                else:
+                    a = hi
+        if abs(a - ln.start) < 0.01 and abs(b - ln.end) < 0.01:
+            continue
+        if b - a < 0.2:
+            continue                          # nothing usable would be left
+        _spread(ln.words, a, b)
+        ln.start, ln.end = ln.words[0].start, ln.words[-1].end
+        fixed += 1
+    if fixed:
+        log(tr(f"  lines trimmed back out of the wordless stretches: {fixed}",
+               f"  строк подрезано по краям пустот: {fixed}"))
+    return fixed
+
+
 def repair_order(lyrics: Lyrics, log: Log = _noop) -> int:
     """Pull overlapping lines apart: a line must not end past the start of the
     next one, or the highlight jumps around."""
@@ -1121,16 +1188,119 @@ def _fill_lines(lyrics: Lyrics, duration: float, min_word: float = 0.12) -> None
         ln.end = ln.words[-1].end
 
 
+def align_anchored(lyrics: Lyrics, audio_path: str, duration: float,
+                   model_name: str = "medium", language: str = "ru",
+                   device: Optional[str] = None, log: Log = _noop,
+                   isolated: bool = False, skip=None) -> Lyrics:
+    """Align a song whose text carries a few times of its own.
+
+    “[2:27] Remember this day” in the lyrics file says: this line is sung about
+    here. It is not a timing — it is a peg. The song is aligned between pegs:
+    each stretch of text is shown only the audio between its own two, so a line
+    cannot wander into a vocalise three minutes away, which is the one thing
+    the model does that no repair can undo.
+
+    A line with no peg is timed as always, inside the stretch it belongs to.
+    """
+    try:
+        import stable_whisper
+        have_whisper = True
+    except ImportError:
+        have_whisper = False
+
+    pegs = []
+    for i, ln in enumerate(lyrics.lines):
+        if ln.start is None:
+            continue
+        if pegs and ln.start <= pegs[-1][1]:
+            # Later in the text, earlier in the song: one of the two is wrong,
+            # and a window that runs backwards would swallow the song whole.
+            log(tr(f"  line {i + 1} is pegged at {mmss(ln.start)}, before the peg "
+                   f"above it — ignoring this one",
+                   f"  строка {i + 1} привязана к {mmss(ln.start)} — раньше, чем "
+                   f"привязка выше; эту пропускаю"))
+            ln.start = None
+            continue
+        pegs.append((i, ln.start))
+    if not pegs:
+        return align_whisper(lyrics, audio_path, duration, model_name, language,
+                             device, log, isolated=isolated, skip=skip)
+
+    from . import models as M
+    log(tr(f"The text carries {len(pegs)} times of its own — aligning between them",
+           f"В тексте {len(pegs)} собственных времён — размечаю между ними"))
+    model = None
+    if have_whisper:
+        log(M.load_note(model_name))
+        model = stable_whisper.load_model(model_name, device=device)
+    else:
+        log(tr("  stable-ts is not installed — each stretch is laid out by loudness, "
+               "but still inside its own pegs",
+               "  stable-ts не установлен — каждый кусок разложу по громкости, "
+               "но в пределах своих привязок"))
+
+    # A peg opens a stretch; the one before the first peg is a stretch too.
+    bounds = []
+    if pegs[0][0] > 0:
+        bounds.append((0, pegs[0][0] - 1, 0.0, pegs[0][1]))
+    for k, (i, t) in enumerate(pegs):
+        last = (pegs[k + 1][0] - 1) if k + 1 < len(pegs) else len(lyrics.lines) - 1
+        end = pegs[k + 1][1] if k + 1 < len(pegs) else duration
+        bounds.append((i, last, t, end))
+
+    out: List = []
+    for a, b, t0, t1 in bounds:
+        piece = Lyrics(lines=lyrics.lines[a:b + 1])
+        for ln in piece.lines:
+            ln.start = ln.end = None
+            for w in ln.words:
+                w.start = w.end = None
+        outside = ([(0.0, t0)] if t0 > 0.05 else []) + \
+                  ([(t1, duration)] if t1 < duration - 0.05 else [])
+        holes = spans((skip or []) + outside, duration)
+        log(tr(f"  lines {a + 1}–{b + 1}, between {mmss(t0)} and {mmss(t1)}",
+               f"  строки {a + 1}–{b + 1}, между {mmss(t0)} и {mmss(t1)}"))
+        try:
+            if not have_whisper:
+                raise RuntimeError("no stable-ts")
+            align_whisper(piece, audio_path, duration, model_name, language,
+                          device, log, isolated=isolated, skip=holes, model=model)
+        except Exception as e:
+            log(tr(f"  this stretch would not align ({e}) — spread by loudness instead",
+                   f"  этот кусок не разметился ({e}) — раскладываю по громкости"))
+            align_energy(piece, audio_path, duration, log, skip=holes)
+        out.extend(piece.lines)
+
+    lyrics.lines = out
+    lyrics.has_manual_times = False
+    _fill_lines(lyrics, duration)
+    repair_order(lyrics, log=log)
+    return lyrics
+
+
 def align(lyrics: Lyrics, audio_path: str, duration: float, engine: str = "auto",
           model_name: str = "medium", language: str = "ru",
           device: Optional[str] = None, log: Log = _noop,
           isolated: bool = False, skip=None) -> tuple:
     """Returns (lyrics, engine_used)."""
-    if lyrics.has_manual_times:
+    timed = sum(1 for ln in lyrics.lines if ln.start is not None)
+    if lyrics.has_manual_times and timed == len(lyrics.lines):
         log(tr("The text already has [mm:ss.dd] timings — skipping alignment.",
             "В тексте уже есть тайминги [мм:сс.дд] — выравнивание пропускаю."))
         _spread_manual(lyrics, duration)
         return lyrics, "manual"
+    if lyrics.has_manual_times and engine in ("auto", "whisper"):
+        # Some lines carry a time and some do not: those are pegs, not a
+        # timing. align_anchored copes without stable-ts too — each stretch is
+        # laid out by loudness, still inside its own pegs — so the import must
+        # not stand between the pegs and their meaning.
+        try:
+            import stable_whisper  # noqa: F401
+            label = "whisper"
+        except ImportError:
+            label = "energy"
+        return align_anchored(lyrics, audio_path, duration, model_name, language,
+                              device, log, isolated=isolated, skip=skip), label
 
     if engine in ("auto", "whisper"):
         try:

@@ -55,7 +55,8 @@ const STR = {
     snapHint: "Move every line to the nearest moment singing starts",
     howto: "Click a line → play up to where it starts being sung → <b>Enter</b>. " +
       "Blue blocks are lines, the yellow ones under them are that line's words. " +
-      "Drag the middle to move, <b>drag the edges to set the length</b>. Fine-tune " +
+      "Drag the middle to move, <b>drag the edges to set the length</b> " +
+      "(<b>Alt</b> squeezes the whole line). Fine-tune " +
       "a line with <b>[</b> and <b>]</b>. Made a mistake — <b>Ctrl+Z</b>. " +
       "The lyrics scroll with the wheel, <b>Home</b> and <b>End</b> jump to the ends. " +
       "<b>Press and drag across the lines</b> to pick several — or " +
@@ -173,6 +174,18 @@ const STR = {
     dropFail: "Could not take the file: ",
     pickBoth: "Point to both files",
     noTextLabel: "Where there are no words",
+    clipMarks: "↹ Trim by the marks",
+    clipHint: "Cut the line spans back out of the marked stretches: a line next "
+      + "to a hole reaches across it, and a couple of words end up lasting a "
+      + "minute. Nothing is timed again.",
+    clipNoMarks: "Nothing is marked yet",
+    clipNothing: "No line reaches into a marked stretch",
+    clipDone: n => `Trimmed: ${n} lines`,
+    clipMoved: (n, m) => `Trimmed: ${n}, moved out of the marked stretches: ${m}`,
+    edgeLimit: "The edge has met the outermost word — hold Alt and drag to squeeze the whole line",
+    fitLine: "⤢ Fit the line",
+    fitHint: "Zoom the timeline so the selected line fills it — the words come "
+      + "apart and can be taken one by one.",
     markMode: "✂ No words here",
     keepMarks: "original on the marks",
     keepMarksHint: "On a marked stretch there is nothing to sing, so the "
@@ -352,7 +365,8 @@ const STR = {
     snapHint: "Подвинуть все строки к ближайшему началу пения",
     howto: "Щёлкните строку → доиграйте до места, где её начинают петь → " +
       "<b>Enter</b>. Синие блоки — строки, жёлтые под ними — слова этой строки. " +
-      "За середину — подвинуть, <b>за края — задать длину</b>. Точная подгонка " +
+      "За середину — подвинуть, <b>за края — задать длину</b> "
+      + "(<b>Alt</b> сжимает всю строку). Точная подгонка " +
       "строки — <b>[</b> и <b>]</b>. Ошиблись — <b>Ctrl+Z</b>. " +
       "Текст листается колесом, <b>Home</b> и <b>End</b> — к началу и концу. " +
       "<b>Зажмите и проведите по строкам</b> — выделятся все, по которым " +
@@ -470,6 +484,18 @@ const STR = {
     dropFail: "Не получилось принять файл: ",
     pickBoth: "Укажите оба файла",
     noTextLabel: "Где текста нет",
+    clipMarks: "↹ Обрезать по отметкам",
+    clipHint: "Обрезать длины строк по отмеченным пустотам: строка рядом с ямой "
+      + "тянется через неё, и пара слов оказывается длиной в минуту. Заново "
+      + "ничего не размечается.",
+    clipNoMarks: "Пока ничего не отмечено",
+    clipNothing: "Ни одна строка не залезает в отмеченные пустоты",
+    clipDone: n => `Подрезано строк: ${n}`,
+    clipMoved: (n, m) => `Подрезано: ${n}, вынесено из отмеченных пустот: ${m}`,
+    edgeLimit: "Край упёрся в крайнее слово — с зажатым Alt тянется вся строка целиком",
+    fitLine: "⤢ По строке",
+    fitHint: "Приблизить линейку так, чтобы выбранная строка заняла её целиком — "
+      + "слова разойдутся, и их можно брать поодиночке.",
     markMode: "✂ Здесь нет текста",
     keepMarks: "оригинал на отметках",
     keepMarksHint: "На отмеченном куске петь нечего, поэтому там в минусовке "
@@ -1576,7 +1602,9 @@ function showWait(t, cur){
   const box = $("wait");
   // A short gap between lines needs no countdown: it is obvious anyway, and a
   // label flashing for half a second only gets in the way.
-  const MIN_GAP = 5.0;
+  // Ten seconds, not five: a gap shorter than that is a breath between lines,
+  // and counting it down draws the eye away from the singing for nothing.
+  const MIN_GAP = 10.0;
   if (cur >= 0){ box.classList.add("hide"); return; }
   // Seconds, not milliseconds: this is “how long to wait”, not timing.
   const left = s => s >= 60 ? fmt(s) : Math.ceil(s) + T.sec;
@@ -2182,8 +2210,16 @@ function layoutWords(){
   wordEls.forEach((e, j) => {
     const w = ln.words[j];
     if (!w) return;
-    const width = Math.max(w.d * k, 10);
-    e.style.left = (w.t * k) + "px";
+    const left = w.t * k;
+    let width = Math.max(w.d * k, 10);
+    // Words overlap in time more often than not — a sung word runs into the
+    // next one — and drawn as they are, the chips lie on top of each other and
+    // the only way to tell them apart is to zoom right in. A chip is trimmed so
+    // it never reaches the next word's start: the times themselves are left
+    // alone, it is only the drawing that has to be readable.
+    const next = ln.words[j + 1];
+    if (next) width = Math.max(6, Math.min(width, next.t * k - left - 1));
+    e.style.left = left + "px";
     e.style.width = width + "px";
     // on a narrow word the label is unreadable anyway — show no stub
     e.classList.toggle("tiny", width < 26);
@@ -2252,6 +2288,14 @@ $("blocks").addEventListener("dblclick", e => {
   const blk = e.target.closest(".blk"); if (!blk) return;
   editText(+blk.dataset.i);          // edit the text where the line is seen
 });
+// The edge stops at the outermost word: beyond that the line can only be
+// squeezed whole, and there is no way to guess that without being told.
+let saidLimit = 0;
+function hitLimit(){
+  if (Date.now() - saidLimit < 4000) return;
+  saidLimit = Date.now();
+  toast(T.edgeLimit);
+}
 $("blocks").addEventListener("pointerdown", e => {
   const blk = e.target.closest(".blk"); if (!blk) return;
   const i = +blk.dataset.i;
@@ -2261,7 +2305,11 @@ $("blocks").addEventListener("pointerdown", e => {
   drag = {i, x0:e.clientX, start:lines[i].start, end:lines[i].end,
           words: lines[i].words.map(w=>w.t),
           durs: lines[i].words.map(w=>w.d),      // keep hand-tuned word lengths
-          grip: e.target.dataset.grip || ""};
+          grip: e.target.dataset.grip || "",
+          // Alt squeezes the whole line into the new span instead of stretching
+          // the outermost word alone: for a line that grabbed a minute and a
+          // half, moving one word is no use at all.
+          all: e.altKey};
   $("tlwrap").classList.add("drag");
   e.preventDefault();
 });
@@ -2289,7 +2337,16 @@ window.addEventListener("pointermove", e => {
   if (!drag) return;
   const dt = (e.clientX - drag.x0) / $("tlwrap").clientWidth * zoom;
   const ln = lines[drag.i];
-  if (drag.grip === "right"){
+  if (drag.grip && drag.all){
+    // The whole line into the new span: every word moves, in proportion to its
+    // syllables. This is what narrowing a line that swallowed an interlude
+    // actually means.
+    if (drag.grip === "right")
+      ln.end = Math.max(drag.start + 0.3, drag.end + dt);
+    else
+      ln.start = clamp(drag.start + dt, 0, drag.end - 0.3);
+    spread(ln);
+  } else if (drag.grip === "right"){
     // Dragging the right edge stretches the LAST word; the rest stay exactly
     // where they were. This used to recompute the whole line, changing timing
     // that had been tuned by hand for no reason at all.
@@ -2297,11 +2354,13 @@ window.addEventListener("pointermove", e => {
     const floor = last >= 0 ? drag.words[last] + MIN_W : drag.start + 0.2;
     ln.end = Math.max(floor, drag.end + dt);
     if (last >= 0) ln.words[last].d = ln.end - ln.words[last].t;
+    if (ln.end <= floor + 0.001) hitLimit();
   } else if (drag.grip === "left"){
     // The left edge does the same to the FIRST word: the line end is untouched.
     const w0 = ln.words[0];
     const ceil = w0 ? (drag.words[0] + drag.durs[0]) - MIN_W : drag.end - 0.2;
     let ns = clamp(drag.start + dt, 0, ceil);
+    if (ns >= ceil - 0.001) hitLimit();
     const snap2 = nearestOnset(ns);
     if (snap2 !== null && Math.abs(snap2 - ns) < zoom*0.012) ns = clamp(snap2, 0, ceil);
     ln.start = ns;
@@ -2579,6 +2638,64 @@ function setMarking(on){
 }
 $("btnMark").addEventListener("click", () => setMarking(!marking));
 
+// A line next to a hole reaches across it: the aligner had to end it somewhere.
+// The marks already say where the emptiness is — so cut the spans back to them,
+// without timing anything again.
+$("btnClip").addEventListener("click", () => {
+  if (!marks.length) return toast(T.clipNoMarks);
+  snap("");
+  let n = 0;
+  lines.forEach(ln => {
+    let a = ln.start, b = ln.end;
+    marks.forEach(([lo, hi]) => {
+      if (b <= lo || a >= hi) return;          // nowhere near this hole
+      if (a >= lo && b <= hi) return;          // wholly inside: moving it is another matter
+      if (a < lo && b <= hi) b = lo;
+      else if (a >= lo && a < hi && b > hi) a = hi;
+      else if (a < lo && hi < b){ if (lo - a >= b - hi) b = lo; else a = hi; }
+    });
+    if (Math.abs(a - ln.start) < 0.01 && Math.abs(b - ln.end) < 0.01) return;
+    if (b - a < 0.2) return;                   // nothing usable would be left
+    ln.start = a; ln.end = b; spread(ln); n++;
+  });
+  // …and the lines that sit wholly inside a hole: trimming cannot help them,
+  // they have to leave it. They are pushed to the singing that follows, at a
+  // sung pace, pressed against the line that comes after them — the same
+  // reasoning the timing itself uses.
+  let moved = 0;
+  const inHole = ln => marks.find(([lo, hi]) => ln.start >= lo - 0.25 && ln.end <= hi + 0.25);
+  for (let i = 0; i < lines.length; i++){
+    const hole = inHole(lines[i]);
+    if (!hole) continue;
+    let j = i;
+    while (j + 1 < lines.length && inHole(lines[j + 1])) j++;
+    const run = lines.slice(i, j + 1);
+    const nextStart = j + 1 < lines.length ? lines[j + 1].start
+                                           : (dur || data.duration || 0);
+    const prevEnd = i > 0 ? lines[i - 1].end : 0;
+    // after the hole if there is room there, otherwise before it
+    let lo = Math.max(hole[1], prevEnd), hi = nextStart;
+    if (hi - lo < 0.5){ lo = prevEnd; hi = Math.min(hole[0], nextStart); }
+    const syl = run.reduce((a, ln) => a + ln.words.reduce((b, w) => b + (w.s || 1), 0), 0) || 1;
+    const need = run.reduce((a, ln) => a + ln.words.length, 0) * MIN_W;
+    if (hi - lo < need){ i = j; continue; }        // nowhere to put them
+    const span = Math.min(hi - lo, Math.max(syl * 0.45, need));
+    let base = hi - span, acc = 0;
+    run.forEach(ln => {
+      const own = ln.words.reduce((b, w) => b + (w.s || 1), 0) || 1;
+      ln.start = base + span * acc / syl;
+      acc += own;
+      ln.end = Math.max(base + span * acc / syl - 0.05, ln.start + 0.2);
+      spread(ln);
+      moved++;
+    });
+    i = j;
+  }
+  if (!n && !moved){ past.pop(); return toast(T.clipNothing); }
+  curLine = -2; layoutBlocks(); touched(); refreshUndo();
+  toast(moved ? T.clipMoved(n, moved) : T.clipDone(n));
+});
+
 $("tlwrap").addEventListener("pointermove", e => {
   if (!marking || markFrom === null) return;
   markTo = tOf(e.offsetX);
@@ -2596,6 +2713,15 @@ window.addEventListener("pointerup", () => {
 function setZoom(z){ zoom=clamp(z,4,120);
   $("zoomNote").textContent=Math.round(zoom)+T.sec; layoutBlocks(); drawWave(); drawBlocks(); }
 $("btnZoomIn").addEventListener("click", ()=>setZoom(zoom/1.6));
+// A line is a couple of seconds long and the view is fifteen: to see the words
+// apart one had to zoom in by hand every time. This does it in one press.
+$("btnFit").addEventListener("click", () => {
+  if (sel < 0) return toast(T.pickLineFirst);
+  const ln = lines[sel];
+  const span = Math.max(ln.end - ln.start, 0.4);
+  setZoom(clamp(span * 1.6, 4, 120));
+  seek(Math.max(0, ln.start - span * 0.15));
+});
 $("btnZoomOut").addEventListener("click", ()=>setZoom(zoom*1.6));
 
 /* ---------- tidy everything up ---------- */

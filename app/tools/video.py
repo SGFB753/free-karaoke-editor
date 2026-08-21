@@ -145,11 +145,23 @@ def find_font(explicit=None) -> str:
 
 # ---------------------------------------------------------------- audio
 def keep_spans(payload: dict) -> list:
-    """Stretches where the original voice is deliberately kept."""
+    """Stretches where the original voice is deliberately kept.
+
+    Two sources say so: “♪ Original” on a line, and the stretches marked as
+    holding no words — a vocalise has nothing to sing over, and muting it
+    would put a hole in the video where the song is loudest.
+    """
+    data = payload.get("data") or {}
     out = []
-    for ln in (payload.get("data") or {}).get("lines") or []:
+    for ln in data.get("lines") or []:
         if ln.get("keep"):
             out.append((float(ln.get("start") or 0), float(ln.get("end") or 0)))
+    for pair in data.get("keepSpans") or []:
+        try:
+            a, b = float(pair[0]), float(pair[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        out.append((a, b))
     out.sort()
     merged = []
     for a, b in out:
@@ -449,7 +461,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             if not singing:
                 prev_end = lines[idx]["end"] if idx >= 0 else 0.0
                 gap = (nxt["start"] - prev_end) if nxt else (duration - prev_end)
-                if gap >= 5.0:
+                # Ten seconds, as in the program itself: a shorter gap is a
+                # breath between lines, and counting it down is noise.
+                if gap >= 10.0:
                     left = (nxt["start"] if nxt else duration) - t
                     head = (tr("INTRO", "ВСТУПЛЕНИЕ") if idx < 0 else
                             (tr("INTERLUDE", "ПРОИГРЫШ") if nxt else tr("END", "КОНЕЦ")))
