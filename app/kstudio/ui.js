@@ -2103,9 +2103,9 @@ function drawSummary(data){
   if (q.length){
     const d = document.createElement("div");
     d.className = "c wide";
-    d.innerHTML = T.quietAt + q.slice(0, 4).map((x, i) =>
-      `<u data-t="${x.start}">${fmt(x.start)}–${fmt(x.end)}</u>`).join(", ") +
-      (q.length > 4 ? T.andMore(q.length - 4) : "");
+    d.innerHTML = T.quietAt + q.slice(0, 12).map(x =>
+      `<u data-t="${x.start}">${fmt(x.start)}–${fmt(x.end)}</u>`).join("") +
+      (q.length > 12 ? T.andMore(q.length - 12) : "");
     d.querySelectorAll("u").forEach(u => u.addEventListener("click",
       () => seek(Math.max(0, +u.dataset.t - 0.5))));
     box.appendChild(d);

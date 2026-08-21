@@ -142,6 +142,22 @@ for (const [w, h] of SIZES){
   ok(`${w}×${h}: the colour captions keep off the swatches`,
      pick.every(v => v <= 0.5), JSON.stringify(pick.map(v => Math.round(v))));
 
+  // The Check list must keep visible room whatever the summary holds: it used
+  // to be squeezed to nothing and read as “the scrolling is broken”.
+  const panel = await p.evaluate(() => {
+    const probs = document.querySelector('.probs');
+    const side = document.querySelector('.side');
+    if (!probs || !side) return null;
+    const a = probs.getBoundingClientRect(), b = side.getBoundingClientRect();
+    return {h: a.height, inside: a.bottom <= b.bottom + 1 && a.top >= b.top - 1,
+            scrollable: getComputedStyle(probs).overflowY};
+  });
+  ok(`${w}×${h}: the Check list keeps visible room`,
+     panel && panel.h >= 40 && panel.inside, JSON.stringify(panel));
+  ok(`${w}×${h}: and it is allowed to scroll`,
+     panel && (panel.scrollable === 'auto' || panel.scrollable === 'scroll'),
+     panel && panel.scrollable);
+
   const tiny = await tinyControls('#scrEdit');
   ok(`${w}×${h}: nothing is squeezed to a sliver`, tiny.length === 0, tiny.join('; '));
 }

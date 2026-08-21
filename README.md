@@ -608,7 +608,7 @@ something went wrong, the two most useful things to attach are the text from
 the job window (it now prints a report before the long steps) and the last
 lines from the console.
 
-## Licence
+## License
 
 MIT — see [LICENSE](LICENSE). Do what you like with it: use it, change it, pass
 it on, build something of your own on top. The songs you make with it are

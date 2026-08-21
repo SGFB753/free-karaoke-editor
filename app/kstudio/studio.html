@@ -214,7 +214,7 @@
   .pick input[type=color]{width:26px; height:22px; padding:0; border-radius:6px;
     border:1px solid var(--line); background:none; cursor:pointer; flex:none}
 
-  .side{width:290px; flex:none; border-left:1px solid var(--line); display:flex;
+  .side{width:19rem; flex:none; border-left:1px solid var(--line); display:flex;
     flex-direction:column; background:rgba(0,0,0,.2);
     /* Without this the panel grows to fit its list instead of scrolling it,
        and spills over the toolbar under it — the “Check” heading ended up
@@ -235,8 +235,32 @@
   .sum .wide u{text-decoration:none; color:var(--accent); cursor:pointer}
   /* min-height:0 or the list refuses to shrink below its content, grows past
      the panel and gets clipped — which reads as “the scrolling is broken”. */
-  .probs{flex:1; overflow:auto; padding:0 8px 10px; min-height:0}
-  .side .sum{flex:none}
+  .probs{flex:1 1 6rem; overflow:auto; padding:0 8px 10px; min-height:2.5rem}
+  /* The summary must never squeeze the Check list out of existence: it gets a
+     ceiling and its own scroll, the list gets a guaranteed floor. */
+  /* When the panel is short, the summary yields first (its shrink factor is
+     high) and the Check list keeps a working height; both scroll inside. */
+  .side .sum{flex:0 8 auto; min-height:2.2rem; max-height:44%; overflow:auto}
+  /* On a short window the toolbar wraps into extra rows and the panel loses
+     its height: the headings and floors give a little back, or the sum of
+     minimums outgrows the panel itself. */
+  @media (max-height:720px){
+    .side h3{padding:7px 14px 4px}
+    .side .sum{min-height:1.6rem}
+    .probs{min-height:2rem}
+  }
+  /* On a cramped window the how-to paragraph under the toolbar is a luxury:
+     it wraps into several rows and starves the editor of the very height the
+     Check panel needs. The hints live in the tooltips anyway. */
+  @media (max-height:720px), (max-width:1100px){
+    .howto{display:none}
+  }
+  /* Quiet stretches as chips: commas used to wrap alone onto their own lines
+     the moment the font grew, and four stretches ate half the panel. */
+  .sum .c.wide u{display:inline-block; padding:2px 8px; margin:2px 5px 2px 0;
+    border:1px solid var(--line); border-radius:99px; cursor:pointer;
+    font-size:0.75rem; text-decoration:none; color:var(--accent)}
+  .sum .c.wide u:hover{background:rgba(77,225,255,.14)}
   .prob{position:relative; padding-right:26px}
   /* “Ignore”, the way a spell-checker has it: this warning, this line. */
   .prob .ign{position:absolute; right:4px; top:7px; padding:2px 7px; font-size:0.75rem;
