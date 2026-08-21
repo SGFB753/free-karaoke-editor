@@ -103,7 +103,12 @@ const STR = {
     serverDown: "The server is not answering",
     model_tiny: "tiny — 75 MB", model_base: "base — 140 MB",
     model_small: "small — 480 MB", model_medium: "medium — 1.5 GB",
+    model_turbo: "large-v3-turbo — 1.6 GB, nearly large at medium’s speed",
     model_large_v3: "large-v3 — 3 GB",
+    fineSep: "separate finely",
+    fineSepHint: "Four passes over the song instead of one (htdemucs_ft): the "
+      + "voice comes out cleaner, and the timing is made from that voice. "
+      + "About four times longer, and 300 MB more to download the first time.",
     askRemove: t => `Remove “${t}” from the studio?\n\nThe original song and lyrics stay where they are.`,
     lookingAt: "Looking at what this song is…",
     badFiles: "Could not make sense of the files: ",
@@ -168,6 +173,41 @@ const STR = {
     dropFail: "Could not take the file: ",
     pickBoth: "Point to both files",
     noTextLabel: "Where there are no words",
+    markMode: "✂ No words here",
+    keepMarks: "original on the marks",
+    keepMarksHint: "On a marked stretch there is nothing to sing, so the "
+      + "original voice is left in the backing there — a vocalise or a scream "
+      + "is heard instead of a hole. Switch it off if you mean to sing it.",
+    realignPart: "↻ These lines",
+    realignPartHint: "Time only the selected lines again, between their timed "
+      + "neighbours. The rest of the song — and everything you put right by "
+      + "hand — is left as it is. On a long song it takes seconds, not minutes.",
+    realignPartAsk: (a, b) => "Time lines " + a + "–" + b + " again?\n\n"
+      + "The rest of the song is not touched.",
+    realignPartDone: n => "Timed again: " + n + " lines",
+    splitLine: "⤸ Split",
+    splitHint: "Cut the selected line in two where the singing pauses longest "
+      + "inside it. The words keep their times — nothing is timed again.",
+    joinLine: "⤹ Join",
+    joinHint: "Join the selected line with the one after it. The words keep "
+      + "their times.",
+    lineSplit: "The line was cut in two",
+    lineJoined: "The lines were joined",
+    splitTooShort: "There is nothing to cut: the line has one word",
+    joinNoNext: "There is no line after this one",
+    joinAcrossSection: "The next line starts a new part of the song — join would hide its heading",
+    lockLine: "🔒 Lock",
+    lockHint: "Leave the selected lines as they are when the timing is redone: "
+      + "what you put right by hand outweighs anything the model returns for it.",
+    lockedN: n => `Locked: ${n}. Re-timing will leave them alone.`,
+    unlockedN: n => `Unlocked: ${n}.`,
+    markHint: "Mark the stretches on the waveform: press and drag over a "
+      + "vocalise or an intro, click a mark to take it off. Then “Re-time”.",
+    markOn: "Drag over the waveform to mark where there are no words. Click a mark to remove it.",
+    markOff: "Marking is off",
+    markAdded: (a, b) => `Marked: ${a}–${b}. Press “Re-time” to use it.`,
+    markGone: "The mark is gone",
+    waveNoText: "no words",
     noTextPh: "0:00-0:42, 3:10-3:50 — an intro, a vocalise, a solo",
     noTextHint: "A vocalise, a wordless scream and a sung line are all voice: no "
       + "measurement tells them apart, and the timing crawls onto them. Naming a "
@@ -360,7 +400,12 @@ const STR = {
     serverDown: "Сервер не отвечает",
     model_tiny: "tiny — 75 МБ", model_base: "base — 140 МБ",
     model_small: "small — 480 МБ", model_medium: "medium — 1,5 ГБ",
+    model_turbo: "large-v3-turbo — 1,6 ГБ, почти large на скорости medium",
     model_large_v3: "large-v3 — 3 ГБ",
+    fineSep: "отделять тщательно",
+    fineSepHint: "Четыре прохода по песне вместо одного (htdemucs_ft): вокал "
+      + "выходит чище, а разметка считается именно по нему. Примерно вчетверо "
+      + "дольше, и при первом запуске качается ещё 300 МБ.",
     askRemove: t => `Убрать «${t}» из студии?\n\nИсходная песня и текст останутся на месте.`,
     lookingAt: "Смотрю, что за песня…",
     badFiles: "Не вышло разобрать файлы: ",
@@ -425,6 +470,40 @@ const STR = {
     dropFail: "Не получилось принять файл: ",
     pickBoth: "Укажите оба файла",
     noTextLabel: "Где текста нет",
+    markMode: "✂ Здесь нет текста",
+    keepMarks: "оригинал на отметках",
+    keepMarksHint: "На отмеченном куске петь нечего, поэтому там в минусовке "
+      + "остаётся оригинальный голос — вокализ или крик звучит, а не проваливается "
+      + "в тишину. Снимите галку, если хотите спеть это сами.",
+    realignPart: "↻ Только эти",
+    realignPartHint: "Разметить заново только выбранные строки, между их "
+      + "размеченными соседями. Остальная песня — и всё, что вы выправили "
+      + "руками, — остаётся как есть. На длинной песне это секунды, а не минуты.",
+    realignPartAsk: (a, b) => "Разметить заново строки " + a + "–" + b + "?\n\n"
+      + "Остальная песня не тронется.",
+    realignPartDone: n => "Размечено заново строк: " + n,
+    splitLine: "⤸ Разрезать",
+    splitHint: "Разрезать выбранную строку надвое там, где внутри неё дольше "
+      + "всего молчат. Времена слов сохраняются — заново ничего не размечается.",
+    joinLine: "⤹ Склеить",
+    joinHint: "Склеить выбранную строку со следующей. Времена слов сохраняются.",
+    lineSplit: "Строка разрезана надвое",
+    lineJoined: "Строки склеены",
+    splitTooShort: "Резать нечего: в строке одно слово",
+    joinNoNext: "После этой строки нет следующей",
+    joinAcrossSection: "Следующая строка начинает новую часть песни — склейка спрячет её заголовок",
+    lockLine: "🔒 Замок",
+    lockHint: "Оставить выбранные строки как есть при переразметке: выправленное "
+      + "руками важнее всего, что вернёт про них модель.",
+    lockedN: n => `Заперто строк: ${n}. Переразметка их не тронет.`,
+    unlockedN: n => `Отперто строк: ${n}.`,
+    markHint: "Отметить куски прямо на волне: нажать и провести по вокализу или "
+      + "вступлению, щелчок по отметке — снять её. Потом «Разметить заново».",
+    markOn: "Проведите мышью по волне там, где текста нет. Щелчок по отметке — снять.",
+    markOff: "Разметка кусков выключена",
+    markAdded: (a, b) => `Отмечено: ${a}–${b}. Нажмите «Разметить заново», чтобы учесть.`,
+    markGone: "Отметка снята",
+    waveNoText: "нет текста",
     noTextPh: "0:00-0:42, 3:10-3:50 — вступление, вокализ, соло",
     noTextHint: "Вокализ, крик без слов и спетая строка — всё это голос: ничем их "
       + "не отличить, и разметка на них наползает. Названный кусок слова обойдут — "
@@ -799,10 +878,18 @@ $("btnAdd").addEventListener("click", () => {
   $("selAlign").value = caps.whisper ? "auto" : "energy";
   $("selLang").value = "auto";        // every song starts from its own text
   $("chkSep").checked = !!caps.demucs;
+  $("chkFine").checked = false;
+  $("chkFine").disabled = !caps.demucs;
   fillLangs(); markModels(); modelNote();
   resetLink();
   reportKey = ""; askReport();
   screen("scrNew");
+});
+// “Separate finely” has nothing to do while the instrumental is off: the timing
+// would be made from the mix, and no separator would run at all.
+$("chkSep").addEventListener("change", () => {
+  $("chkFine").disabled = !$("chkSep").checked || !caps.demucs;
+  if ($("chkFine").disabled) $("chkFine").checked = false;
 });
 $("btnBackNew").addEventListener("click", loadList);
 
@@ -859,6 +946,7 @@ async function showDir(path){
     $("browser").classList.add("hide");
     if (pickTarget === "track"){ replaceTrack(x.path); return; }
     if (pickTarget === "lyrics2"){ realign(x.path); return; }
+    if (pickTarget !== "lyrics") lastSong = null;   // not the song from the link
     $(pickTarget === "lyrics" ? "inLyrics" : "inAudio").value = x.path;
     askReport();
   }, (x.size/1024/1024).toFixed(1)+T.mb)));
@@ -910,6 +998,7 @@ window.addEventListener("drop", async e => {
   screen("scrNew");
   try{
     if (audio){ toast(T.taking(audio.name));
+      lastSong = null;                              // dropped by hand, not fetched
       $("inAudio").value = (await upload(audio)).path; }
     if (text){ $("inLyrics").value = (await upload(text)).path; }
     toast(audio && text ? T.filesOk
@@ -1107,7 +1196,13 @@ $("btnBuild").addEventListener("click", async () => {
   try{
     const j = await api("/api/new", {audio, lyrics, align: $("selAlign").value,
       model: $("selModel").value, lang: $("selLang").value,
-      separate: $("chkSep").checked, noText: $("inNoText").value.trim()});
+      separate: $("chkSep").checked, noText: $("inNoText").value.trim(),
+      separator: $("chkFine").checked ? "htdemucs_ft" : "htdemucs",
+      // The name the song had where it came from: the file it landed in is
+      // called something that survives every file system, not something a
+      // person would read.
+      title: (lastSong && (lastSong.track || lastSong.title)) || "",
+      artist: (lastSong && lastSong.artist) || ""});
     watchJob(j.job, T.jobBuild, id => openProject(id));
   }catch(e){ toast(e.message); }
 });
@@ -1191,6 +1286,11 @@ let keepOn = false;
 function inKeep(t){
   for (let i=0;i<lines.length;i++)
     if (lines[i].keep && lines[i].start - 0.12 <= t && t < lines[i].end + 0.12) return true;
+  // A marked stretch has no words to sing, so the original voice stays there —
+  // and the editor must sound like the finished page, not unlike it.
+  if ($("chkKeepMarks") && $("chkKeepMarks").checked)
+    for (let i = 0; i < marks.length; i++)
+      if (marks[i][0] - 0.12 <= t && t < marks[i][1] + 0.12) return true;
   return false;
 }
 function applyVoice(){
@@ -1221,6 +1321,7 @@ async function openProject(id){
   quiet = data.quiet || [];
   envHop = (data.envelope||{}).hop || 0.02;
   onsets = findOnsets();
+  figureDoubt();
   sel = -1; curLine = -2; waOffset = 0; playing = false;
   $("edTitle").textContent = data.title + (data.artist ? " — " + data.artist : "");
   fillNoText(data);
@@ -1627,6 +1728,43 @@ function markKeep(i){
 }
 $("btnKeep").addEventListener("click", toggleKeep);
 
+/* ---------- a line put right by hand ----------
+   Re-timing used to throw away every hand-made correction along with the rest.
+   A lock says “leave this one alone”: the model gets no vote on it. */
+function toggleLock(){
+  const idx = targets();
+  if (!idx.length) return toast(T.pickLineFirst);
+  snap("");
+  const to = !lines[idx[0]].lock;
+  idx.forEach(i => {
+    lines[i].lock = to;
+    if (blockEls[i]) blockEls[i].classList.toggle("lock", to);
+  });
+  touched();
+  toast(to ? T.lockedN(idx.length) : T.unlockedN(idx.length));
+}
+$("btnLock").addEventListener("click", toggleLock);
+
+/* ---------- timing a few lines again ----------
+   The timing is wrong in one place and right everywhere else; redoing all of
+   it costs minutes and throws away the corrections made by hand. */
+$("btnRealignPart").addEventListener("click", async () => {
+  const idx = targets();
+  if (!idx.length) return toast(T.pickLineFirst);
+  const a = Math.min(...idx), b = Math.max(...idx);
+  if (!confirm(T.realignPartAsk(a + 1, b + 1))) return;
+  await flush();
+  try{
+    const j = await api("/api/project/" + encodeURIComponent(pid) + "/realign-part",
+      {from: a, to: b, align: caps.whisper ? "auto" : "energy", lang: langOf(),
+       noText: ($("edNoText").value || "").trim()});
+    watchJob(j.job, T.realignPart, r => {
+      openProject(pid);
+      toast(T.realignPartDone((r && r.lines) || 0));
+    });
+  }catch(e){ toast(e.message); }
+});
+
 /* ---------- copying a line and its rhythm ----------
    A chorus is sung the same way every time, and timing it again from scratch is
    wasted work. A line that is already right can be copied whole (Ctrl+D), or
@@ -1774,7 +1912,10 @@ async function saveNow(){
   dirty = false;
   saveState("busy", T.saving);
   try{
-    const r = await api(`/api/project/${encodeURIComponent(pid)}/timings`, {lines, colors, theme});
+    const r = await api(`/api/project/${encodeURIComponent(pid)}/timings`,
+      {lines, colors, theme,
+       noText: ($("edNoText").value || "").trim(),
+       keepMarks: $("chkKeepMarks") ? $("chkKeepMarks").checked : true});
     showProblems(r.problems);
     saveState("ok", T.savedOk);
   }catch(e){
@@ -1883,6 +2024,24 @@ function drawWave(){
     if (wd > 74) g.fillText(T.waveQuiet, x + 6, 12);
   });
 
+  // The marks a person made, and the one being dragged right now.
+  const all = marks.concat(markFrom !== null && markTo !== null
+                           ? [[Math.min(markFrom, markTo), Math.max(markFrom, markTo)]] : []);
+  all.forEach(([a, b], i) => {
+    const x = (a - vq) * kq, wd = (b - a) * kq;
+    if (x + wd < 0 || x > w) return;
+    g.fillStyle = i < marks.length ? "rgba(255,204,77,.16)" : "rgba(255,204,77,.28)";
+    g.fillRect(x, 0, wd, h);
+    g.fillStyle = "rgba(255,204,77,.55)";
+    g.fillRect(x, 0, 1.5, h);
+    g.fillRect(x + wd - 1.5, 0, 1.5, h);
+    if (wd > 60){
+      g.fillStyle = "rgba(255,204,77,.9)";
+      g.font = "10px system-ui, sans-serif";
+      g.fillText(T.waveNoText, x + 6, h - 6);
+    }
+  });
+
   if (!envelope.length) return;
   const v0=viewStart(), mid=40;
   g.fillStyle="rgba(120,150,190,.42)";
@@ -1899,13 +2058,25 @@ function drawWave(){
 /* The blocks are created once and live in a container that is simply shifted.
    Rebuilding them every frame means 60 DOM rebuilds a second, which visibly
    slows the window down on a song of sixty lines. */
+// Lines the model barely heard, measured against this song and not against a
+// number picked in advance: on a screamed vocal every word sits low, and what
+// gives a bad line away is standing out from its neighbours.
+let weakBelow = null;
+function figureDoubt(){
+  const got = lines.map(l => l.sure).filter(v => typeof v === "number").sort((a, b) => a - b);
+  weakBelow = got.length >= 8 ? got[got.length >> 1] * 0.5 : null;
+}
+function doubtful(ln){
+  return weakBelow !== null && typeof ln.sure === "number" && ln.sure < weakBelow;
+}
 const blockEls = [];
 function makeBlocks(){
   const box = $("blocks");
   box.innerHTML = ""; blockEls.length = 0;
   lines.forEach((ln, i) => {
     const e = document.createElement("div");
-    e.className = "blk" + (ln.voice === 2 ? " v2" : "") + (ln.keep ? " keep" : "");
+    e.className = "blk" + (ln.voice === 2 ? " v2" : "") + (ln.keep ? " keep" : "")
+                + (doubtful(ln) ? " doubt" : "") + (ln.lock ? " lock" : "");
     e.dataset.i = i;
     e.appendChild(document.createTextNode((i+1) + ". " + ln.text));
     // Grips on both sides: the right one moves the end of the line, the left
@@ -2207,6 +2378,61 @@ function addLine(){
   buildLines(); makeBlocks(); selectLine(sel + 1, false); touched();
   editText(sel);                       // let the real text be typed straight away
 }
+/* ---------- splitting a line, and joining two ----------
+   The most ordinary correction there is: a long line sung in two breaths, or
+   two short ones that are really one phrase. Neither needs a model — the words
+   and their times are already known, only the grouping changes. Before this,
+   it meant editing the file on disk and timing the whole song again. */
+function splitLine(){
+  if (sel < 0) return toast(T.pickLineFirst);
+  const ln = lines[sel];
+  if (!ln.words || ln.words.length < 2) return toast(T.splitTooShort);
+  // Where the singing pauses longest inside the line: that is where a person
+  // draws breath, and where the line wants to be cut.
+  let at = 1, widest = -1;
+  for (let i = 1; i < ln.words.length; i++){
+    const gap = ln.words[i].t - (ln.words[i - 1].t + (ln.words[i - 1].d || 0));
+    if (gap > widest){ widest = gap; at = i; }
+  }
+  snap("");
+  const tail = ln.words.slice(at), head = ln.words.slice(0, at);
+  const cut = tail[0].t;
+  const second = {
+    text: tail.map(w => w.w).join(" "),
+    start: cut, end: ln.end,
+    section: null, backing: ln.backing, voice: ln.voice,
+    keep: ln.keep, lock: ln.lock, words: tail,
+  };
+  ln.words = head;
+  ln.text = head.map(w => w.w).join(" ");
+  // Words can overlap slightly, so the last word of the first half may reach
+  // past where the second half begins. A line must never end after the next
+  // one starts — the highlight would jump back and forth.
+  const headEnd = head[head.length - 1].t + (head[head.length - 1].d || 0);
+  ln.end = Math.max(ln.start + 0.05, Math.min(headEnd, cut));
+  lines.splice(sel + 1, 0, second);
+  buildLines(); makeBlocks(); selectLine(sel + 1, false); touched();
+  toast(T.lineSplit);
+}
+function joinLine(){
+  if (sel < 0) return toast(T.pickLineFirst);
+  if (sel + 1 >= lines.length) return toast(T.joinNoNext);
+  const a = lines[sel], b = lines[sel + 1];
+  if (b.section) return toast(T.joinAcrossSection);
+  snap("");
+  a.words = a.words.concat(b.words);
+  a.text = (a.text + " " + b.text).replace(/\s+/g, " ").trim();
+  a.end = b.end;
+  a.keep = a.keep || b.keep;
+  a.lock = a.lock || b.lock;
+  lines.splice(sel + 1, 1);
+  marked.clear();
+  buildLines(); makeBlocks(); selectLine(sel, false); touched();
+  toast(T.lineJoined);
+}
+$("btnSplit").addEventListener("click", splitLine);
+$("btnJoin").addEventListener("click", joinLine);
+
 function delLine(){
   const idx = targets();
   if (!idx.length) return toast(T.pickLineFirst);
@@ -2281,12 +2507,92 @@ function spread(ln){
 
 /* ---------- seeking along the timeline ---------- */
 $("tlwrap").addEventListener("pointerdown", e => {
+  // While marking, the timeline is for marking: a press on an existing mark
+  // takes it off, a press anywhere else starts a new one.
+  if (marking){
+    const t = tOf(e.offsetX), at = markAt(t);
+    if (at >= 0){
+      marks.splice(at, 1);
+      marksToField();
+      touched();
+      toast(T.markGone);
+      drawWave();
+      return;
+    }
+    markFrom = t; markTo = t;
+    return;
+  }
   // Empty timeline space means seeking. What lies on it does not: a line block
   // and a word chip are dragged, not seeked. Without this rule, grabbing a word
   // first seeked the song and the stage jumped to another line under your hand.
   if (e.target.closest(".blk") || e.target.closest(".wrd")) return;
   seek(tOf(e.offsetX));
 });
+/* ---------- marking the stretches that hold no words ----------
+   A vocalise is voice: nothing measurable tells it from a sung line. The
+   timeline is where a person can see it — a loud stretch with no lines under
+   it — so that is where it should be possible to say so, with the mouse,
+   instead of reading seconds off and typing them into a field. */
+let marks = [], marking = false, markFrom = null, markTo = null;
+
+function marksFromField(){
+  marks = ($("edNoText").value || "").split(/[;,]/).map(part => {
+    const m = part.trim().match(/^([\d:.,]+)\s*[-–—]\s*([\d:.,]+)$/);
+    if (!m) return null;
+    const sec = v => v.split(":").reduce((a, x) => a * 60 + parseFloat(x.replace(",", ".")), 0);
+    const a = sec(m[1]), b = sec(m[2]);
+    return (isFinite(a) && isFinite(b) && b > a) ? [a, b] : null;
+  }).filter(Boolean).sort((x, y) => x[0] - y[0]);
+}
+// “0:42.5” — a tenth of a second is as fine as anyone can hear a boundary, and
+// finer than that turns the field into a wall of digits.
+function markTime(t){
+  const m = Math.floor(Math.max(0, t) / 60), r = Math.max(0, t) - m * 60;
+  return m + ":" + (r < 10 ? "0" : "") + r.toFixed(1);
+}
+function marksToField(){
+  $("edNoText").value = marks.map(([a, b]) => markTime(a) + "-" + markTime(b)).join(", ");
+}
+function addMark(a, b){
+  if (b - a < 0.3) return false;                 // a click, not a stretch
+  marks.push([Math.max(0, a), Math.min(dur, b)]);
+  marks.sort((x, y) => x[0] - y[0]);
+  // touching marks are one mark: two halves of the same solo help nobody
+  for (let i = marks.length - 1; i > 0; i--)
+    if (marks[i][0] <= marks[i - 1][1] + 0.05){
+      marks[i - 1][1] = Math.max(marks[i - 1][1], marks[i][1]);
+      marks.splice(i, 1);
+    }
+  marksToField();
+  return true;
+}
+function markAt(t){
+  return marks.findIndex(([a, b]) => t >= a && t <= b);
+}
+function setMarking(on){
+  marking = on;
+  $("btnMark").classList.toggle("on", on);
+  document.body.classList.toggle("marking", on);
+  markFrom = markTo = null;
+  toast(on ? T.markOn : T.markOff);
+  drawWave();
+}
+$("btnMark").addEventListener("click", () => setMarking(!marking));
+
+$("tlwrap").addEventListener("pointermove", e => {
+  if (!marking || markFrom === null) return;
+  markTo = tOf(e.offsetX);
+  drawWave();
+});
+window.addEventListener("pointerup", () => {
+  if (!marking || markFrom === null) return;
+  const a = Math.min(markFrom, markTo === null ? markFrom : markTo);
+  const b = Math.max(markFrom, markTo === null ? markFrom : markTo);
+  markFrom = markTo = null;
+  if (addMark(a, b)){ toast(T.markAdded(markTime(a), markTime(b))); touched(); }
+  drawWave();
+});
+
 function setZoom(z){ zoom=clamp(z,4,120);
   $("zoomNote").textContent=Math.round(zoom)+T.sec; layoutBlocks(); drawWave(); drawBlocks(); }
 $("btnZoomIn").addEventListener("click", ()=>setZoom(zoom/1.6));
@@ -2463,7 +2769,14 @@ async function realign(lyricsPath){
 function fillNoText(d){
   const el = $("edNoText");
   if (el) el.value = (d && d.noText) || "";
+  if ($("chkKeepMarks"))
+    $("chkKeepMarks").checked = !d || d.keepMarks !== false;
+  marksFromField();
+  if (marking) setMarking(false);
 }
+// Typed by hand, dragged with the mouse — one and the same thing underneath.
+$("edNoText").addEventListener("change", () => { marksFromField(); touched(); drawWave(); });
+$("chkKeepMarks").addEventListener("change", touched);
 function langOf(){
   // Re-timing has no picker of its own, and the language of a song belongs to
   // the song, not to the window: read it off the text again.

@@ -46,6 +46,7 @@ KEYS = {
     "ui-lang": "--ui-lang", "надписи": "--ui-lang",
     "codec": "--codec", "кодек": "--codec",
     "device": "--device",
+    "separator": "--demucs-model", "отделение": "--demucs-model",
 }
 FLAGS = {  # значение «нет/no/0» → добавить флаг отключения
     "separate": "--no-separate", "минусовка": "--no-separate",

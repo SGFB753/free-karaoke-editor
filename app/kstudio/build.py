@@ -121,7 +121,7 @@ def build_html(out_path: str, lyrics: Lyrics, duration: float,
                tracks: Dict[str, tuple], engine: str = "energy",
                embed: bool = True, title: Optional[str] = None,
                artist: Optional[str] = None, ui_lang: str = "auto",
-               colors=None, theme=None) -> str:
+               colors=None, theme=None, keep_spans=None) -> str:
     """tracks: {\'mix\'|\'instrumental\'|\'vocals\': (path, mime)} → path to the HTML."""
     with open(TEMPLATE, "r", encoding="utf-8") as f:
         tpl = f.read()
@@ -158,6 +158,11 @@ def build_html(out_path: str, lyrics: Lyrics, duration: float,
             "title": title,
             "artist": artist or lyrics.artist or "",
             "duration": round(duration, 3),
+            # Stretches where the original voice is left in: a vocalise or a
+            # scream with no words has nothing to sing over, and muting it
+            # leaves a hole in the song.
+            "keepSpans": [[round(float(a), 3), round(float(b), 3)]
+                          for a, b in (keep_spans or [])],
             "lines": [ln.to_json() for ln in lyrics.lines],
         },
     }

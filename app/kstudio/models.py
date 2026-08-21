@@ -13,7 +13,10 @@ from .i18n import tr
 
 # Sizes for the messages: what matters is whether to wait a second or half an hour.
 _SIZE_MB = {"tiny": 75, "base": 140, "small": 480,
-            "medium": 1500, "large-v3": 3000, "large-v2": 3000, "large": 3000}
+            "medium": 1500, "large-v3": 3000, "large-v2": 3000, "large": 3000,
+            # the same encoder as large-v3 with a much smaller decoder: nearly
+            # its accuracy at a fraction of the wait
+            "large-v3-turbo": 1600}
 
 
 def size_label(name: str) -> str:
@@ -45,7 +48,7 @@ def whisper_ready(name: str) -> bool:
 
 def whisper_all() -> Dict[str, bool]:
     return {n: whisper_ready(n) for n in
-            ("tiny", "base", "small", "medium", "large-v3")}
+            ("tiny", "base", "small", "medium", "large-v3-turbo", "large-v3")}
 
 
 def load_note(name: str) -> str:

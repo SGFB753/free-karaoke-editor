@@ -1,5 +1,5 @@
 KARAOKE FROM A SONG AND ITS LYRICS
-Version 4.28.0
+Version 4.30.0
 
 
 WHAT YOU NEED
@@ -241,6 +241,24 @@ SCREAMED OR GROWLED VOCAL
   Also: choose the language of the song by hand, and take a bigger model
   if the machine has the memory. Re-timing uses the model the song was
   built with and says which one that is.
+
+
+PUTTING A STUBBORN SONG RIGHT
+  In the editor, for the song that came out wrong in one place:
+    - "✂ No words here" on the timeline: press and drag over a vocalise
+      to mark it, click a mark to take it off (the field beside it is
+      the same thing in numbers);
+    - select the lines that went wrong and press "↻ These lines" — only
+      that stretch is timed again, in seconds instead of minutes;
+    - "🔒 Lock" on lines you put right by hand: re-timing leaves them;
+    - "⤸ Split" cuts a line in two where the singing pauses inside it,
+      "⤹ Join" puts it back with the next one — no re-timing either way;
+    - on a marked stretch the ORIGINAL voice stays in the backing, so a
+      vocalise is heard instead of a hole (a switch beside the marks);
+    - lines drawn with a dashed border are the ones the model barely
+      heard — their timing is a guess, check those first.
+  And to measure rather than guess:
+      python3 app/tools/bench.py song.mp3 lyrics.txt
 
 
 WHERE THERE ARE NO WORDS

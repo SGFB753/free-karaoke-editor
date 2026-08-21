@@ -106,7 +106,9 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
            align_engine: str = "auto", whisper_model: str = "small",
            language: str = "ru", separate: bool = True,
            device: Optional[str] = None, codec: str = "mp3",
-           skip=None, log: Log = _noop) -> str:
+           skip=None, separator: str = "htdemucs",
+           title: Optional[str] = None, artist: Optional[str] = None,
+           log: Log = _noop) -> str:
     """Build a project. Returns the path to its folder."""
     lyr = L.load(lyrics_path)
     if not lyr.lines:
@@ -115,7 +117,15 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
     log(tr(f"Lyrics: {len(lyr.lines)} lines, {len(lyr.words)} words.",
            f"Текст: {len(lyr.lines)} строк, {len(lyr.words)} слов."))
 
-    title = lyr.title or os.path.splitext(os.path.basename(audio_path))[0]
+    # What the song is called, in order of how much it can be trusted: what the
+    # lyrics file says, then what the song was known as where it came from —
+    # a link carries its real name, while the file on disk is called
+    # “Forevermore_[kBjKqBvbbjM]” because the name had to survive every file
+    # system in the world.
+    title = lyr.title or (title or "").strip() or \
+        os.path.splitext(os.path.basename(audio_path))[0]
+    if artist and not lyr.artist:
+        lyr.artist = artist.strip()
     folder = os.path.join(root, slugify(title))
     n = 2
     while os.path.exists(folder):
@@ -145,6 +155,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
         instrumental = vocals = None
         if separate:
             instrumental, vocals = S.separate(work, os.path.join(tmp, "stems"),
+                                              separator,
                                               device=device, log=log)
 
         align_src = vocals or work
@@ -188,6 +199,10 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             # what was said to hold no words: the editor shows it again, and a
             # re-time starts from what you told it last time
             "noText": ", ".join(f"{a:.1f}-{b:.1f}" for a, b in holes),
+            # a stretch with nothing to sing keeps the original sound on it,
+            # or the karaoke has a hole where the vocalise was
+            "keepMarks": True,
+            "keepSpans": [[round(a, 3), round(b, 3)] for a, b in holes],
             "envelope": envelope,
             "lines": [ln.to_json() for ln in lyr.lines],
         }
@@ -212,13 +227,37 @@ def load(folder: str) -> Dict:
         return json.load(f)
 
 
-def save_lines(folder: str, lines: List[Dict], colors=None, theme=None) -> Dict:
+def keep_spans(data: Dict) -> List[List[float]]:
+    """Where the original voice is left in the backing track.
+
+    A stretch with no words in it is a stretch with nothing to sing: mute the
+    voice there and the karaoke has a hole where a vocalise or a scream was.
+    So the marks that keep the timing off a stretch also keep the original
+    sound on it — unless a person says otherwise, meaning to sing it themselves.
+    """
+    if not data.get("keepMarks", True):
+        return []
+    from . import align as A
+    return [[round(a, 3), round(b, 3)]
+            for a, b in A.spans(data.get("noText") or "", data.get("duration") or 0)]
+
+
+def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,
+               no_text=None, keep_marks=None) -> Dict:
     data = load(folder)
     data["lines"] = lines
     if colors:
         data["colors"] = list(colors)[:2]
     if theme:
         data["theme"] = list(theme)[:2]
+    # The marks travel with the ordinary edits: dragging one on the waveform is
+    # an edit like any other, and the original voice must be heard at once, not
+    # after a re-timing.
+    if no_text is not None:
+        data["noText"] = str(no_text)
+    if keep_marks is not None:
+        data["keepMarks"] = bool(keep_marks)
+    data["keepSpans"] = keep_spans(data)
     data["edited"] = time.time()
     save(folder, data)
     return data
@@ -274,6 +313,31 @@ def quiet_spans(data: Dict) -> List[Dict]:
     return R.quiet_stretches(env, hop)
 
 
+def keep_locked(old: List[Dict], fresh: List[Dict], log=_noop) -> int:
+    """Put back the lines a person locked before the timing was redone.
+
+    A line put right by hand is worth more than anything a model returns for
+    it, and re-timing used to throw all of that away. A lock says “leave this
+    one alone”. It can only be honoured while the lines still answer to each
+    other one for one: with the text re-split, line seven is no longer the same
+    line seven, and silently keeping its old time would be a lie.
+    """
+    locked = [i for i, ln in enumerate(old or []) if ln.get("lock")]
+    if not locked:
+        return 0
+    if len(old) != len(fresh):
+        log(tr(f"  the locks on {len(locked)} lines were dropped: the text now has "
+               f"{len(fresh)} lines instead of {len(old)}, so they are not the same lines",
+               f"  замки с {len(locked)} строк сняты: в тексте теперь {len(fresh)} строк "
+               f"вместо {len(old)}, это уже не те же самые строки"))
+        return 0
+    for i in locked:
+        fresh[i] = dict(old[i])
+    log(tr(f"  lines left as they were, locked: {len(locked)}",
+           f"  строк оставлено как были, они заперты: {len(locked)}"))
+    return len(locked)
+
+
 def problems(data: Dict) -> List[Dict]:
     """Lines worth checking, each with a reason."""
     lines = data.get("lines") or []
@@ -290,6 +354,13 @@ def problems(data: Dict) -> List[Dict]:
         i = int(t / hop)
         lo, hi = max(0, i - 4), min(len(env), i + 12)
         return max(env[lo:hi], default=0.0)
+
+    # How sure the model was, measured against this very song. An absolute
+    # threshold is useless here: on a clean voice everything sits high, on a
+    # screamed one everything sits low, and what matters either way is the line
+    # that stands out from its neighbours.
+    sures = sorted(ln["sure"] for ln in lines if ln.get("sure") is not None)
+    weak = (sures[len(sures) // 2] * 0.5) if len(sures) >= 8 else None
 
     out = []
     for i, ln in enumerate(lines):
@@ -316,6 +387,10 @@ def problems(data: Dict) -> List[Dict]:
 
         if env and voiced_at(ln["start"]) < floor * 1.05:
             why.append(tr("starts where no vocal is heard", "начинается там, где вокала не слышно"))
+
+        if weak and ln.get("sure") is not None and ln["sure"] < weak:
+            why.append(tr("the model barely heard these words — the timing is a guess",
+                          "модель едва расслышала эти слова — время здесь наугад"))
 
         if why:
             out.append({"line": i, "text": ln.get("text", ""),

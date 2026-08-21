@@ -867,6 +867,12 @@ function ramp(param, v){
 function inKeep(t){
   for (let i = 0; i < lines.length; i++)
     if (lines[i].keep && lines[i].start - 0.12 <= t && t < lines[i].end + 0.12) return true;
+  // A stretch with no words in it: a vocalise, a scream, a hummed intro. There
+  // is nothing to sing there, so the original stays — otherwise the song has a
+  // hole in it exactly where it is loudest.
+  const spans = D.keepSpans || [];
+  for (let i = 0; i < spans.length; i++)
+    if (spans[i][0] - 0.12 <= t && t < spans[i][1] + 0.12) return true;
   return false;
 }
 function applyVocal(){

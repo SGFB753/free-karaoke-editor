@@ -56,6 +56,70 @@ ok('nothing is left on the marked stretch', after >= 7.8, after.toFixed(1));
 ok('every line is still there', data.lines.length === 6, data.lines.length);
 ok('the marks are kept with the song', /0\.0-8\.0/.test(data.noText || ''), data.noText);
 
+console.log('\n--- a locked line survives the re-timing ---');
+// What a person put right by hand outweighs anything the model returns for it.
+data = await get('/api/project/' + encodeURIComponent(pid));
+const moved = JSON.parse(JSON.stringify(data.lines));
+moved[0].start = 0.5; moved[0].end = 1.4; moved[0].lock = true;
+moved[0].words = moved[0].words.map((w, i) => ({...w, t: 0.5 + i * 0.2, d: 0.2}));
+await post(`/api/project/${encodeURIComponent(pid)}/timings`, {lines: moved});
+const withLock = await finish((await post(`/api/project/${encodeURIComponent(pid)}/realign`,
+  {align: 'energy'})).job);
+ok('the re-timing goes through', withLock.ok, (withLock.log || []).slice(-1)[0]);
+data = await get('/api/project/' + encodeURIComponent(pid));
+ok('the locked line kept the hand-made time', Math.abs(data.lines[0].start - 0.5) < 0.01,
+   data.lines[0].start);
+ok('and it is still locked afterwards', data.lines[0].lock === true, data.lines[0].lock);
+ok('the lines around it were timed anew', data.lines[1].start > 1.4, data.lines[1].start);
+ok('the log says what was left alone',
+   /заперт|locked/i.test((withLock.log || []).join('\n')),
+   (withLock.log || []).find(l => /заперт|locked/i.test(l)) || '');
+
+// unlock it again, so the checks below see an ordinary song
+const back = JSON.parse(JSON.stringify(data.lines));
+back[0].lock = false;
+await post(`/api/project/${encodeURIComponent(pid)}/timings`, {lines: back});
+
+console.log('\n--- and a few lines can be timed again on their own ---');
+// The timing is wrong in one place and right everywhere else. Redoing all of
+// it costs minutes on a long song and throws away every hand-made correction.
+data = await get('/api/project/' + encodeURIComponent(pid));
+const was = JSON.parse(JSON.stringify(data.lines));
+// put lines 3 and 4 plainly out of place, then ask for those two alone
+const bent = JSON.parse(JSON.stringify(data.lines));
+for (const i of [2, 3]){
+  const shift = 0.9;
+  bent[i].start += shift; bent[i].end += shift;
+  bent[i].words = bent[i].words.map(w => ({...w, t: w.t + shift}));
+}
+await post(`/api/project/${encodeURIComponent(pid)}/timings`, {lines: bent});
+const part = await finish((await post(`/api/project/${encodeURIComponent(pid)}/realign-part`,
+  {from: 2, to: 3, align: 'energy'})).job);
+ok('timing a stretch goes through', part.ok, (part.log || []).slice(-1)[0]);
+ok('and it says which lines and where', /3–4|3-4/.test((part.log || []).join('\n')),
+   (part.log || []).find(l => /3–4|3-4/.test(l)) || '');
+ok('only the chosen lines are reported', part.result && part.result.lines === 2,
+   JSON.stringify(part.result));
+
+data = await get('/api/project/' + encodeURIComponent(pid));
+const same = (a, b) => Math.abs(a - b) < 0.001;
+ok('the lines around them are untouched to the millisecond',
+   [0, 1, 4, 5].every(i => same(data.lines[i].start, was[i].start)
+                        && same(data.lines[i].end, was[i].end)),
+   [0, 1, 4, 5].map(i => (data.lines[i].start - was[i].start).toFixed(3)).join(', '));
+ok('and the bent ones came back to where they were sung',
+   [2, 3].every(i => same(data.lines[i].start, was[i].start)),
+   [2, 3].map(i => `${was[i].start.toFixed(2)}→${data.lines[i].start.toFixed(2)}`).join(', '));
+ok('every line is still in the song', data.lines.length === was.length, data.lines.length);
+
+// a choice that makes no sense is refused, not obeyed
+const silly = await post(`/api/project/${encodeURIComponent(pid)}/realign-part`,
+  {from: 99, to: 120, align: 'energy'});
+const sillyEnd = silly.job ? await finish(silly.job) : {ok: false, error: silly.error};
+ok('an impossible choice of lines is refused',
+   !sillyEnd.ok && /не выбрано|no lines/i.test(JSON.stringify(sillyEnd)),
+   JSON.stringify(sillyEnd).slice(0, 90));
+
 console.log('\n--- nonsense in the field is ignored, not obeyed ---');
 const junk = await finish((await post(`/api/project/${encodeURIComponent(pid)}/realign`,
   {align: 'energy', noText: 'который час'})).job);

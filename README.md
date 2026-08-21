@@ -185,6 +185,11 @@ yt-dlp-args = --cookies-from-browser chrome
 That line goes into `app/settings.ini`; `KARAOKE_YTDLP_ARGS` does the same from
 the environment. Everything in it is passed to `yt-dlp` as it is.
 
+The song keeps the name it had where it came from — the file it landed in is
+called something that survives every file system (`Forevermore_[kBjKqBvbbjM]`),
+and that is not what you see in the studio. A `title:` line in the lyrics file
+still outranks it.
+
 Once the sound is here, the words are looked for by the name of the song, on
 [LRCLIB](https://lrclib.net) — an open library that needs no key and no
 account. What comes back is a **suggestion**: each one says who sings it, how
@@ -315,10 +320,62 @@ to 19 and lifted confidence from 0.125 to 0.138. Nothing to switch on.
 — see the section above. This is the one thing no measurement can do for you,
 and on this kind of music it is worth the minute it takes.
 
-Beyond that: pick the language of the song by hand instead of leaving it to be
-worked out, and give it a bigger model — `medium` or `large-v3` — if the machine
-has the memory. A re-time uses the model the song was built with, and says which
-one that is before it starts.
+Beyond that, two switches worth having on a strong machine:
+
+* **`large-v3-turbo`** in the model list — the same encoder as `large-v3` with a
+  much smaller decoder: nearly its accuracy at about the speed of `medium`, and
+  1.6 GB instead of 3. On a screamed vocal the model is doing the hardest work
+  it ever does, and this is the cheapest way to give it a better one.
+* **“Separate finely”** next to the instrumental switch — four passes over the
+  song instead of one (`htdemucs_ft`). The voice comes out cleaner, and since
+  the timing is made from that voice, the timing gets cleaner with it. About
+  four times longer, and 300 MB more to download the first time.
+
+And pick the language of the song by hand instead of leaving it to be worked
+out. A re-time uses the model the song was built with, and says which one that
+is before it starts.
+
+## Putting a stubborn song right
+
+Five things in the editor, meant for the song that came out wrong in one place
+and right everywhere else.
+
+**A vocalise is heard, not muted.** A marked stretch has nothing to sing over,
+so the original voice is left in the backing there — the scream or the humming
+is heard, instead of a hole where the song is at its loudest. The switch beside
+the marks turns it off, for when you mean to sing it yourself.
+
+**Cut a line in two, or join two into one.** “⤸ Split” cuts the selected line
+where the singing pauses longest inside it — where a person draws breath. “⤹
+Join” puts it back together with the line after it. Neither times anything
+again: the words keep the times they had, only the grouping changes.
+
+**Mark the wordless stretches with the mouse.** “✂ No words here” on the
+timeline: press and drag over a vocalise or an intro, and it is marked; click a
+mark to take it off. Typing seconds into the field does the same, and the two
+are one and the same underneath. Then press “Re-time”.
+
+**Time a few lines again, not the whole song.** Select the lines that are
+wrong and press “↻ These lines”. The model is shown only the stretch between
+their timed neighbours, so on a nine-minute song it takes seconds instead of
+minutes — and everything else stays exactly as it is.
+
+**Lock what you put right by hand.** “🔒 Lock” on the selected lines: re-timing
+leaves them alone, whole or in part. If the lyrics are re-split into a
+different number of lines the locks are dropped and the log says so — line
+seven is no longer the same line seven.
+
+**Look at what the model was unsure of.** Lines it barely heard are drawn with
+a dashed border on the timeline and named in the panel of lines worth checking.
+The measure is the song itself: a line is doubtful when it sits far below its
+neighbours, so this works the same on a whisper and on a scream.
+
+**Measure instead of guessing.** `python3 app/tools/bench.py song.mp3 lyrics.txt`
+prints one row per way of handing the song to the aligner — the mix, the
+separated voice, the levelled voice — with the segments it gave up on, its
+confidence, and the share of lines left in a pile. Add `--models small,medium`
+to compare models. It needs no “right answer” to compare against, so it works
+on your own music.
 
 ## The finished page
 
@@ -410,7 +467,7 @@ python app/karaoke.py AUDIO LYRICS [-o FILE.html]
 
 timing
   --align {auto,whisper,energy,none}   alignment engine
-  --whisper-model tiny|base|small|medium|large-v3
+  --whisper-model tiny|base|small|medium|large-v3-turbo|large-v3
   --lang ru                            language of the lyrics
   --no-text "0:00-0:42, 3:10-3:50"     stretches that hold no words at all
   --device cuda|cpu

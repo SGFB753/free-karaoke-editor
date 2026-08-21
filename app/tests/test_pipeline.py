@@ -968,6 +968,36 @@ def main():
     voiced_wav = os.path.join(tmp, "voiced.wav")
     _tone_and_silence(voiced_wav, [(0.0, 8.0), (20.0, 30.0)])
 
+    # Silence, asked as a question that can be answered: is there any voice at
+    # all? The panel's “quiet” is relative to the song's middle and says yes to
+    # a whispered verse — which is singing, with words in it.
+    quietish = os.path.join(tmp, "whispered.wav")
+    with _wv.open(quietish, "wb") as f:
+        f.setnchannels(1); f.setsampwidth(2); f.setframerate(8000)
+        fr = bytearray()
+        import math as _m
+        for i in range(8000 * 30):
+            t = i / 8000
+            amp = 12000 if t < 10 else (900 if t < 20 else 0)   # loud, whisper, nothing
+            fr += int(amp * _m.sin(2 * _m.pi * 220 * t)).to_bytes(2, "little", signed=True)
+        f.writeframes(bytes(fr))
+    env_q, hop_q = AU.rms_envelope(quietish)
+    silent = A.silent_spans(env_q, hop_q)
+    covers = lambda spans, a, b: any(s["start"] <= a + 0.4 and s["end"] >= b - 0.4 for s in spans)
+    check("real silence is found", covers(silent, 20.5, 29.5), silent)
+    check("a whispered verse is not called silence", not covers(silent, 10.5, 19.5), silent)
+    check("and neither is the loud part", not covers(silent, 0.5, 9.5), silent)
+
+    from kstudio import report as R
+    older = R.quiet_stretches(env_q, hop_q, least=2.5)
+    check("which is what the old measure got wrong", covers(older, 10.5, 19.5), older)
+
+    loud_all = os.path.join(tmp, "loud-all.wav")
+    _tone_and_silence(loud_all, [(0.0, 30.0)])
+    env_l, hop_l = AU.rms_envelope(loud_all)
+    check("a song loud from end to end has no silence in it",
+          A.silent_spans(env_l, hop_l) == [], A.silent_spans(env_l, hop_l))
+
     # a marked stretch counts as silence even where the voice is loud:
     # 0–8 s here is a vocalise, as loud as anything, with no words in it
     msgs4 = []
@@ -1044,19 +1074,195 @@ def main():
           A.repair_silent(lyr_ok, 30.0, voiced_wav, log=msgs3.append) == 0
           and lyr_ok.lines[2].start == 21.0)
 
+    print("\nA vocalise is heard, not muted")
+    # “♪ Original” keeps the recorded voice on a line — but a vocalise has no
+    # lines at all, so there was nothing to put the mark on, and the karaoke
+    # came out with a hole where the song is at its loudest.
+    from kstudio import project as P
+    from kstudio import project as PP
+
+    built_root = os.path.join(tmp, "built")
+    song_for_build = os.path.join(tmp, "for-build.wav")
+    text_for_build = os.path.join(tmp, "for-build.txt")
+    if not os.path.isfile(song_for_build):
+        make_song(song_for_build)
+        open(text_for_build, "w", encoding="utf-8").write(TEXT)
+
+    marked_song = {"duration": 300.0, "noText": "0:10-0:40, 3:00-3:20"}
+    check("a marked stretch keeps the original voice",
+          PP.keep_spans(marked_song) == [[10.0, 40.0], [180.0, 200.0]],
+          PP.keep_spans(marked_song))
+    check("unless the person means to sing it themselves",
+          PP.keep_spans(dict(marked_song, keepMarks=False)) == [])
+    check("with no marks there is nothing to keep",
+          PP.keep_spans({"duration": 300.0}) == [])
+    check("and a mark past the end of the song is clipped to it",
+          PP.keep_spans({"duration": 30.0, "noText": "0:10-9:99"}) == [[10.0, 30.0]],
+          PP.keep_spans({"duration": 30.0, "noText": "0:10-9:99"}))
+
+    built = P.create(song_for_build, text_for_build, os.path.join(tmp, "keeps"),
+                     align_engine="energy", separate=False, skip="0:00-0:08")
+    rec = json.load(open(os.path.join(built, "project.json"), encoding="utf-8"))
+    check("a fresh song carries the stretches into itself",
+          rec.get("keepSpans") == [[0.0, 8.0]], rec.get("keepSpans"))
+    check("and says the original is kept there", rec.get("keepMarks") is True)
+
+    # and they reach the finished page, which is what a person actually plays
+    page = os.path.join(tmp, "with-keeps.html")
+    lyr_page = L.parse(TEXT)
+    A.align_energy(lyr_page, song_for_build, 26.0)
+    B.build_html(page, lyr_page, 26.0, {"mix": (song_for_build, "audio/wav")},
+                 "energy", embed=False, keep_spans=[[0.0, 8.0]])
+    payload = B.read_payload(page)
+    check("the page knows where the original stays",
+          payload["data"].get("keepSpans") == [[0.0, 8.0]],
+          payload["data"].get("keepSpans"))
+    plain = os.path.join(tmp, "no-keeps.html")
+    B.build_html(plain, lyr_page, 26.0, {"mix": (song_for_build, "audio/wav")},
+                 "energy", embed=False)
+    check("and a page with no marks says so plainly",
+          B.read_payload(plain)["data"]["keepSpans"] == [],
+          B.read_payload(plain)["data"].get("keepSpans"))
+
+    print("\nThe name a song came with")
+    # The file a link lands in is called something that survives every file
+    # system — “Forevermore_[kBjKqBvbbjM]”. The song is not called that.
+    untitled = os.path.join(tmp, "untitled.txt")
+    open(untitled, "w", encoding="utf-8").write(
+        "\n".join(TEXT.splitlines()[3:]))          # the same lines, no “title:”
+    named = P.create(song_for_build, untitled,
+                     os.path.join(tmp, "named"), align_engine="energy",
+                     separate=False, title="Forevermore", artist="Lorna Shore")
+    rec2 = json.load(open(os.path.join(named, "project.json"), encoding="utf-8"))
+    check("the song is called what it was called where it came from",
+          rec2["title"] == "Forevermore", rec2["title"])
+    check("and the artist comes with it", rec2["artist"] == "Lorna Shore", rec2["artist"])
+    check("the folder is named after the real title, in Latin letters",
+          os.path.basename(named).startswith("forevermore"), os.path.basename(named))
+
+    # what the lyrics file says still wins: it is the most deliberate of the three
+    titled = P.create(song_for_build, text_for_build, os.path.join(tmp, "titled"),
+                      align_engine="energy", separate=False,
+                      title="Что-то из ссылки", artist="Кто-то")
+    rec3 = json.load(open(os.path.join(titled, "project.json"), encoding="utf-8"))
+    check("a title written in the lyrics file outranks the link",
+          rec3["title"] == "Тестовая песня", rec3["title"])
+
+    print("\nA line put right by hand survives a re-timing")
+    from kstudio import project as PJ
+
+    def _ln(i, lock=False):
+        return {"text": f"строка {i}", "start": i * 2.0, "end": i * 2.0 + 1.5,
+                "lock": lock, "words": [{"w": "строка", "t": i * 2.0, "d": 1.5, "s": 2}]}
+
+    old_lines = [_ln(0), _ln(1, lock=True), _ln(2)]
+    new_lines = [_ln(0 + 10), _ln(1 + 10), _ln(2 + 10)]
+    msgs = []
+    kept = PJ.keep_locked(old_lines, new_lines, msgs.append)
+    check("the locked line keeps the time it was given by hand",
+          kept == 1 and new_lines[1]["start"] == 2.0, new_lines[1]["start"])
+    check("and the rest take the new timing",
+          new_lines[0]["start"] == 20.0 and new_lines[2]["start"] == 24.0,
+          [new_lines[0]["start"], new_lines[2]["start"]])
+    check("the log says how many were left alone",
+          any("заперт" in m or "locked" in m for m in msgs), msgs[:1])
+
+    # With the text re-split, line seven is not the same line seven any more.
+    msgs2 = []
+    shorter = [_ln(0 + 10), _ln(1 + 10)]
+    kept2 = PJ.keep_locked(old_lines, shorter, msgs2.append)
+    check("locks are dropped when the lines no longer answer one for one",
+          kept2 == 0 and shorter[1]["start"] == 22.0, shorter[1]["start"])
+    check("and that is said out loud, not done quietly",
+          any("замки" in m or "locks" in m for m in msgs2), msgs2[:1])
+
+    check("a song with no locks is left entirely to the model",
+          PJ.keep_locked([_ln(0), _ln(1)], [_ln(10), _ln(11)]) == 0)
+
+    print("\nHow sure the model was, carried through to the eye")
+    # The aligner returns a probability per word. It used to be averaged into a
+    # single line in the log and thrown away, though it points straight at the
+    # lines whose timing is a guess.
+    from kstudio import project as PR
+
+    heard = L.parse("первая строка тут\nвторая строка тут")
+    rec = [(A.normalize_token(w.text), 1.0 + i * 0.4, 1.3 + i * 0.4,
+            0.9 if i < 3 else 0.02)
+           for i, w in enumerate(heard.words)]
+    A._apply_recognized(heard.words, rec)
+    check("the confidence of a word survives the matching",
+          heard.words[0].prob == 0.9 and heard.words[-1].prob == 0.02,
+          [w.prob for w in heard.words])
+    check("a line is judged by its least certain word",
+          heard.lines[1].sure == 0.02, heard.lines[1].sure)
+    check("and it reaches the saved song",
+          heard.lines[1].to_json().get("sure") == 0.02
+          and heard.lines[0].to_json()["words"][0].get("p") == 0.9,
+          heard.lines[1].to_json().get("sure"))
+    check("a line with nothing heard has nothing claimed about it",
+          L.parse("строка").lines[0].sure is None)
+
+    # …and the panel of lines worth checking says so, measured against the song
+    def _fake(n, sure):
+        return {"text": "строка", "start": 1.0 + n, "end": 1.6 + n, "sure": sure,
+                "words": [{"w": "строка", "t": 1.0 + n, "d": 0.6, "s": 2}]}
+
+    even = {"lines": [_fake(i, 0.4) for i in range(10)]}
+    check("a song where everything sits equally low is not all “doubtful”",
+          not any("едва расслышала" in " ".join(pb["why"]) for pb in PR.problems(even)))
+    odd = {"lines": [_fake(i, 0.4) for i in range(9)] + [_fake(9, 0.05)]}
+    flagged = [pb for pb in PR.problems(odd) if "едва расслышала" in " ".join(pb["why"])]
+    check("but the one line far below its neighbours is named",
+          len(flagged) == 1 and flagged[0]["line"] == 9,
+          [pb["line"] for pb in flagged])
+    short = {"lines": [_fake(i, 0.4) for i in range(3)] + [_fake(3, 0.01)]}
+    check("on a song too short to judge, nothing is claimed",
+          not any("едва расслышала" in " ".join(pb["why"]) for pb in PR.problems(short)))
+
+    print("\nThe models on offer")
+    from kstudio import models as M
+    from kstudio import sysinfo as SI
+
+    have = M.whisper_all()
+    check("turbo is among the models offered", "large-v3-turbo" in have, list(have))
+    check("its size is known, so nobody is promised the wrong wait",
+          M.size_label("large-v3-turbo") not in ("", None), M.size_label("large-v3-turbo"))
+    check("and so is what it needs of memory",
+          0 < SI.NEED_WHISPER.get("large-v3-turbo", 0) < SI.NEED_WHISPER["large-v3"],
+          SI.NEED_WHISPER.get("large-v3-turbo"))
+    check("every model the window offers has both numbers",
+          all(M.size_label(n) and n in SI.NEED_WHISPER for n in have), list(have))
+    page = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             "kstudio", "studio.html"), encoding="utf-8").read()
+    check("the window offers exactly the models the program knows",
+          all(f'value="{n}"' in page for n in have),
+          [n for n in have if f'value="{n}"' not in page])
+
+    # Which separator ran decides how clean the voice is, and the timing is made
+    # from that voice — so the choice has to reach Demucs, not stop halfway.
+    from kstudio import separate as S
+    seen = {}
+    real_sep = S.separate
+    S.separate = lambda wav, out, model="htdemucs", device=None, log=None: (
+        seen.update(model=model) or (None, None))
+    try:
+        P.create(song_for_build, text_for_build, os.path.join(tmp, "sep-test"),
+                 align_engine="energy", separate=True, separator="htdemucs_ft")
+        check("the finer separator reaches Demucs", seen.get("model") == "htdemucs_ft",
+              seen.get("model"))
+        seen.clear()
+        P.create(song_for_build, text_for_build, os.path.join(tmp, "sep-test2"),
+                 align_engine="energy", separate=True)
+        check("and the plain one is the default", seen.get("model") == "htdemucs",
+              seen.get("model"))
+    finally:
+        S.separate = real_sep
+
     print("\nA whole song built with wordless stretches marked")
     # The road end to end, without a neural net in it: build a real project and
     # look at where the lines actually landed. The test song sings at 2.0-4.6,
     # 5.0-7.6, 8.0-10.6, 11.0-13.6, 16.0-18.6, 19.0-21.6 — mark the first two
     # phrases as wordless and nothing may be laid on them.
-    from kstudio import project as P
-
-    built_root = os.path.join(tmp, "built")
-    song_for_build = os.path.join(tmp, "for-build.wav")
-    text_for_build = os.path.join(tmp, "for-build.txt")
-    make_song(song_for_build)
-    open(text_for_build, "w", encoding="utf-8").write(TEXT)
-
     folder = P.create(song_for_build, text_for_build, built_root,
                       align_engine="energy", separate=False, whisper_model="medium",
                       skip="0:00-0:08")

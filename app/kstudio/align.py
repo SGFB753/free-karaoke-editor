@@ -434,8 +434,9 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
         for w in (seg.words or []):
             key = normalize_token(w.word)
             if key:
-                rec.append((key, float(w.start), float(w.end)))
                 p = getattr(w, "probability", None)
+                rec.append((key, float(w.start), float(w.end),
+                            float(p) if p is not None else None))
                 if p is not None:
                     probs.append(float(p))
     if not rec:
@@ -452,7 +453,7 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                 at += b - a
             return keep[-1][1]
 
-        rec = [(k, whole(a), whole(b)) for k, a, b in rec]
+        rec = [(k, whole(a), whole(b), pr) for k, a, b, pr in rec]
 
     matched = _apply_recognized(lyrics.words, rec)
     # This is NOT a “is it the right text” check: align() forces the given text
@@ -585,13 +586,19 @@ def _apply_recognized(words: List[Word], rec: List[tuple]) -> float:
             for k in range(i2 - i1):
                 words[i1 + k].start = rec[j1 + k][1]
                 words[i1 + k].end = rec[j1 + k][2]
+                if len(rec[j1 + k]) > 3:
+                    words[i1 + k].prob = rec[j1 + k][3]
         elif tag == "replace" and (i2 - i1) and (j2 - j1):
             # spread the matched stretch over our words in proportion to syllables
             t0, t1 = rec[j1][1], rec[j2 - 1][2]
             chunk = words[i1:i2]
             total = sum(w.syllables for w in chunk) or 1
             acc = 0.0
+            # A stretch the model heard as something else: the words are ours,
+            # the confidence is the worst of what it did hear there.
+            heard = [r[3] for r in rec[j1:j2] if len(r) > 3 and r[3] is not None]
             for w in chunk:
+                w.prob = min(heard) if heard else None
                 w.start = t0 + (t1 - t0) * acc / total
                 acc += w.syllables
                 w.end = t0 + (t1 - t0) * acc / total
@@ -913,6 +920,39 @@ def repair_piles(lyrics: Lyrics, duration: float, log: Log = _noop,
     return fixed
 
 
+def silent_spans(env: List[float], dt: float, least: float = 2.5) -> List[Dict]:
+    """Where there is no voice at all — measured against the loudest it gets.
+
+    The panel's “quiet” is relative to the song's own middle, which is right for
+    showing where the singing thins out. For moving lines it is wrong twice
+    over: a song loud from end to end comes out “all quiet”, and a whispered
+    verse — real singing, with words in it — comes out quiet as well, and its
+    lines would be dragged off it.
+
+    The question here is narrower and answerable: is there any voice at all? On
+    a separated vocal that is a hundredth of the loudest moment. A whisper
+    stands well above that; an interlude does not.
+    """
+    if not env or dt <= 0:
+        return []
+    peak = max(env)
+    if peak <= 0:
+        return []
+    thr = peak * 0.02
+    out, run = [], None
+    for i, v in enumerate(env):
+        if v <= thr:
+            if run is None:
+                run = i
+        else:
+            if run is not None and (i - run) * dt >= least:
+                out.append({"start": round(run * dt, 1), "end": round(i * dt, 1)})
+            run = None
+    if run is not None and (len(env) - run) * dt >= least:
+        out.append({"start": round(run * dt, 1), "end": round(len(env) * dt, 1)})
+    return out
+
+
 def _voiced_windows(lo: float, hi: float, quiet: List[Dict]) -> List[List[float]]:
     """The parts of [lo, hi] where the voice is heard: the gaps between silences."""
     out, at = [], lo
@@ -946,15 +986,13 @@ def repair_silent(lyrics: Lyrics, duration: float, audio_path: str,
     """
     try:
         from . import audio as AU
-        from . import report as R
         env, hop = AU.rms_envelope(audio_path)
-        quiet = R.quiet_stretches(env, hop, least=2.5)
+        quiet = silent_spans(env, hop)
     except Exception:
-        return 0
-    # Quiet is measured against the song itself, so on a recording that is loud
-    # nearly throughout — a wall of guitars, a scream from end to end — the
-    # measure says “all of it is quiet”. That is not knowledge, it is the
-    # absence of it: acting on it would drag the whole text somewhere.
+        quiet = []
+    # Even so: if what is left counts as silent almost from end to end, that is
+    # not knowledge but its absence, and acting on it would drag the whole text
+    # somewhere.
     if sum(q["end"] - q["start"] for q in quiet) > 0.85 * duration:
         quiet = []
 

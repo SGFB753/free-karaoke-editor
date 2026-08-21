@@ -71,6 +71,17 @@ if (built){
   const fresh = state.projects.filter(x => !before.includes(x.id));
   ok('and the song is in the list, made out of the link', fresh.length === 1,
      fresh.map(f => f.title || f.id).join(', '));
+
+  // The file a link lands in is named so it survives every file system —
+  // “Stub_Artist_-_Stub_Song_[zzz123]”. Nobody wants that as the title.
+  if (fresh[0]){
+    const d = await (await fetch(API+'/api/project/'+encodeURIComponent(fresh[0].id))).json();
+    ok('the song is called what it is called, not what the file is',
+       d.title === 'Stub Song', d.title);
+    ok('no square brackets or underscores from the file name',
+       !/[\[\]_]/.test(d.title), d.title);
+    ok('and the artist came with it', d.artist === 'Stub Artist', d.artist);
+  }
   // The stand belongs to everyone: put it back the way it was found.
   for (const f of fresh)
     await fetch(`${API}/api/project/${encodeURIComponent(f.id)}/delete`, {method:'POST'});

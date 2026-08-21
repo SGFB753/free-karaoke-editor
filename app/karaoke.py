@@ -177,13 +177,16 @@ def main(argv=None) -> int:
         # timing from the clean vocal is more accurate than from the full mix
         align_src = vocals or work
 
+        # Stretches with no words in them: from the command line and from the
+        # lyrics file itself. Ready timings do not need aligning, but the page
+        # still has to know where the original voice stays.
+        holes = A.spans(getattr(args, "no_text", ""), dur) + \
+            A.spans(getattr(lyr, "skips", []), dur)
         if args.timings:
             log(tr(f"Taking the timings from {args.timings}", f"Беру тайминги из {args.timings}"))
             B.apply_timings(lyr, args.timings)
             engine = "json"
         else:
-            holes = A.spans(getattr(args, "no_text", ""), dur) + \
-                A.spans(getattr(lyr, "skips", []), dur)
             lyr, engine = A.align(lyr, align_src, dur, args.align,
                                   args.whisper_model, args.lang, args.device, log,
                                   isolated=bool(vocals), skip=holes)
@@ -204,7 +207,8 @@ def main(argv=None) -> int:
             tracks["mix"] = AU.encode(work, os.path.join(enc_dir, base + "_audio"), args.codec)
 
         log(tr("Building the HTML…", "Собираю HTML…"))
-        B.build_html(out_html, lyr, dur, tracks, engine, embed=not args.no_embed,
+        B.build_html(out_html, lyr, dur, tracks, engine, keep_spans=holes,
+                     embed=not args.no_embed,
                      title=args.title, artist=args.artist, ui_lang=args.ui_lang,
                      colors=[c.strip() for c in args.colors.split(",") if c.strip()],
                      theme=[c.strip() for c in args.theme.split(",") if c.strip()])

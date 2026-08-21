@@ -107,6 +107,55 @@ ok('there is exactly one mark', (t.match(/уже скачана/g)||[]).length =
 ok('and exactly one “heavy” mark too',
    (t.match(/тяжёлая/g)||[]).length <= 1, t);
 
+console.log('\n--- turbo, and separating finely ---');
+// The fast one belongs in the list: on a strong machine it is nearly large-v3
+// at the speed of medium, which is exactly what a screamed vocal wants.
+const values = [...$('selModel').options].map(o => o.value);
+ok('turbo is offered', values.includes('large-v3-turbo'), values.join(', '));
+ok('it sits between medium and large-v3',
+   values.indexOf('large-v3-turbo') === values.indexOf('medium') + 1
+   && values.indexOf('large-v3-turbo') < values.indexOf('large-v3'), values.join(', '));
+ok('and the window says what it is', /medium/i.test(byVal('large-v3-turbo').textContent),
+   byVal('large-v3-turbo').textContent);
+
+// “Separate finely” has nothing to do while the instrumental is off.
+ok('there is a switch for the finer separation', !!$('chkFine'));
+$('chkSep').checked = false;
+$('chkSep').dispatchEvent(new w.Event('change', {bubbles:true}));
+await sleep(60);
+ok('with no instrumental it cannot be switched on', $('chkFine').disabled);
+ok('and it does not stay on from before', !$('chkFine').checked);
+$('chkSep').checked = true;
+$('chkSep').dispatchEvent(new w.Event('change', {bubbles:true}));
+await sleep(60);
+// Without Demucs there is nothing to separate finely with, and the switch has
+// to stay dead — that is the whole point of it following the instrumental.
+const canSeparate = ((await (await fetch(API + '/api/state')).json()).caps || {}).demucs;
+ok(canSeparate ? 'with an instrumental it can be switched on'
+               : 'with no Demucs installed it stays dead either way',
+   $('chkFine').disabled === !canSeparate, `demucs=${canSeparate}`);
+
+// What the window sends is what the program acts on.
+let sent = null;
+const realFetch = w.fetch;
+// The request is read and stopped here: letting it through would start a real
+// build on the stand, with a model to load and minutes to wait for nothing.
+w.fetch = (path, opts) => {
+  if (typeof path === "string" && path.indexOf("/api/new") === 0 && opts && opts.body){
+    sent = JSON.parse(opts.body);
+    return Promise.resolve({json: () => Promise.resolve({job: "not-a-real-job"})});
+  }
+  return realFetch(path, opts);
+};
+$('chkFine').checked = true;
+$('inAudio').value = process.env.KARAOKE_SONG;
+$('inLyrics').value = process.env.KARAOKE_TEXT;
+$('btnBuild').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+await sleep(500);
+ok('the choice is sent with the build', sent && sent.separator === 'htdemucs_ft',
+   JSON.stringify(sent && {separator: sent.separator, separate: sent.separate}));
+w.fetch = realFetch;
+
 ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join('; '));
 
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');

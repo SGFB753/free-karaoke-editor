@@ -577,7 +577,16 @@ class Handler(BaseHTTPRequestHandler):
                             whisper_model=body.get("model", "small"),
                             language=body.get("lang", "auto"),
                             separate=bool(body.get("separate", True)),
-                            skip=body.get("noText") or "")
+                            skip=body.get("noText") or "",
+                            # four passes instead of one: a cleaner voice, and
+                            # the timing is made from the voice
+                            separator=("htdemucs_ft"
+                                       if body.get("separator") == "htdemucs_ft"
+                                       else "htdemucs"),
+                            # a song taken from a link knows its own name;
+                            # the file it landed in is called something safe
+                            title=body.get("title") or "",
+                            artist=body.get("artist") or "")
                 jid = start_job(tr("Building the song", "Собираю песню"), lambda log: os.path.basename(
                     P.create(audio, lyrics, PROJECTS, log=log, **opts)))
                 return self._json({"job": jid})
@@ -589,7 +598,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(lines, list):
                     return self._err(400, tr("no lines", "нет строк"))
                 data = P.save_lines(folder, lines, colors=body.get("colors"),
-                                    theme=body.get("theme"))
+                                    theme=body.get("theme"),
+                                    no_text=body.get("noText"),
+                                    keep_marks=body.get("keepMarks"))
                 return self._json({"ok": True, "problems": P.problems(data)})
 
             m = re.match(r"^/api/project/([^/]+)/delete$", path)
@@ -605,6 +616,14 @@ class Handler(BaseHTTPRequestHandler):
                 shift = bool(body.get("shift", True))
                 jid = start_job(tr("Swapping the track", "Меняю дорожку"),
                                 lambda log: replace_track(folder, src, kind, shift, log))
+                return self._json({"job": jid})
+
+            m = re.match(r"^/api/project/([^/]+)/realign-part$", path)
+            if m:
+                folder = project_dir(m.group(1))
+                jid = start_job(tr("Timing a few lines again",
+                                   "Размечаю несколько строк заново"),
+                                lambda log: realign_part(folder, body, log))
                 return self._json({"job": jid})
 
             m = re.match(r"^/api/project/([^/]+)/realign$", path)
@@ -681,6 +700,80 @@ def browse(path: str, kind: str) -> dict:
             "dirs": dirs, "files": files, "drives": drives}
 
 
+def realign_part(folder: str, opts: dict, log) -> dict:
+    """Time a handful of lines again, and leave the rest of the song alone.
+
+    On a long song the timing is wrong in one place and right everywhere else,
+    and redoing all of it costs minutes and throws away every correction made
+    by hand. Here the model is shown only the stretch between the neighbours of
+    the chosen lines — the same trick as with the wordless stretches — and only
+    those lines are written back.
+    """
+    from kstudio import align as A
+    from kstudio import lyrics as L
+
+    data = P.load(folder)
+    lines = data.get("lines") or []
+    try:
+        a = max(0, int(opts.get("from", -1)))
+        b = min(len(lines) - 1, int(opts.get("to", -1)))
+    except (TypeError, ValueError):
+        a = b = -1
+    if not lines or a < 0 or b < a:
+        raise ValueError(tr("no lines were chosen to be timed again",
+                            "не выбрано строк для переразметки"))
+
+    dur = float(data["duration"])
+    lo = float(lines[a - 1]["end"]) if a else 0.0
+    hi = float(lines[b + 1]["start"]) if b + 1 < len(lines) else dur
+    if hi - lo < 0.5:
+        raise ValueError(tr("the neighbouring lines leave no room to work in",
+                            "между соседними строками не осталось места"))
+
+    text = "\n".join((ln.get("text") or "") for ln in lines[a:b + 1])
+    piece = L.parse(text)
+    if len(piece.lines) != b - a + 1:
+        raise ValueError(tr("the chosen lines could not be read back as text",
+                            "выбранные строки не удалось прочитать обратно как текст"))
+
+    tracks = data.get("tracks") or {}
+    stem = tracks.get("vocals") or tracks.get("mix") or tracks.get("instrumental")
+    audio = os.path.join(folder, stem)
+    AU.ensure_on_path()
+    model = (opts.get("model") or data.get("model") or "small")
+    log(tr(f"Timing lines {a + 1}–{b + 1} again, inside {A.mmss(lo)}–{A.mmss(hi)}, "
+           f"with “{model}”",
+           f"Размечаю заново строки {a + 1}–{b + 1} в пределах {A.mmss(lo)}–{A.mmss(hi)}, "
+           f"моделью «{model}»"))
+    # Everything outside the window is “no words here”: the model is shown the
+    # stretch alone, and the times come back in the whole song's own reckoning.
+    outside = [(0.0, lo)] if lo > 0.05 else []
+    if hi < dur - 0.05:
+        outside.append((hi, dur))
+    piece, engine = A.align(piece, audio, dur, opts.get("align", "auto"), model,
+                            opts.get("lang", "auto"), None, log,
+                            isolated=bool(tracks.get("vocals")), skip=outside)
+
+    fresh = [ln.to_json() for ln in piece.lines]
+    moved = 0
+    for k, got in enumerate(fresh):
+        old = lines[a + k]
+        if old.get("lock"):
+            continue                       # locked by hand: not ours to touch
+        old["start"], old["end"] = got["start"], got["end"]
+        old["words"] = got["words"]
+        if got.get("sure") is not None:
+            old["sure"] = got["sure"]
+        moved += 1
+    data["lines"] = lines
+    data["edited"] = time.time()
+    P.save(folder, data)
+    log(tr(f"Lines timed again: {moved}. The rest of the song was not touched.",
+           f"Размечено заново строк: {moved}. Остальная песня не тронута."))
+    return {"kind": "realign-part", "engine": engine, "lines": moved,
+            "from": a, "to": b}
+
+
 def realign(folder: str, opts: dict, log) -> dict:
     """Recompute the timing — for instance once stable-ts has been installed.
     The stems are already in the project, so Demucs is not run again."""
@@ -732,9 +825,13 @@ def realign(folder: str, opts: dict, log) -> dict:
                           opts.get("lang", "auto"), None, log,
                           isolated=bool((data.get("tracks") or {}).get("vocals")),
                           skip=holes)
-    data["lines"] = [ln.to_json() for ln in lyr.lines]
+    fresh = [ln.to_json() for ln in lyr.lines]
+    # A line put right by hand outweighs anything a model returns for it.
+    P.keep_locked(data.get("lines") or [], fresh, log)
+    data["lines"] = fresh
     data["engine"] = engine
     data["noText"] = ", ".join(f"{a:.1f}-{b:.1f}" for a, b in holes)
+    data["keepSpans"] = P.keep_spans(data)
     data["model"] = model
     data["source_lyrics"] = os.path.abspath(src)
     data["title"] = lyr.title or data.get("title") or ""
@@ -1171,7 +1268,8 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
         log(tr("Building the standalone page…", "Собираю автономную страницу…"))
         B.build_html(out, lyr, data["duration"], tracks, data.get("engine", ""),
                      embed=True, title=data.get("title"), artist=data.get("artist"),
-                     colors=data.get("colors"), theme=data.get("theme"))
+                     colors=data.get("colors"), theme=data.get("theme"),
+                     keep_spans=P.keep_spans(data))
         log(tr(f"Done: {out}", f"Готово: {out}"))
         return {"kind": "html", "path": out}
 
@@ -1185,7 +1283,8 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
         tmp_html = os.path.join(folder, "_render.html")
         B.build_html(tmp_html, lyr, data["duration"], tracks, data.get("engine", ""),
                      embed=True, title=data.get("title"), artist=data.get("artist"),
-                     colors=data.get("colors"), theme=data.get("theme"))
+                     colors=data.get("colors"), theme=data.get("theme"),
+                     keep_spans=P.keep_spans(data))
         out = os.path.join(out_dir, base + ".mp4")
 
         class Args:

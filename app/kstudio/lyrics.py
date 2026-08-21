@@ -119,6 +119,8 @@ class Word:
     syllables: int = 0
     start: Optional[float] = None
     end: Optional[float] = None
+    # how sure the model was of this word, when a model was involved at all
+    prob: Optional[float] = None
 
     def __post_init__(self):
         if not self.syllables:
@@ -126,9 +128,12 @@ class Word:
 
     def to_json(self):
         # "s" is what the player\'s editor uses to lay words out by syllable
-        return {"w": self.text, "t": round(self.start or 0.0, 3),
-                "d": round(max((self.end or 0.0) - (self.start or 0.0), 0.0), 3),
-                "s": self.syllables}
+        out = {"w": self.text, "t": round(self.start or 0.0, 3),
+               "d": round(max((self.end or 0.0) - (self.start or 0.0), 0.0), 3),
+               "s": self.syllables}
+        if self.prob is not None:
+            out["p"] = round(self.prob, 3)
+        return out
 
 
 @dataclass
@@ -141,22 +146,38 @@ class Line:
     backing: bool = False              # whole line in brackets — backing vocals
     voice: int = 1                     # 1 or 2: the second voice gets its own colour
     keep: bool = False                 # keep the original voice on this stretch
+    lock: bool = False                 # put right by hand: re-timing leaves it alone
 
     @property
     def syllables(self) -> int:
         return sum(w.syllables for w in self.words) or 1
 
+    @property
+    def sure(self) -> Optional[float]:
+        """How sure the model was of this line: its least certain word.
+
+        The weakest word is what gives a line away — an average hides one
+        unheard word among five clear ones, and it is that one word that drags
+        the timing off.
+        """
+        got = [w.prob for w in self.words if w.prob is not None]
+        return min(got) if got else None
+
     def to_json(self):
-        return {
+        out = {
             "text": self.text,
             "backing": self.backing,
             "voice": self.voice,
             "keep": self.keep,
+            "lock": self.lock,
             "start": round(self.start or 0.0, 3),
             "end": round(self.end or 0.0, 3),
             "section": self.section,
             "words": [w.to_json() for w in self.words],
         }
+        if self.sure is not None:
+            out["sure"] = round(self.sure, 3)
+        return out
 
 
 @dataclass

@@ -41,7 +41,7 @@ UI_DIR = os.path.join(ROOT, "tests", "ui")
 # These suites need a real browser: they check what the cursor actually hits,
 # and jsdom does not do hit-testing at all.
 def NEEDS_BROWSER(name: str) -> bool:
-    return any(k in name for k in ("real-mouse", "word-length", "replace-track", "scroll-and-end", "quiet-and-voice", "two-lanes", "requirements", "duo-layout", "multiselect", "link-live", "notext-live"))
+    return any(k in name for k in ("real-mouse", "word-length", "replace-track", "scroll-and-end", "quiet-and-voice", "two-lanes", "requirements", "duo-layout", "multiselect", "link-live", "notext-live", "mark-live", "split-join"))
 sys.path.insert(0, ROOT)
 
 
@@ -124,8 +124,19 @@ def build_pages(tmp: str) -> tuple:
     subprocess.run([sys.executable, kar, song, text, "--align", "energy",
                     "--ui-lang", "en", "-o", eng, "--no-separate"],
                    cwd=ROOT, capture_output=True, check=True)
+    # And one with a stretch marked as holding no words: there the original
+    # voice stays in the backing, or the karaoke has a hole where a vocalise was.
+    keeps_one = os.path.join(tmp, "keeps-one.html")
+    keeps = os.path.join(tmp, "keeps.html")
+    subprocess.run([sys.executable, kar, song, text, "--align", "energy",
+                    "--ui-lang", "ru", "--no-text", "0:14-0:16.5",
+                    "-o", keeps_one, "--no-separate"],
+                   cwd=ROOT, capture_output=True, check=True)
     two_tracks(stems, mix, alt)
-    return song, text, mix, stems, eng
+    # the marked page needs two tracks as well: with one, there is no vocal to
+    # leave in and nothing to check
+    two_tracks(keeps, keeps_one, alt)
+    return song, text, mix, stems, eng, keeps
 
 
 def quieter(path: str) -> None:
@@ -335,7 +346,7 @@ def main() -> int:
     failed = []
     try:
         head("2. The test song and the pages")
-        song, text, mix, stems, eng = build_pages(tmp)
+        song, text, mix, stems, eng, keeps = build_pages(tmp)
         say(f"  built: {os.path.basename(mix)}, {os.path.basename(stems)}")
 
         head("3. The studio on a free port")
@@ -354,6 +365,7 @@ def main() -> int:
 
         env = dict(os.environ, KARAOKE_API=api, KARAOKE_ROOT=ROOT, KARAOKE_PAGE_MIX=mix,
                    KARAOKE_PAGE_STEMS=stems, KARAOKE_PAGE_EN=eng, PAGE=stems,
+                   KARAOKE_PAGE_KEEPS=keeps,
                    KARAOKE_SONG=song, KARAOKE_TEXT=text,
                    KARAOKE_LYRICS_API=lyrics_api)
 

@@ -1,3 +1,3 @@
 """kstudio — building a karaoke page out of an audio file and its lyrics."""
 
-__version__ = "4.28.0"
+__version__ = "4.30.0"

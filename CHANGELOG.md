@@ -7,6 +7,79 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.30.0
+
+**A vocalise is heard, not muted.** “♪ Original” keeps the recorded voice on a
+line — but a vocalise has no lines at all, so there was nothing to put the mark
+on, and the karaoke came out with a hole exactly where the song is loudest. A
+stretch marked as holding no words now keeps the original voice in the backing:
+in the studio, in the standalone page and in the MP4. The switch beside the
+marks turns it off, for when you mean to sing it yourself. Marks are saved as
+soon as they are made now, like any other edit, instead of waiting for a
+re-timing.
+
+**A song keeps the name it came with.** The file a link lands in is called
+something that survives every file system — `Forevermore_[kBjKqBvbbjM]` — and
+that name was showing up as the title of the song. The real name and artist now
+travel with the download; a `title:` line in the lyrics file still outranks
+both, being the most deliberate of the three.
+
+**Cutting a line in two, and joining two into one.** The most ordinary
+correction there is — a long line sung in two breaths, two short ones that are
+really one phrase — used to mean editing the file on disk and timing the whole
+song again. “⤸ Split” cuts the selected line where the singing pauses longest
+inside it; “⤹ Join” puts it back together with the next. Neither times anything
+again: the words keep the times they had, only the grouping changes. Joining
+across the start of a new part of the song is refused — it would hide the
+heading.
+
+---
+
+## 4.29.0
+
+**Marking the wordless stretches with the mouse.** Reading seconds off a player
+and typing them into a field was the step people gave up on. “✂ No words here”
+on the timeline: press and drag over a vocalise, click a mark to take it off.
+The field and the mouse are one thing underneath — type and the marks appear on
+the waveform, drag and they appear in the field.
+
+**A few lines can be timed again on their own.** Select what went wrong, press
+“↻ These lines”, and the model is shown only the stretch between their timed
+neighbours. On a nine-minute song that is seconds instead of minutes, and
+nothing else in the song moves.
+
+**A lock on a line.** What you put right by hand outweighs anything a model
+returns for it, and re-timing used to throw all of it away. Locked lines are
+left alone by both kinds of re-timing. Re-split the lyrics into a different
+number of lines and the locks are dropped with a word in the log, because line
+seven is then no longer the same line seven.
+
+**What the model was unsure of is now visible.** The probability it returns per
+word was averaged into one line of the log and thrown away. It is now kept with
+the words, a line is judged by its least certain one, and lines far below their
+neighbours are drawn with a dashed border and named in the panel. The measure
+is the song itself, so a scream and a whisper are judged each on their own
+terms; a song where everything sits equally low is not painted amber from end
+to end.
+
+**Two more models.** `large-v3-turbo` in the list — nearly `large-v3` at about
+the speed of `medium`, 1.6 GB instead of 3. And “separate finely” next to the
+instrumental switch: four passes instead of one, a cleaner voice, and the
+timing is made from that voice.
+
+**Silence, asked as a question that can be answered.** Whether a line sits where
+nobody sings used to be measured against the song's own middle — which called a
+whispered verse silent and a song loud from end to end silent throughout. For
+moving lines the question is narrower: is there any voice at all? A hundredth
+of the loudest moment answers it, and a whisper stands well above that.
+
+**A way to measure instead of guessing.** `app/tools/bench.py` prints one row
+per way of handing a song to the aligner — mix, separated voice, levelled voice
+— with the segments it gave up on, its confidence, and the share of lines left
+in a pile. No reference timing is needed, so it works on your own music.
+
+---
+
 ## 4.28.0
 
 **The checks now walk the hard road themselves.** Three of them were added

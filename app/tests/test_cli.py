@@ -143,6 +143,38 @@ def main():
     check("a second run does not rebuild what is done", ("пропускаю" in r.stdout or "skipping" in r.stdout),
           r.stdout.strip()[-160:])
 
+    print("\nThe measuring tool")
+    # It exists so that “it feels better” can be answered with numbers. It must
+    # explain itself, refuse politely where the neural nets are missing, and
+    # never end in a traceback.
+    r = run(["tools/bench.py", "--help"])
+    check("bench.py explains itself", r.returncode == 0 and "failed" in r.stdout,
+          r.stdout.strip()[:80])
+    check("and says what its columns mean",
+          all(w in r.stdout for w in ("sure", "piled", "time")), r.stdout[:120])
+
+    open(os.path.join(tmp, "lyrics.txt"), "w", encoding="utf-8").write(TEXT)
+    os.makedirs(os.path.join(tmp, "nonets"), exist_ok=True)
+    open(os.path.join(tmp, "nonets", "sitecustomize.py"), "w").write(
+        "import sys\n"
+        "class Gone:\n"
+        "    def find_spec(self, name, path=None, target=None):\n"
+        "        if name.split('.')[0] in ('stable_whisper', 'whisper'):\n"
+        "            raise ImportError(name)\n"
+        "        return None\n"
+        "sys.meta_path.insert(0, Gone())\n")
+    r = run(["tools/bench.py", song, os.path.join(tmp, "lyrics.txt")],
+            env={"PYTHONPATH": os.path.join(tmp, "nonets")})
+    check("without stable-ts it says so instead of falling over",
+          r.returncode == 2 and "stable-ts" in (r.stderr + r.stdout),
+          (r.stderr or r.stdout).strip()[-120:])
+    check("and there is no traceback in it", "Traceback" not in r.stderr, r.stderr[-120:])
+
+    r = run(["tools/bench.py", os.path.join(tmp, "nope.mp3"), os.path.join(tmp, "lyrics.txt")])
+    check("a missing file is named, not guessed at",
+          r.returncode == 2 and "nope.mp3" in (r.stderr + r.stdout),
+          (r.stderr or r.stdout).strip()[-100:])
+
     shutil.rmtree(tmp, ignore_errors=True)
     print("\n" + ("FAILED: " + ", ".join(failures) if failures else "All checks passed"))
     return 1 if failures else 0

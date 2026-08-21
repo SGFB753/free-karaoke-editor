@@ -70,7 +70,18 @@
   .opts{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
   .warn{font-size:0.8438rem; color:var(--accent2); line-height:1.6}
   /* Marking wordless stretches with the timeline in front of you */
-  header .notext{width:15rem; font-size:0.7812rem; padding:6px 9px}
+  .tlhead .notext{width:14rem; font-size:0.75rem; padding:5px 9px}
+  /* While marking, the timeline is for marking: the cursor says so, and the
+     lines underneath stop reacting to the mouse. */
+  /* A line the model barely heard: its time is a guess, and that is worth
+     seeing on the timeline, not only reading in the panel. */
+  .blk.doubt{border-style:dashed; border-color:rgba(255,204,77,.75)}
+  /* Put right by hand: re-timing leaves it as it is. */
+  .blk.lock{box-shadow:inset 0 0 0 1px rgba(126,224,138,.75)}
+  .blk.lock::after{content:"🔒"; position:absolute; right:3px; top:1px; font-size:9px;
+    opacity:.75}
+  body.marking #tlwrap{cursor:crosshair}
+  body.marking #blocks, body.marking #words{pointer-events:none}
   /* Lyrics found by the name of the song: a suggestion to read, not an answer.
      Each one says where it came from and how many lines it has. */
   .found{display:grid; gap:8px}
@@ -411,9 +422,11 @@
             <option value="base" data-t="model_base">base — 140 MB</option>
             <option value="small" selected data-t="model_small">small — 480 MB</option>
             <option value="medium" data-t="model_medium">medium — 1.5 GB</option>
+            <option value="large-v3-turbo" data-t="model_turbo">large-v3-turbo — 1.6 GB, nearly large at medium's speed</option>
             <option value="large-v3" data-t="model_large_v3">large-v3 — 3 GB</option>
           </select>
           <label class="knob"><input type="checkbox" id="chkSep" checked> <span data-t="instrumental">Instrumental</span></label>
+          <label class="knob" data-tt="fineSepHint"><input type="checkbox" id="chkFine"> <span data-t="fineSep">separate finely</span></label>
         </div>
         <div class="hint" id="modelNote"></div>
       </div>
@@ -449,8 +462,8 @@
             title="Take a different lyrics file and time the song to it">⇄ Other lyrics</button>
     <button id="btnTrack" data-tt="trackHint" data-t="ownTrack"
             title="Use the artist's real instrumental instead of the separated one">♪ My instrumental</button>
-    <input id="edNoText" class="notext" data-tp="noTextPh" data-tt="noTextLabel"
-           placeholder="0:00-0:42, 3:10-3:50 — an intro, a vocalise, a solo">
+    <button id="btnRealignPart" data-tt="realignPartHint" data-t="realignPart"
+            title="Time the selected lines again, and leave the rest of the song alone">↻ These lines</button>
     <button id="btnRealign" data-tt="realignHint" data-t="realign"
             title="Re-read the same lyrics file from disk and time it again — if you edited it">↻ Re-time</button>
     <button id="btnExportHtml" data-t="exportHtml">Standalone HTML</button>
@@ -498,6 +511,10 @@
               title="Undo the last change (Ctrl+Z)" disabled>↶ Undo</button>
       <button id="btnAddLine" data-tt="addLineHint" data-t="addLine"
               title="Insert a line after the selected one — if it was missing from the lyrics">＋ line</button>
+      <button id="btnSplit" data-tt="splitHint" data-t="splitLine"
+              title="Cut the selected line in two where the singing pauses longest">⤸ Split</button>
+      <button id="btnJoin" data-tt="joinHint" data-t="joinLine"
+              title="Join the selected line with the one after it">⤹ Join</button>
       <button id="btnDelLine" data-tt="delLineHint" data-t="delLine"
               title="Delete the selected line from the lyrics">－ line</button>
       <button id="btnVoice" data-tt="voiceHint"
@@ -508,6 +525,8 @@
               title="Put the copied line in place of the selected one (Ctrl+Shift+V)">⧉ Paste line</button>
       <button id="btnPaste" data-tt="pasteHint" disabled
               title="Paste the copied rhythm into the selected line (Ctrl+V)">⧉ Paste rhythm</button>
+      <button id="btnLock" data-tt="lockHint" data-t="lockLine"
+              title="Leave this line alone when the timing is redone">🔒 Lock</button>
       <button id="btnKeep" data-tt="keepHint" data-t="keep"
               title="Keep the original voice on this line: backing vocals, speech, a bit that matters to the story. You are not meant to sing it">♪ Original</button>
       <span class="pick" data-tt="colorsHint"
@@ -524,6 +543,12 @@
               title="Play the selected line over and over">↻ Loop</button>
       <button id="btnSnap" data-tt="snapHint" data-t="snapAll"
               title="Move every line to the nearest moment singing starts">Snap all to the vocal</button>
+      <button id="btnMark" data-tt="markHint" data-t="markMode"
+              title="Mark on the waveform the stretches that hold no words">✂ No words here</button>
+      <label class="chk" data-tt="keepMarksHint"><input type="checkbox" id="chkKeepMarks" checked>
+        <span data-t="keepMarks">original on the marks</span></label>
+      <input id="edNoText" class="notext" data-tp="noTextPh" data-tt="noTextLabel"
+             placeholder="0:00-0:42, 3:10-3:50 — an intro, a vocalise, a solo">
     </div>
     <div class="howto" data-t="howto"></div>
     <div class="tlwrap" id="tlwrap">
