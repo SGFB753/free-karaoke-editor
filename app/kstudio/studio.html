@@ -233,7 +233,17 @@
   .sum .wide{grid-column:1 / -1; font-size:0.8438rem; color:var(--muted); line-height:1.5;
     background:none; border:none; padding:0}
   .sum .wide u{text-decoration:none; color:var(--accent); cursor:pointer}
-  .probs{flex:1; overflow:auto; padding:0 8px 10px}
+  /* min-height:0 or the list refuses to shrink below its content, grows past
+     the panel and gets clipped — which reads as “the scrolling is broken”. */
+  .probs{flex:1; overflow:auto; padding:0 8px 10px; min-height:0}
+  .side .sum{flex:none}
+  .prob{position:relative; padding-right:26px}
+  /* “Ignore”, the way a spell-checker has it: this warning, this line. */
+  .prob .ign{position:absolute; right:4px; top:7px; padding:2px 7px; font-size:0.75rem;
+    opacity:.4; border-color:transparent; background:transparent}
+  .prob .ign:hover{opacity:1; background:rgba(255,255,255,.1)}
+  .ignored-note{padding:4px 12px 10px; font-size:0.7812rem; color:var(--muted);
+    cursor:pointer; text-decoration:underline}
   .prob{padding:9px 11px; border-radius:9px; cursor:pointer; margin-bottom:5px;
     border:1px solid transparent}
   .prob:hover{background:rgba(255,255,255,.07); border-color:var(--line)}
@@ -400,7 +410,7 @@
         <div class="pickrow">
           <input id="inLyrics" data-tp="lyricsPh" placeholder="txt — one line of the song per line of the file">
           <button data-pick="lyrics" data-t="choose">Choose…</button>
-          <button id="btnPaste" data-t="pasteText">Paste the text</button>
+          <button id="btnPasteText" data-t="pasteText">Paste the text</button>
         </div>
         <div class="hint" id="lyricsNote"></div>
         <div class="found hide" id="lyricsFound"></div>
@@ -531,6 +541,8 @@
               title="Put the copied line in place of the selected one (Ctrl+Shift+V)">⧉ Paste line</button>
       <button id="btnPaste" data-tt="pasteHint" disabled
               title="Paste the copied rhythm into the selected line (Ctrl+V)">⧉ Paste rhythm</button>
+      <button id="btnEven" data-tt="evenHint" data-t="evenWords"
+              title="Re-lay the words of the selected lines by syllables — the edges stay">≡ Even words</button>
       <button id="btnLock" data-tt="lockHint" data-t="lockLine"
               title="Leave this line alone when the timing is redone">🔒 Lock</button>
       <button id="btnKeep" data-tt="keepHint" data-t="keep"
@@ -575,6 +587,12 @@
     <div class="knob" id="grpVoice"><span data-t="voice">Voice</span>
       <input type="range" id="rVoice" min="0" max="100" value="0">
       <span id="vVoice" style="min-width:34px;text-align:right">0%</span></div>
+    <select id="selSpeed" data-tt="speedHint"
+            title="Slower without changing the pitch — to catch mistakes while editing. Playback only: the song and the video are untouched.">
+      <option value="1" selected>1×</option>
+      <option value="0.75">0.75×</option>
+      <option value="0.5">0.5×</option>
+    </select>
     <span class="sp" style="flex:1"></span>
     <span class="muted" id="hint" style="font-size:0.75rem"></span>
   </footer>

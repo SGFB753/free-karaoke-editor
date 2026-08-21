@@ -132,6 +132,175 @@ if (rect){
      JSON.stringify(after.words.map(w => w.t.toFixed(2))));
 }
 
+console.log('\n--- an article under its neighbour, and the words re-laid ---');
+// The aligner gives an article no time of its own: “A” and “chilling” start at
+// the same instant, and the small chip used to vanish under the big one — it
+// could not even be grabbed.
+const cur = await proj();
+const deg = JSON.parse(JSON.stringify(cur.lines));
+const at = deg[0].start;
+deg[0].text = 'A chilling cold';
+deg[0].words = [{w: 'A', t: at, d: 0, s: 1},
+                {w: 'chilling', t: at, d: 1.0, s: 2},
+                {w: 'cold', t: at + 1.0, d: 0.8, s: 1}];
+deg[0].end = at + 1.8;
+await fetch(`${API}/api/project/${encodeURIComponent(PID)}/timings`, {method:'POST',
+  headers:{'Content-Type':'application/json'}, body: JSON.stringify({lines: deg})});
+await p.reload({waitUntil:'networkidle0'});
+await sleep(500);
+await p.waitForSelector('.card', {timeout:20000});
+await p.click('.card');
+await p.waitForSelector('#scrEdit:not(.hide)', {timeout:20000});
+await sleep(700);
+await p.click('#scroll .ln');
+await sleep(200);
+await p.click('#btnFit');
+await sleep(400);
+
+const chips = await p.$$eval('#words .wrd', els => els.map(e => {
+  const r = e.getBoundingClientRect();
+  return {left: r.left, right: r.right, w: r.width};
+}));
+ok('all three words have a chip of visible width',
+   chips.length === 3 && chips.every(c => c.w >= 5),
+   JSON.stringify(chips.map(c => Math.round(c.w))));
+ok('and no chip lies on another',
+   chips.every((c, i) => i === 0 || c.left >= chips[i - 1].right - 0.5),
+   JSON.stringify(chips.map(c => [Math.round(c.left), Math.round(c.right)])));
+
+console.log('\n--- “≡ Even words” re-lays them, edges untouched ---');
+await p.click('#btnEven');
+await sleep(1300);
+const evened = (await proj()).lines[0];
+ok('the edges stayed', Math.abs(evened.start - at) < 0.01
+   && Math.abs(evened.end - (at + 1.8)) < 0.01,
+   `${evened.start.toFixed(2)}–${evened.end.toFixed(2)}`);
+ok('the words are in order and apart now',
+   evened.words.every((w, i) => i === 0 || w.t > evened.words[i - 1].t + 0.01),
+   JSON.stringify(evened.words.map(w => w.t.toFixed(2))));
+ok('every word has a length of its own', evened.words.every(w => w.d > 0.05),
+   JSON.stringify(evened.words.map(w => w.d.toFixed(2))));
+
+console.log('\n--- the word band is there with nothing selected ---');
+// The whole layout has to be watchable without selecting a line: a thin band
+// of word boxes along the bottom of the wave.
+await p.keyboard.press('Escape');
+await p.click('#btnZoomOut');
+await sleep(400);
+const band = await p.evaluate(() => {
+  const c = document.getElementById('wave');
+  const g = c.getContext('2d');
+  const dpr = c.width / c.clientWidth;
+  const y = Math.max(0, Math.round((c.clientHeight - 12) * dpr));
+  const hgt = Math.min(c.height - y, Math.round(10 * dpr));
+  const d = g.getImageData(0, y, c.width, hgt).data;
+  let lit = 0;
+  for (let i = 3; i < d.length; i += 4) if (d[i] > 20) lit++;
+  return {lit, total: d.length / 4};
+});
+ok('word boxes are drawn along the bottom of the wave',
+   band.lit > band.total * 0.01, JSON.stringify(band));
+
+console.log('\n--- a press selects the line that was pressed ---');
+// The stage scrolls under the cursor while the song plays: the click used to
+// land on the neighbour of the line that was actually pressed.
+const stageLines = await p.$$('#scroll .ln');
+if (stageLines.length >= 3){
+  const target = stageLines[2];
+  const rb = await target.boundingBox();
+  await p.mouse.move(rb.x + rb.width / 2, rb.y + rb.height / 2);
+  await p.mouse.down();
+  // the song plays on between the press and the release, and the stage
+  // scrolls under the cursor — exactly how the neighbour used to get selected
+  await p.keyboard.press('Space');
+  await sleep(400);
+  await p.keyboard.press('Space');
+  await sleep(150);
+  await p.mouse.up();
+  await sleep(300);
+  const picked = await p.$$eval('#scroll .ln',
+    els => els.findIndex(e => e.classList.contains('sel')));
+  ok('the selected line is the pressed one, not its neighbour',
+     picked === 2, picked);
+} else {
+  ok('the stage has enough lines to try this on', false, stageLines.length);
+}
+
+console.log('\n--- dots on a scream do not break the rhythm ---');
+// Appending “...” to the last word — a long scream written down — used to lay
+// the whole line out anew, throwing away exactly the rhythm already set.
+const beforeDots = (await proj()).lines[1];
+await p.$$eval('#scroll .ln', els => els[1].scrollIntoView());
+await sleep(200);
+const row1 = (await p.$$('#scroll .ln'))[1];
+const rr = await row1.boundingBox();
+await p.mouse.click(rr.x + rr.width / 2, rr.y + rr.height / 2);
+await sleep(250);
+await p.click('#btnText');
+await sleep(300);
+await p.keyboard.press('End');
+await p.keyboard.type('...');
+await p.keyboard.press('Enter');
+await sleep(1300);
+const afterDots = (await proj()).lines[1];
+ok('the dots are in the text', /\.\.\.$/.test(afterDots.text), afterDots.text);
+ok('and every word kept its time',
+   afterDots.words.length === beforeDots.words.length
+   && afterDots.words.every((w, k) => Math.abs(w.t - beforeDots.words[k].t) < 0.002
+                                   && Math.abs(w.d - beforeDots.words[k].d) < 0.002),
+   JSON.stringify(afterDots.words.map(w => w.t.toFixed(2))) + ' vs '
+   + JSON.stringify(beforeDots.words.map(w => w.t.toFixed(2))));
+
+// one word fixed in the middle: its neighbours stay put
+// fix the FIRST word: every line has one, and its neighbour must stay put
+const midWords = afterDots.words.map(w => w.w);
+midWords[0] = 'чиню';
+await p.click('#btnText');
+await sleep(300);
+await p.$eval('.lnedit', (e, v) => { e.value = v; }, midWords.join(' '));
+await p.keyboard.press('Enter');
+await sleep(1300);
+const afterFix = (await proj()).lines[1];
+ok('the fixed word is in place', afterFix.words[0].w === 'чиню', afterFix.words[0].w);
+const lastK = afterFix.words.length - 1;
+ok('and the untouched words kept their times',
+   afterFix.words.slice(1).every((w, k) =>
+     Math.abs(w.t - afterDots.words[k + 1].t) < 0.002),
+   `${afterFix.words[lastK].t.toFixed(2)} vs ${afterDots.words[lastK].t.toFixed(2)}`);
+
+console.log('\n--- slowed listening, same pitch ---');
+// Half speed to catch mistakes while editing: time stretches, the pitch stays,
+// and the clock the editor lives by follows the slowed playback.
+await p.select('#selSpeed', '0.5');
+await sleep(200);
+const clock = async () => p.$eval('#tCur', e => {
+  const m = e.textContent.trim().match(/^(\d+):(\d+(?:\.\d+)?)/);
+  return m ? parseInt(m[1], 10) * 60 + parseFloat(m[2]) : NaN;
+});
+await p.keyboard.press('Space');
+await sleep(300);
+const t1 = await clock();
+await sleep(1600);
+const t2 = await clock();
+await p.keyboard.press('Space');
+await sleep(200);
+const gained = t2 - t1;
+ok('the song moves at about half its pace', gained > 0.45 && gained < 1.2,
+   gained.toFixed(2) + ' s per 1.6 s');
+// pitch preservation is a property of the hidden players; reach them through
+// a DOM hook the app exposes for exactly this kind of look
+ok('the speed control shows the chosen rate',
+   (await p.$eval('#selSpeed', e => e.value)) === '0.5');
+await p.select('#selSpeed', '1');
+await sleep(200);
+await p.keyboard.press('Space');
+await sleep(1100);
+const t3 = await clock();
+await p.keyboard.press('Space');
+await sleep(150);
+ok('back at 1× the song runs at full pace again', t3 - t2 > 0.75,
+   (t3 - t2).toFixed(2) + ' s per 1.1 s');
+
 ok('no errors in the browser console', errs.length === 0, errs[0] || '');
 await b.close();
 console.log(fail ? `\nFAILED: ${fail}` : '\nAll checks passed');

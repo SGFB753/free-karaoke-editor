@@ -255,5 +255,12 @@
   "clipNothing": "",
   "clipDone": "",
   "edgeLimit": "",
-  "clipMoved": ""
+  "clipMoved": "",
+  "evenWords": "",
+  "evenHint": "",
+  "evenDone": "",
+  "speedHint": "",
+  "ignoreHint": "",
+  "ignored": "",
+  "restoreIgnored": ""
 }

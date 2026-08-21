@@ -243,7 +243,7 @@ def keep_spans(data: Dict) -> List[List[float]]:
 
 
 def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,
-               no_text=None, keep_marks=None) -> Dict:
+               no_text=None, keep_marks=None, check_off=None) -> Dict:
     data = load(folder)
     data["lines"] = lines
     if colors:
@@ -257,6 +257,8 @@ def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,
         data["noText"] = str(no_text)
     if keep_marks is not None:
         data["keepMarks"] = bool(keep_marks)
+    if check_off is not None:
+        data["checkOff"] = [str(k) for k in check_off][:500]
     data["keepSpans"] = keep_spans(data)
     data["edited"] = time.time()
     save(folder, data)
@@ -369,11 +371,12 @@ def problems(data: Dict) -> List[Dict]:
 
         gaps = [ws[k + 1]["t"] - (ws[k]["t"] + ws[k]["d"]) for k in range(len(ws) - 1)]
         if gaps and max(gaps) > 1.2:
-            why.append(tr(f"words drift apart by {max(gaps):.1f} s",
-                          f"слова разъехались на {max(gaps):.1f} с"))
+            why.append((tr(f"words drift apart by {max(gaps):.1f} s",
+                           f"слова разъехались на {max(gaps):.1f} с"), "gap"))
 
         if i and lines[i - 1]["end"] > ln["start"] + 1e-6:
-            why.append(tr("overlaps the previous line", "налезает на предыдущую"))
+            why.append((tr("overlaps the previous line", "налезает на предыдущую"),
+                        "overlap"))
 
         # There used to be a complaint about “held too long” here — wrongly:
         # a long note, a melisma, a tail at the end of a line is ordinary music,
@@ -382,17 +385,28 @@ def problems(data: Dict) -> List[Dict]:
         syl = sum((w.get("s") or 1) for w in ws) or 1
         span = ln["end"] - ln["start"]
         if span > 0 and syl and span / syl < 0.07:
-            why.append(tr(f"{syl} syllables in {span:.1f} s — nobody sings that fast",
-                          f"{syl} слогов за {span:.1f} с — столько не спеть"))
+            why.append((tr(f"{syl} syllables in {span:.1f} s — nobody sings that fast",
+                           f"{syl} слогов за {span:.1f} с — столько не спеть"), "fast"))
 
         if env and voiced_at(ln["start"]) < floor * 1.05:
-            why.append(tr("starts where no vocal is heard", "начинается там, где вокала не слышно"))
+            why.append((tr("starts where no vocal is heard",
+                           "начинается там, где вокала не слышно"), "quietstart"))
 
         if weak and ln.get("sure") is not None and ln["sure"] < weak:
-            why.append(tr("the model barely heard these words — the timing is a guess",
-                          "модель едва расслышала эти слова — время здесь наугад"))
+            why.append((tr("the model barely heard these words — the timing is a guess",
+                           "модель едва расслышала эти слова — время здесь наугад"),
+                        "doubt"))
 
+        # “Ignore”, the way a spell-checker has it: a warning dismissed for this
+        # line stays dismissed. The key is the line's words, not its number —
+        # numbers shift when lines are split or joined.
+        off = set(data.get("checkOff") or [])
+        text_key = (ln.get("text") or "").strip()
+        why = [(msg, kind) for msg, kind in why
+               if f"{text_key}|{kind}" not in off]
         if why:
             out.append({"line": i, "text": ln.get("text", ""),
-                        "start": ln["start"], "why": why})
+                        "start": ln["start"],
+                        "why": [m for m, _ in why],
+                        "kinds": [k for _, k in why]})
     return out

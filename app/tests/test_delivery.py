@@ -287,6 +287,16 @@ def main():
     check("a broken pair is dropped, not crashed on",
           video_mod.keep_spans({"data": {"keepSpans": [["x"], None, [1.0]]}}) == [])
 
+    print("\nEvery control answers to one name")
+    # Two elements sharing an id: getElementById takes the first, every handler
+    # lands on it, and the visible button goes dead with no error anywhere.
+    # “⧉ Paste rhythm” spent three versions grey exactly this way.
+    for page_name in ("studio.html", "player.html"):
+        page_src = open(os.path.join(ROOT, "kstudio", page_name), encoding="utf-8").read()
+        ids = re.findall(r'id="([^"]+)"', page_src)
+        dupes = sorted({i for i in ids if ids.count(i) > 1})
+        check(f"{page_name} has no duplicated ids", not dupes, ", ".join(dupes))
+
     print("\nThe version the program tells everyone")
     # Three places name it, and a person comparing them has to get one answer:
     # the program itself, the guide in the folder and the newest changelog entry.

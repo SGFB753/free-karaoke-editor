@@ -82,6 +82,38 @@ if (built){
        !/[\[\]_]/.test(d.title), d.title);
     ok('and the artist came with it', d.artist === 'Stub Artist', d.artist);
   }
+  console.log('\n--- and the journey ends in an exported page ---');
+  const exp = await (await fetch(`${API}/api/project/${encodeURIComponent(fresh[0].id)}/export`,
+    {method:'POST', headers:{'Content-Type':'application/json'},
+     body: JSON.stringify({kind:'html'})})).json();
+  let expEnd = null;
+  for (let i = 0; i < 120; i++){
+    const j = await (await fetch(`${API}/api/job?id=${exp.job}`)).json();
+    if (j.done || j.error){ expEnd = j; break; }
+    await sleep(500);
+  }
+  ok('the export goes through', expEnd && expEnd.ok,
+     expEnd && (expEnd.error || (expEnd.log || []).slice(-1)[0]));
+  if (expEnd && expEnd.ok && expEnd.result && expEnd.result.path){
+    const fs = await import('fs');
+    const html = fs.readFileSync(expEnd.result.path, 'utf8');
+    const m = html.match(/<script id="payload" type="application\/json">(.*?)<\/script>/s);
+    ok('the page carries a payload', !!m);
+    if (m){
+      const pay = JSON.parse(m[1].replace(/\\u003c/g, '<')
+        .replace(/\\u003e/g, '>').replace(/\\u0026/g, '&'));
+      ok('the song in the page is called what it is called',
+         pay.data.title === 'Stub Song', pay.data.title);
+      ok('with the artist that came with it', (pay.data.artist || '') === 'Stub Artist',
+         pay.data.artist);
+      ok('every line of the lyrics reached the page',
+         (pay.data.lines || []).length >= 2, (pay.data.lines || []).length);
+      ok('and the keep-spans field is there for the player',
+         Array.isArray(pay.data.keepSpans), typeof pay.data.keepSpans);
+    }
+    fs.unlinkSync(expEnd.result.path);    // the stand stays as it was found
+  }
+
   // The stand belongs to everyone: put it back the way it was found.
   for (const f of fresh)
     await fetch(`${API}/api/project/${encodeURIComponent(f.id)}/delete`, {method:'POST'});

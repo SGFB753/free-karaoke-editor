@@ -267,6 +267,9 @@ def align_energy(lyrics: Lyrics, audio_path: str, duration: float,
             w.end = ln.start + span * acc / ln.syllables
 
     _fill_lines(lyrics, duration)
+    if skip:
+        enforce_marks(lyrics, skip, duration, log=log)
+        _fill_lines(lyrics, duration)
     return lyrics
 
 
@@ -528,6 +531,9 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
         # had to end it somewhere, and the far side of the silence was the
         # nearest thing it could find.
         clip_to_marks(lyrics, skip, log=log)
+        # …and whatever is left overlapping after every gentler pass is forced
+        # out: the marks are the person's own words, and they win.
+        enforce_marks(lyrics, skip, duration, log=log)
     repair_order(lyrics, log=log)
     _fill_lines(lyrics, duration)      # after repairs the bounds may exceed the track
 
@@ -1133,6 +1139,93 @@ def clip_to_marks(lyrics: Lyrics, skip: List[tuple], log: Log = _noop) -> int:
     return fixed
 
 
+def enforce_marks(lyrics: Lyrics, skip, duration: float, log: Log = _noop) -> int:
+    """No words on a marked stretch — as a guarantee, not an intention.
+
+    The gentler passes move and trim where there is room. When there is none —
+    the aligner crowded the following lines right against the hole — a run used
+    to be left inside it, with a note in the log. But the marks are the
+    person's own words about their song. A line squeezed in tight beside the
+    hole is a visible flaw in the right place; a line lying over a vocalise is
+    the one thing they explicitly said must not happen.
+    """
+    marks = spans(skip, duration)
+    if not marks:
+        return 0
+    lines = lyrics.lines
+
+    def hit(ln):
+        if ln.start is None or ln.end is None or not ln.words:
+            return None
+        for a, b in marks:
+            if min(ln.end, b) - max(ln.start, a) > 0.05:
+                return (a, b)
+        return None
+
+    moved, cramped = 0, []
+    i = 0
+    while i < len(lines):
+        h = hit(lines[i])
+        if not h:
+            i += 1
+            continue
+        j = i
+        lo_h, hi_h = h
+        while j + 1 < len(lines):
+            h2 = hit(lines[j + 1])
+            if not h2:
+                break
+            lo_h, hi_h = min(lo_h, h2[0]), max(hi_h, h2[1])
+            j += 1
+        run = lines[i:j + 1]
+        prv = lines[i - 1].end if i and lines[i - 1].end is not None else 0.0
+        nxt = lines[j + 1].start if j + 1 < len(lines) and \
+            lines[j + 1].start is not None else duration
+        total = sum(_syl(ln) for ln in run) or 1
+        need = total * _MIN_PER_SYLLABLE
+        # singing between the neighbours, holes taken out; nearest the following
+        # line with room to breathe, else simply the widest there is
+        wins = _voiced_windows(min(prv, lo_h), max(nxt, hi_h),
+                               [{"start": a, "end": b} for a, b in marks])
+        wins = [w for w in wins if w[1] > prv and w[0] < max(nxt, hi_h)]
+        pick = None
+        for w in reversed(wins):
+            if w[1] - w[0] >= need + 0.05:
+                pick = w
+                break
+        if not pick and wins:
+            pick = max(wins, key=lambda w: w[1] - w[0])
+        if not pick or pick[1] - pick[0] < 0.2:
+            # no singing anywhere between the neighbours: right against the
+            # hole then, cramped, and said out loud
+            pick = [hi_h, hi_h + max(0.3, 0.12 * sum(len(ln.words) for ln in run))]
+            cramped.append((i, j, hi_h))
+        span = min(pick[1] - pick[0], max(_SUNG_PER_SYLLABLE * total, need))
+        base = (pick[1] - span) if j + 1 < len(lines) else pick[0]
+        acc = 0.0
+        for ln in run:
+            t0 = base + span * acc / total
+            acc += _syl(ln)
+            t1 = base + span * acc / total
+            _spread(ln.words, t0, max(t1 - 0.05, t0 + 0.05))
+            ln.start, ln.end = ln.words[0].start, ln.words[-1].end
+            moved += 1
+        i = j + 1
+    if moved:
+        log(tr(f"  lines forced off the marked stretches: {moved}",
+               f"  строк принудительно убрано с отмеченных пустот: {moved}"))
+    for a, b, at in cramped:
+        log(tr(f"  NOTE: lines {a + 1}–{b + 1} had nowhere to go and are squeezed in "
+               f"right after the mark at {mmss(at)} — cramped on purpose: better a "
+               f"tight line in the right place than words over the stretch you "
+               f"marked. Spread them out by hand.",
+               f"  ВНИМАНИЕ: строкам {a + 1}–{b + 1} некуда было встать, они прижаты "
+               f"сразу после отметки на {mmss(at)} — тесно нарочно: лучше тесная "
+               f"строка в правильном месте, чем слова поверх куска, который вы "
+               f"отметили. Растащите их руками."))
+    return moved
+
+
 def repair_order(lyrics: Lyrics, log: Log = _noop) -> int:
     """Pull overlapping lines apart: a line must not end past the start of the
     next one, or the highlight jumps around."""
@@ -1180,6 +1273,20 @@ def _fill_lines(lyrics: Lyrics, duration: float, min_word: float = 0.12) -> None
         if w.end <= w.start:
             w.end = min(w.start + min_word, duration)
         prev_end = w.end
+
+    # A short word the aligner collapsed onto its neighbour: “A” and
+    # “chilling” starting at the same instant. The article was sung just
+    # before — give it that sliver back, walking backwards so a chain of
+    # squeezed words unfolds one after another. Grabbing a word that occupies
+    # no time is impossible in any editor.
+    for ln in lyrics.lines:
+        ws = ln.words
+        for k in range(len(ws) - 1, 0, -1):
+            w, nxt = ws[k - 1], ws[k]
+            if w.start is not None and nxt.start is not None \
+                    and nxt.start - w.start < 0.05:
+                w.start = max(0.0, nxt.start - max(min_word, 0.07 * w.syllables))
+                w.end = max(nxt.start, w.start + 0.02)
 
     for ln in lyrics.lines:
         if not ln.words:

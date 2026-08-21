@@ -143,6 +143,21 @@ def find_font(explicit=None) -> str:
                             "Не нашёл ни одного шрифта .ttf — укажите его ключом --font"))
 
 
+def pips_lit(gap: float, left: float) -> int:
+    """How many countdown dots burn, `left` seconds before the next line.
+
+    The wait is divided into three equal thirds of ITSELF — not into fixed
+    seconds. A pause of 2.6 s would otherwise give the first dot 0.6 s and the
+    others a full second each: a countdown that stutters is worse than none.
+    The window is the last three seconds, or the whole pause when it is shorter.
+    """
+    if gap <= 2.5 or left <= 0 or left > 3:
+        return 0
+    window = min(3.0, gap)
+    done = max(0.0, 1.0 - left / window)
+    return min(3, max(1, int(done * 3) + 1))
+
+
 # ---------------------------------------------------------------- audio
 def keep_spans(payload: dict) -> list:
     """Stretches where the original voice is deliberately kept.
@@ -349,6 +364,10 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
     bg = make_background(W, H)
     small = ImageFont.truetype(font_path, int(H * 0.020))
+    # The countdown pill: readable from a couch, which the small caption font
+    # was not. It still sits in the top strip where no lyrics are ever drawn,
+    # so nothing gets covered — the strip only grows a little.
+    pill_font = ImageFont.truetype(font_path, int(H * 0.030))
 
     art, art_side = {}, {}
 
@@ -444,9 +463,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
                 gap = lines[idx + 1]["start"] - (lines[idx]["end"] if idx >= 0 else 0)
                 left = lines[idx + 1]["start"] - t
-                lit = 0
-                if gap > 2.5 and 0 < left <= 3:
-                    lit = min(3 - int(left) + (1 if left < 3 else 0), 3)
+                lit = pips_lit(gap, left)
                 dots((y_main + y_next) // 2, lit)
 
             # While nobody sings the screen is empty and it is unclear whether
@@ -475,16 +492,17 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                     # centre — horizontally and vertically.
                     cx, cy = W // 2, int(H * 0.105)
                     txt = f"{head}   {num}   {tail}"
-                    box = d.textbbox((0, 0), txt, font=small)
+                    box = d.textbbox((0, 0), txt, font=pill_font)
                     tw, th = box[2] - box[0], box[3] - box[1]
-                    pad_x, pad_y = int(H * 0.026), int(H * 0.020)
+                    pad_x, pad_y = int(H * 0.030), int(H * 0.022)
                     d.rounded_rectangle(
                         [cx - tw // 2 - pad_x, cy - th // 2 - pad_y,
                          cx + tw // 2 + pad_x, cy + th // 2 + pad_y],
                         radius=int(th // 2 + pad_y),
                         fill=_mix(BG_TOP, (255, 255, 255), 0.10),
                         outline=_mix(BG_TOP, (255, 255, 255), 0.28))
-                    d.text((cx, cy), txt, font=small, fill=COL_DIM, anchor="mm")
+                    d.text((cx, cy), txt, font=pill_font,
+                           fill=_mix(COL_DIM, (255, 255, 255), 0.35), anchor="mm")
                     # The bar is centred too, right under the pill.
                     bw = max(int(W * 0.16), tw // 2)
                     bx, by = cx - bw // 2, cy + th // 2 + pad_y + int(H * 0.012)

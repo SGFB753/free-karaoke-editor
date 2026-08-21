@@ -1232,6 +1232,113 @@ def main():
     check("and a trim that would leave nothing usable is not made",
           tiny.lines[0].end > 10.5, f"{tiny.lines[0].start:.1f}–{tiny.lines[0].end:.1f}")
 
+    print("\nA dismissed warning stays dismissed")
+    # “Ignore”, the way a spell-checker has it. The key is the line's words,
+    # not its number: numbers shift when lines are split or joined.
+    from kstudio import project as PJ2
+
+    def _slow_line(i, text):
+        return {"text": text, "start": i * 5.0, "end": i * 5.0 + 0.2, "sure": None,
+                "words": [{"w": w, "t": i * 5.0, "d": 0.05, "s": 3}
+                          for w in text.split()]}
+
+    noisy = {"lines": [_slow_line(0, "быстрая строка тут"),
+                       _slow_line(1, "другая строка тут")]}
+    before_p = PJ2.problems(noisy)
+    check("both lines are flagged, with the kind named",
+          len(before_p) == 2 and all("fast" in p.get("kinds", []) for p in before_p),
+          [(p["line"], p.get("kinds")) for p in before_p])
+    noisy["checkOff"] = ["быстрая строка тут|fast"]
+    after_p = PJ2.problems(noisy)
+    check("the dismissed line is quiet, the other still speaks",
+          len(after_p) == 1 and after_p[0]["line"] == 1,
+          [(p["line"], p["why"]) for p in after_p])
+    # the line moved to another number — the dismissal follows the words
+    moved_l = {"lines": [_slow_line(0, "другая строка тут"),
+                         _slow_line(1, "быстрая строка тут")],
+               "checkOff": ["быстрая строка тут|fast"]}
+    moved_p = PJ2.problems(moved_l)
+    check("the dismissal follows the words, not the number",
+          len(moved_p) == 1 and moved_p[0]["text"] == "другая строка тут",
+          [(p["line"], p["text"]) for p in moved_p])
+    check("and an emptied list brings every warning back",
+          len(PJ2.problems(dict(noisy, checkOff=[]))) == 2)
+
+    print("\nA squeezed article gets its sliver of time back")
+    # The aligner collapses a short word onto its neighbour: “A” and “chilling”
+    # start at the same instant, the article occupies no time, and no editor
+    # can grab what has no span.
+    art = L.parse("a chilling cold")
+    ws = art.lines[0].words
+    ws[0].start, ws[0].end = 5.0, 5.0
+    ws[1].start, ws[1].end = 5.0, 5.6
+    ws[2].start, ws[2].end = 5.6, 6.4
+    A._fill_lines(art, 30.0)
+    check("the article starts before its neighbour now",
+          ws[0].start < ws[1].start - 0.04,
+          f"{ws[0].start:.2f} vs {ws[1].start:.2f}")
+    check("and occupies real time", ws[0].end - ws[0].start >= 0.05,
+          f"{ws[0].end - ws[0].start:.2f}")
+    check("the neighbour did not move", abs(ws[1].start - 5.0) < 0.01, ws[1].start)
+    check("and the line begins where the article does",
+          abs(art.lines[0].start - ws[0].start) < 0.01, art.lines[0].start)
+
+    # a chain of squeezed words unfolds one after another
+    chain = L.parse("а и вот строка")
+    cw = chain.lines[0].words
+    for w in cw:
+        w.start, w.end = 8.0, 8.0
+    cw[-1].end = 9.0
+    A._fill_lines(chain, 30.0)
+    check("a chain of them unfolds in order",
+          all(cw[k].start < cw[k + 1].start for k in range(len(cw) - 1)),
+          [round(w.start, 2) for w in cw])
+    check("without leaving the track", cw[0].start >= 0.0, cw[0].start)
+
+    print("\nThe marks win even when there is no room")
+    # The gentler passes leave a run inside a hole when the neighbours press
+    # right against it. But the marks are the person's own words: better a
+    # cramped line in the right place than words over the marked stretch.
+    hole_m = [(10.0, 20.0)]
+
+    def _three(next_at):
+        lyr = L.parse("до строка тут\nвнутри строка тут\nпосле строка тут")
+        for ln, (a, b) in zip(lyr.lines, [(8.0, 9.9), (12.0, 14.0), (next_at, next_at + 1.0)]):
+            A._spread(ln.words, a, b)
+            ln.start, ln.end = a, b
+        return lyr
+
+    said_e = []
+    tight = _three(20.05)                 # no room anywhere between the neighbours
+    A.enforce_marks(tight, hole_m, 30.0, log=said_e.append)
+    mid = tight.lines[1]
+    check("the run leaves the hole even with nowhere to go",
+          mid.start >= 19.95, f"{mid.start:.2f}–{mid.end:.2f}")
+    check("and the cramp is said out loud",
+          any("ВНИМАНИЕ" in m or "NOTE" in m for m in said_e), said_e[-1:])
+
+    roomy = _three(26.0)                  # singing after the hole has room
+    said_r = []
+    A.enforce_marks(roomy, hole_m, 30.0, log=said_r.append)
+    mid2 = roomy.lines[1]
+    check("with room, the run lands on the singing at a sung pace",
+          mid2.start >= 20.0 and mid2.end <= 26.0, f"{mid2.start:.2f}–{mid2.end:.2f}")
+    check("and nothing is called cramped",
+          not any("ВНИМАНИЕ" in m or "NOTE" in m for m in said_r), said_r)
+
+    # the case the trimming used to drop: a line starting a hair before the
+    # hole, ending deep inside — too little left to trim, so it stayed
+    straddle = _three(26.0)
+    straddle.lines[1].start, straddle.lines[1].end = 9.9, 15.0
+    A._spread(straddle.lines[1].words, 9.9, 15.0)
+    A.enforce_marks(straddle, hole_m, 30.0)
+    sl = straddle.lines[1]
+    check("a line straddling the hole's edge is out of it too",
+          min(sl.end, 20.0) - max(sl.start, 10.0) <= 0.05, f"{sl.start:.2f}–{sl.end:.2f}")
+
+    check("a song with no marks is not touched",
+          A.enforce_marks(_three(26.0), [], 30.0) == 0)
+
     print("\nA vocalise is heard, not muted")
     # “♪ Original” keeps the recorded voice on a line — but a vocalise has no
     # lines at all, so there was nothing to put the mark on, and the karaoke

@@ -209,6 +209,17 @@ const STR = {
     splitTooShort: "There is nothing to cut: the line has one word",
     joinNoNext: "There is no line after this one",
     joinAcrossSection: "The next line starts a new part of the song — join would hide its heading",
+    ignoreHint: "Dismiss this warning for this line — the way a spell-checker "
+      + "does. It stays dismissed; the link under the list brings them all back.",
+    ignored: "Dismissed. The link under the list brings them back.",
+    restoreIgnored: n => `dismissed: ${n} — bring them back`,
+    speedHint: "Slower without changing the pitch — to catch mistakes while "
+      + "editing. Playback only: the song and the video are untouched.",
+    evenWords: "≡ Even words",
+    evenHint: "Re-lay the words of the selected lines by syllables, inside each "
+      + "line's own span — the edges stay put. Works on locked lines too: the "
+      + "lock guards against the model, not against you.",
+    evenDone: n => `Words re-laid in ${n} ${n === 1 ? "line" : "lines"}`,
     lockLine: "🔒 Lock",
     lockHint: "Leave the selected lines as they are when the timing is redone: "
       + "what you put right by hand outweighs anything the model returns for it.",
@@ -518,6 +529,17 @@ const STR = {
     splitTooShort: "Резать нечего: в строке одно слово",
     joinNoNext: "После этой строки нет следующей",
     joinAcrossSection: "Следующая строка начинает новую часть песни — склейка спрячет её заголовок",
+    ignoreHint: "Скрыть это предупреждение для этой строки — как «пропустить» в "
+      + "проверке правописания. Останется скрытым; ссылка под списком вернёт все.",
+    ignored: "Скрыто. Ссылка под списком вернёт обратно.",
+    restoreIgnored: n => `скрыто: ${n} — вернуть`,
+    speedHint: "Медленнее без смены тона — чтобы успевать замечать косяки при "
+      + "правке. Только прослушивание: песня и ролик не меняются.",
+    evenWords: "≡ Слова ровно",
+    evenHint: "Переложить слова выбранных строк по слогам внутри их собственных "
+      + "границ — края не двигаются. Работает и на запертых: замок защищает от "
+      + "модели, а не от вас.",
+    evenDone: n => `Слова переложены: строк ${n}`,
     lockLine: "🔒 Замок",
     lockHint: "Оставить выбранные строки как есть при переразметке: выправленное "
       + "руками важнее всего, что вернёт про них модель.",
@@ -1164,7 +1186,7 @@ async function takeFound(f){
   note("lyricsNote", T.lyricsTook);
   await useTyped(true);
 }
-$("btnPaste").addEventListener("click", () => {
+$("btnPasteText").addEventListener("click", () => {
   const box = $("pasteBox");
   box.classList.toggle("hide");
   if (!box.classList.contains("hide")){ $("taLyrics").focus(); countPasted(); }
@@ -1268,17 +1290,72 @@ window.addEventListener("beforeunload", () => {
 });
 
 /* ================= audio ================= */
-let ctx=null, bufs=null, gains=null, srcs=null;
+let ctx=null, bufs=null, gains=null, srcs=null, audioNames=["mix"];
 let waStart=0, waOffset=0, playing=false, dur=0, voiceLevel=0, hasStems=false;
+/* Slowed listening. WebAudio buffers change pitch with speed, so at any rate
+   other than 1× playback goes through hidden <audio> elements instead: the
+   browser stretches time and keeps the pitch. Only the listening slows down —
+   the song, the timing and the video know nothing about it. */
+let rate = 1, sAud = null, sSync = 0;
 
 function mediaTime(){
+  // While paused, waOffset is the truth in every mode: a seek moves it at
+  // once, and the hidden players catch up only when play is pressed.
+  if (rate !== 1 && sAud && sAud[0] && playing)
+    return Math.min(sAud[0].currentTime, dur);
   return playing ? Math.min(Math.max(waOffset + (ctx.currentTime - waStart), waOffset), dur)
                  : waOffset;
+}
+function slowEls(){
+  if (sAud) return sAud;
+  const names = hasStems ? ["instrumental", "vocals"] : [audioNames[0]];
+  sAud = names.map(n => {
+    const a = new Audio(`/api/project/${encodeURIComponent(pid)}/audio/${n}`);
+    a.preload = "auto";
+    // the whole point: slower, same pitch
+    a.preservesPitch = true;
+    a.mozPreservesPitch = true;
+    a.webkitPreservesPitch = true;
+    return a;
+  });
+  sAud[0].addEventListener("ended", () => { if (playing) stop(); });
+  return sAud;
+}
+function slowPlayFrom(t){
+  const els = slowEls();
+  els.forEach(a => { a.playbackRate = rate; a.currentTime = t; });
+  els.forEach(a => a.play().catch(() => {}));
+  waOffset = t; playing = true;
+  $("btnPlay").textContent = "⏸";
+  // Two elements drift apart on their own clocks: a hard nudge every few
+  // seconds keeps the voice with the backing. Fine sync belongs to 1×.
+  clearInterval(sSync);
+  if (els.length > 1)
+    sSync = setInterval(() => {
+      if (!playing || rate === 1) return clearInterval(sSync);
+      if (Math.abs(els[1].currentTime - els[0].currentTime) > 0.06)
+        els[1].currentTime = els[0].currentTime;
+    }, 3000);
+}
+function slowStop(){
+  clearInterval(sSync);
+  if (sAud) sAud.forEach(a => a.pause());
+}
+function setRate(r){
+  const was = playing, at = mediaTime();
+  if (playing) stop();
+  rate = r;
+  applyVoice();
+  if (was){ waOffset = at; play(); }
 }
 async function loadAudio(pid, tracks){
   ctx = new (window.AudioContext||window.webkitAudioContext)();
   hasStems = !!(tracks.instrumental && tracks.vocals);
   const names = hasStems ? ["instrumental","vocals"] : [Object.keys(tracks)[0]];
+  audioNames = names;
+  if (sAud){ slowStop(); sAud = null; }        // another song, other tracks
+  rate = 1;
+  if ($("selSpeed")) $("selSpeed").value = "1";
   const raw = await Promise.all(names.map(n =>
     fetch(`/api/project/${encodeURIComponent(pid)}/audio/${n}`).then(r => r.arrayBuffer())));
   bufs = await Promise.all(raw.map(b => ctx.decodeAudioData(b)));
@@ -1301,10 +1378,14 @@ function playFrom(t){
   $("btnPlay").textContent = "⏸";
 }
 function play(){ if(!bufs) return; if (ctx.state==="suspended") ctx.resume();
-  if (waOffset >= dur-0.05) waOffset = 0; playFrom(waOffset); }
+  if (waOffset >= dur-0.05) waOffset = 0;
+  if (rate !== 1){ slowPlayFrom(waOffset); return; }
+  playFrom(waOffset); }
 function stop(){ if(!playing) return; waOffset = mediaTime(); playing=false; stopSrcs();
+  slowStop();
   $("btnPlay").textContent="▶"; }
 function seek(t){ waOffset = clamp(t,0,dur); curLine=-2;
+  if (playing && rate !== 1){ slowPlayFrom(waOffset); return; }
   if (playing) playFrom(waOffset); else stopSrcs(); }
 // On marked lines the voice always plays: that is audible here, not only in
 // the finished karaoke.
@@ -1321,6 +1402,10 @@ function inKeep(t){
 }
 function applyVoice(){
   const lvl = keepOn ? 1 : voiceLevel;
+  if (rate !== 1 && sAud){
+    sAud[0].volume = 1;
+    if (hasStems && sAud[1]) sAud[1].volume = lvl;
+  }
   if (gains){ gains[0].gain.value = 1;
     if (hasStems){
       const g = gains[1].gain;
@@ -1494,8 +1579,18 @@ window.addEventListener("pointerup", e => {
   const was = picking;
   picking = null;
   document.body.classList.remove("picking");
-  if (was.moved){ try { $("stage").releasePointerCapture(was.id); } catch (err) {} }
-  if (was.moved) skipClick = true;      // a click after a drag resets nothing
+  if (was.moved){
+    try { $("stage").releasePointerCapture(was.id); } catch (err) {}
+    skipClick = true;                   // a click after a drag resets nothing
+    return;
+  }
+  // The stage keeps scrolling under the cursor while the song plays: by the
+  // time the browser assembles a click, the pressed line is no longer the one
+  // under the pointer, and the click landed on a neighbour — or nowhere. The
+  // press is what the person meant, so the press is what selects.
+  skipClick = true;
+  selectLine(was.from, !e.shiftKey && !e.ctrlKey && !e.metaKey,
+    e.shiftKey ? "range" : (e.ctrlKey || e.metaKey) ? "add" : "");
 });
 
 function selectLine(i, jump, mode){
@@ -1773,6 +1868,20 @@ function toggleLock(){
 }
 $("btnLock").addEventListener("click", toggleLock);
 
+/* ---------- re-laying the words inside a line ----------
+   The line's edges are right — set by hand, perhaps locked — and the words
+   inside are a mess: an article under its neighbour, lengths from a bad pass.
+   Re-spread them by syllables within the line's own span. The lock is no
+   obstacle: it guards against the model, not against the person. */
+$("btnEven").addEventListener("click", () => {
+  const idx = targets();
+  if (!idx.length) return toast(T.pickLineFirst);
+  snap("");
+  idx.forEach(i => spread(lines[i]));
+  layoutBlocks(); layoutWords(); touched();
+  toast(T.evenDone(idx.length));
+});
+
 /* ---------- timing a few lines again ----------
    The timing is wrong in one place and right everywhere else; redoing all of
    it costs minutes and throws away the corrections made by hand. */
@@ -1943,7 +2052,8 @@ async function saveNow(){
     const r = await api(`/api/project/${encodeURIComponent(pid)}/timings`,
       {lines, colors, theme,
        noText: ($("edNoText").value || "").trim(),
-       keepMarks: $("chkKeepMarks") ? $("chkKeepMarks").checked : true});
+       keepMarks: $("chkKeepMarks") ? $("chkKeepMarks").checked : true,
+       checkOff});
     showProblems(r.problems);
     saveState("ok", T.savedOk);
   }catch(e){
@@ -2003,8 +2113,22 @@ function drawSummary(data){
 }
 function showProblems(list){
   const box=$("probs"); box.innerHTML="";
+  const restore = () => {
+    if (!checkOff.length) return;
+    const r = document.createElement("div");
+    r.className = "ignored-note";
+    r.textContent = T.restoreIgnored(checkOff.length);
+    r.addEventListener("click", async () => {
+      checkOff = [];
+      touched();
+      await flush();
+      openProject(pid);
+    });
+    box.appendChild(r);
+  };
   if (!list || !list.length){
     box.innerHTML='<div class="allgood">' + T.allGood + '</div>';
+    restore();
     lineEls.forEach(L => L.el.querySelectorAll(".bad").forEach(x=>x.remove()));
     window.__badLines = new Set(); layoutBlocks(); return;
   }
@@ -2016,12 +2140,29 @@ function showProblems(list){
   });
   list.forEach(p => {
     const e=document.createElement("div"); e.className="prob";
-    e.innerHTML=`<b></b><span></span><div class="tm">${fmtMs(p.start)}</div>`;
+    e.innerHTML=`<b></b><span></span><div class="tm">${fmtMs(p.start)}</div>`
+      + `<button class="ign" title=""></button>`;
+    const ign = e.querySelector(".ign");
+    ign.textContent = "✕";
+    ign.title = T.ignoreHint;
+    ign.addEventListener("click", ev => {
+      // “Ignore”, the way a spell-checker has it: this warning, this line —
+      // keyed to the words, so it survives lines being split or renumbered.
+      ev.stopPropagation();
+      (p.kinds || []).forEach(k => {
+        const key = (p.text || "").trim() + "|" + k;
+        if (!checkOff.includes(key)) checkOff.push(key);
+      });
+      touched();
+      showProblems(list.filter(x => x !== p));
+      toast(T.ignored);
+    });
     e.querySelector("b").textContent = (p.line+1)+". "+p.text;
     e.querySelector("span").textContent = p.why.join(" · ");
     e.addEventListener("click", ()=>selectLine(p.line, true));
     box.appendChild(e);
   });
+  restore();
   window.__badLines = bad;
   layoutBlocks();
 }
@@ -2082,6 +2223,23 @@ function drawWave(){
   g.strokeStyle="rgba(255,204,77,.35)"; g.lineWidth=1;
   onsets.forEach(t => { const x=xOf(t); if (x>=0&&x<=w){
     g.beginPath(); g.moveTo(x+.5,4); g.lineTo(x+.5,76); g.stroke(); } });
+
+  // The words of every line, always in sight: a thin band along the bottom of
+  // the wave, one box per word, neighbouring lines in alternating shades — so
+  // the whole layout can be watched without selecting anything. The selected
+  // line's own lane below stays the place to grab and drag.
+  const wy = h - 11, wh = 7;
+  if (kq < 8) return;          // words this small are noise, and the costliest kind
+  lines.forEach((ln, li) => {
+    if (!ln.words || ln.end == null || ln.start == null) return;
+    if (ln.end < vq || ln.start > vq + zoom) return;
+    g.fillStyle = li % 2 ? "rgba(255,204,77,.30)" : "rgba(150,175,215,.38)";
+    ln.words.forEach(word => {
+      const x = (word.t - vq) * kq, wd = Math.max((word.d || 0) * kq, 1.5);
+      if (x + wd < 0 || x > w) return;
+      g.fillRect(x, wy, Math.max(wd - 1, 1), wh);
+    });
+  });
 }
 /* The blocks are created once and live in a container that is simply shifted.
    Rebuilding them every frame means 60 DOM rebuilds a second, which visibly
@@ -2207,18 +2365,25 @@ function layoutWords(){
   const ln = sel >= 0 ? lines[sel] : null;
   if (!ln) return;
   const k = pps();
+  // Words overlap in time more often than not, and an article the aligner gave
+  // no time of its own starts exactly where its neighbour does — drawn as they
+  // are, such chips lie on top of each other and the small one cannot even be
+  // grabbed. Each chip is given a sliver of its own and trimmed short of the
+  // next one: the drawing steps aside, the times stay exactly as they are.
+  let prevRight = -1e9;
   wordEls.forEach((e, j) => {
     const w = ln.words[j];
     if (!w) return;
-    const left = w.t * k;
-    let width = Math.max(w.d * k, 10);
-    // Words overlap in time more often than not — a sung word runs into the
-    // next one — and drawn as they are, the chips lie on top of each other and
-    // the only way to tell them apart is to zoom right in. A chip is trimmed so
-    // it never reaches the next word's start: the times themselves are left
-    // alone, it is only the drawing that has to be readable.
+    const left = Math.max(w.t * k, prevRight + 1);
+    let width = Math.max(w.d * k, 12);
     const next = ln.words[j + 1];
-    if (next) width = Math.max(6, Math.min(width, next.t * k - left - 1));
+    if (next){
+      // Twelve pixels is the least a finger or a cursor can take hold of:
+      // a sliver thinner than that is visible and still ungrabbable.
+      const nextLeft = Math.max(next.t * k, left + 13);
+      width = Math.max(12, Math.min(width, nextLeft - left - 1));
+    }
+    prevRight = left + width;
     e.style.left = left + "px";
     e.style.width = width + "px";
     // on a narrow word the label is unreadable anyway — show no stub
@@ -2402,6 +2567,9 @@ function syllables(word){
   const m = word.toLowerCase().match(/[аеёиоуыэюяaeiouy]/g);
   return Math.max(1, m ? m.length : 1);        // syllables are counted by vowels
 }
+// The word as sung, stripped of everything that is not sung: dots on a scream,
+// commas, case. Two words that match here are the same word.
+function normTok(w){ return w.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ""); }
 function retext(i, text){
   const parts = text.trim().split(/\s+/).filter(Boolean);
   const ln = lines[i];
@@ -2409,8 +2577,45 @@ function retext(i, text){
   ln.text = parts.join(" ");
   // Editing the text can turn a line into backing vocals and back.
   ln.backing = /^\(.*\)$/.test(ln.text.trim());
-  ln.words = parts.map(w => ({w, t: ln.start, d: 0, s: syllables(w)}));
-  spread(ln);
+  // Dots added to a long scream, one word fixed in the middle: where the words
+  // are the same words, their times are THEIR times — laying the whole line
+  // out anew threw away exactly the rhythm the person had already set. Only
+  // the changed stretch is laid out, in the gap the change occupies.
+  const old = ln.words;
+  const oldN = old.map(w => normTok(w.w)), newN = parts.map(normTok);
+  let pre = 0;
+  while (pre < old.length && pre < parts.length
+         && oldN[pre] && oldN[pre] === newN[pre]) pre++;
+  let suf = 0;
+  while (suf < old.length - pre && suf < parts.length - pre
+         && oldN[old.length - 1 - suf]
+         && oldN[old.length - 1 - suf] === newN[parts.length - 1 - suf]) suf++;
+  const words = [];
+  for (let k = 0; k < pre; k++)
+    words.push({w: parts[k], t: old[k].t, d: old[k].d, s: syllables(parts[k])});
+  const mid = parts.slice(pre, parts.length - suf);
+  if (mid.length){
+    const gapStart = pre ? old[pre - 1].t + old[pre - 1].d : ln.start;
+    const gapEnd = suf ? old[old.length - suf].t : ln.end;
+    const lo = Math.min(gapStart, gapEnd);
+    const hi = Math.max(gapEnd, lo + MIN_W * mid.length);
+    const syl = mid.reduce((a, w) => a + syllables(w), 0) || 1;
+    let acc = 0;
+    mid.forEach(w => {
+      const t0 = lo + (hi - lo) * acc / syl;
+      acc += syllables(w);
+      const t1 = lo + (hi - lo) * acc / syl;
+      words.push({w, t: t0, d: Math.max(t1 - t0, MIN_W), s: syllables(w)});
+    });
+  }
+  for (let k = old.length - suf; k < old.length; k++){
+    const w = parts[parts.length - (old.length - k)];
+    words.push({w, t: old[k].t, d: old[k].d, s: syllables(w)});
+  }
+  ln.words = words;
+  ln.start = words[0].t;
+  ln.end = Math.max(words[words.length - 1].t + (words[words.length - 1].d || 0),
+                    ln.start + 0.2);
   return true;
 }
 // A missing or a stray line is as much a mistake in the text as a typo, and
@@ -2678,7 +2883,13 @@ $("btnClip").addEventListener("click", () => {
     if (hi - lo < 0.5){ lo = prevEnd; hi = Math.min(hole[0], nextStart); }
     const syl = run.reduce((a, ln) => a + ln.words.reduce((b, w) => b + (w.s || 1), 0), 0) || 1;
     const need = run.reduce((a, ln) => a + ln.words.length, 0) * MIN_W;
-    if (hi - lo < need){ i = j; continue; }        // nowhere to put them
+    if (hi - lo < 0.25){
+      // no room between the neighbours at all: right against the hole then,
+      // cramped on purpose — better a tight line in the right place than
+      // words over the stretch that was marked
+      lo = hole[1];
+      hi = lo + Math.max(0.3, 0.12 * run.reduce((a, ln) => a + ln.words.length, 0));
+    }
     const span = Math.min(hi - lo, Math.max(syl * 0.45, need));
     let base = hi - span, acc = 0;
     run.forEach(ln => {
@@ -2892,7 +3103,9 @@ async function realign(lyricsPath){
       });
   }catch(e){ toast(e.message); }
 }
+let checkOff = [];
 function fillNoText(d){
+  checkOff = (d && d.checkOff) ? d.checkOff.slice() : [];
   const el = $("edNoText");
   if (el) el.value = (d && d.noText) || "";
   if ($("chkKeepMarks"))
@@ -2903,6 +3116,7 @@ function fillNoText(d){
 // Typed by hand, dragged with the mouse — one and the same thing underneath.
 $("edNoText").addEventListener("change", () => { marksFromField(); touched(); drawWave(); });
 $("chkKeepMarks").addEventListener("change", touched);
+$("selSpeed").addEventListener("change", () => setRate(parseFloat($("selSpeed").value) || 1));
 function langOf(){
   // Re-timing has no picker of its own, and the language of a song belongs to
   // the song, not to the window: read it off the text again.

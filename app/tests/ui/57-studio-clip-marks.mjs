@@ -81,6 +81,51 @@ const back = await proj();
 ok('the lines are where they were before the press',
    Math.abs(back.lines[3].start - 12.4) < 0.05, back.lines[3].start.toFixed(2));
 
+console.log('\n--- a warning can be dismissed, and it stays dismissed ---');
+// Bend a line to an impossible pace so the Check panel has something to say,
+// then dismiss it with the ✕ the way a spell-checker ignores a word.
+const fast = JSON.parse(JSON.stringify(original.lines));
+fast[0].end = fast[0].start + 0.15;
+fast[0].words = fast[0].words.map(w => ({...w, t: fast[0].start, d: 0.05}));
+await save(fast);
+await p.reload({waitUntil:'networkidle0'});
+await sleep(500);
+await p.waitForSelector('.card', {timeout:20000});
+await p.click('.card');
+await p.waitForSelector('#scrEdit:not(.hide)', {timeout:20000});
+await sleep(800);
+const probRows = await p.$$('#probs .prob');
+ok('the panel flags the impossible line', probRows.length >= 1, probRows.length);
+// the stand is shared: earlier suites may have left warnings of their own —
+// dismiss them all, the way a person cleans the list
+let guard = 8;
+while (guard-- > 0 && (await p.$('#probs .prob .ign'))){
+  await p.click('#probs .prob .ign');
+  await sleep(600);
+}
+await sleep(1200);
+const left = await p.$$eval('#probs .prob', els =>
+  els.map(e => e.textContent.replace(/\s+/g, ' ').slice(0, 90)));
+ok('every dismissed warning is gone from the panel', left.length === 0,
+   left.join(' || ') + ' /// saved=' + JSON.stringify((await proj()).checkOff));
+ok('and the way back is offered', !!(await p.$('#probs .ignored-note, .ignored-note')));
+const saved = await proj();
+ok('the dismissal is saved with the song',
+   Array.isArray(saved.checkOff) && saved.checkOff.length >= 1,
+   JSON.stringify(saved.checkOff));
+await p.reload({waitUntil:'networkidle0'});
+await sleep(500);
+await p.waitForSelector('.card', {timeout:20000});
+await p.click('.card');
+await p.waitForSelector('#scrEdit:not(.hide)', {timeout:20000});
+await sleep(800);
+ok('and it survives reopening the song',
+   (await p.$$('#probs .prob')).length === 0, (await p.$$('#probs .prob')).length);
+await p.click('.ignored-note');
+await sleep(1500);
+ok('the link brings the warning back',
+   (await p.$$('#probs .prob')).length >= 1, (await p.$$('#probs .prob')).length);
+
 await save(original.lines);        // leave the stand as it was found
 ok('no errors in the browser console', errs.length === 0, errs[0] || '');
 await b.close();

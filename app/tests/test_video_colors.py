@@ -100,6 +100,22 @@ def main():
         check("the second line is below the first", min(b) > min(a),
               f"first y={min(a)}, second y={min(b)}")
 
+    print("\nThe countdown dots burn one per second")
+    # Two at once and then the third — how it used to go — reads as a stutter,
+    # not a countdown. The staircase must match the player's: 1, 2, 3.
+    stair = [video.pips_lit(10.0, left) for left in (2.9, 1.9, 0.9)]
+    check("in a long pause: one dot, then two, then three", stair == [1, 2, 3], stair)
+    # a short pause is divided into thirds of ITSELF, so no dot is starved
+    short = [video.pips_lit(2.6, left) for left in (2.4, 1.5, 0.5)]
+    check("a short pause still counts in even thirds", short == [1, 2, 3], short)
+    check("the second third begins where it should",
+          video.pips_lit(2.6, 1.75) == 1 and video.pips_lit(2.6, 1.70) == 2,
+          [video.pips_lit(2.6, 1.75), video.pips_lit(2.6, 1.70)])
+    check("outside the window nothing burns",
+          video.pips_lit(10.0, 3.4) == 0 and video.pips_lit(10.0, 0.0) == 0
+          and video.pips_lit(1.0, 2.0) == 0)
+    check("and it never jumps past three", video.pips_lit(10.0, 0.01) == 3)
+
     print("\nThe intro countdown in the video")
     # The wait has to be a real one: a countdown is shown from ten seconds up,
     # because anything shorter is a breath between lines, not an interlude.

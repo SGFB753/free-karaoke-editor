@@ -612,7 +612,10 @@ function tick(){
     const left = lines[nxt].start - t;
     if (gap > 2.5 && left > 0 && left <= 3){
       wantLine = nxt;
-      wantCount = Math.min(3 - Math.ceil(left) + 1, 3);
+      // thirds of the wait itself, not fixed seconds: a short pause gives each
+      // dot an equal share instead of starving the first one
+      const win = Math.min(3, gap);
+      wantCount = Math.min(3, Math.max(1, Math.floor((1 - left / win) * 3) + 1));
     }
   }
   if (wantLine !== pipLine || wantCount !== pipCount){

@@ -600,7 +600,8 @@ class Handler(BaseHTTPRequestHandler):
                 data = P.save_lines(folder, lines, colors=body.get("colors"),
                                     theme=body.get("theme"),
                                     no_text=body.get("noText"),
-                                    keep_marks=body.get("keepMarks"))
+                                    keep_marks=body.get("keepMarks"),
+                                    check_off=body.get("checkOff"))
                 return self._json({"ok": True, "problems": P.problems(data)})
 
             m = re.match(r"^/api/project/([^/]+)/delete$", path)
