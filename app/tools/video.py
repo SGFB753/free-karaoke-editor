@@ -331,8 +331,28 @@ class LineArt:
         return self.word_x[-1] + self.word_w[-1]
 
 
-def make_background(W, H):
-    from PIL import Image
+def make_background(W, H, cover_uri: str = ""):
+    from PIL import Image, ImageEnhance, ImageFilter
+
+    if cover_uri.startswith("data:image"):
+        # The clip's cover behind the lyrics: blurred hard and darkened, so it
+        # sets the mood without competing with the words. A cover that cannot
+        # be read falls back to the woven gradient without a word — a broken
+        # image must not stop a render.
+        try:
+            import base64
+            import io
+            raw = base64.b64decode(cover_uri.partition(",")[2])
+            img = Image.open(io.BytesIO(raw)).convert("RGB")
+            k = max(W / img.width, H / img.height)
+            img = img.resize((max(int(img.width * k), W), max(int(img.height * k), H)))
+            x0 = (img.width - W) // 2
+            y0 = (img.height - H) // 2
+            img = img.crop((x0, y0, x0 + W, y0 + H))
+            img = img.filter(ImageFilter.GaussianBlur(radius=max(H // 55, 6)))
+            return ImageEnhance.Brightness(img).enhance(0.34)
+        except Exception:
+            pass
     img = Image.new("RGB", (W, H))
     px = img.load()
     for y in range(H):
@@ -381,8 +401,11 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         cache_font[key] = f
         return f
 
-    bg = make_background(W, H)
+    bg = make_background(W, H, payload.get("cover") or "")
     small = ImageFont.truetype(font_path, int(H * 0.020))
+    # The song's name deserves better than the caption size — and its own
+    # font, so growing it does not swell every section heading with it.
+    name_font = ImageFont.truetype(font_path, int(H * 0.028))
     # The countdown pill: readable from a couch, which the small caption font
     # was not. It still sits in the top strip where no lyrics are ever drawn,
     # so nothing gets covered — the strip only grows a little.
@@ -539,7 +562,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                             if nxt else tr("until the end", "до конца записи"))
                     # The pill is built around the text, and the text sits in its
                     # centre — horizontally and vertically.
-                    cx, cy = W // 2, int(H * 0.105)
+                    # Low enough that even a wide pill clears the song's
+                    # name in the corner above.
+                    cx, cy = W // 2, int(H * 0.135)
                     txt = f"{head}   {num}   {tail}"
                     box = d.textbbox((0, 0), txt, font=pill_font)
                     tw, th = box[2] - box[0], box[3] - box[1]
@@ -562,7 +587,11 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                     d.rectangle([bx, by, bx + int(bw * done_k), by + bh], fill=COL_HOT)
 
             if title:
-                d.text((margin, int(H * 0.045)), title, font=small, fill=(120, 128, 155))
+                shown = title
+                while len(shown) > 8 and name_font.getlength(shown) > W - 2 * margin:
+                    shown = shown[:-2].rstrip() + "\u2026"
+                d.text((margin, int(H * 0.028)), shown, font=name_font,
+                       fill=(132, 140, 168))
 
             bar_y, bar_h = int(H * 0.955), max(int(H * 0.004), 2)
             d.rectangle([margin, bar_y, W - margin, bar_y + bar_h], fill=(40, 45, 68))

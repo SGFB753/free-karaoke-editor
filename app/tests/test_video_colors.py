@@ -100,6 +100,33 @@ def main():
         check("the second line is below the first", min(b) > min(a),
               f"first y={min(a)}, second y={min(b)}")
 
+    print("\nThe cover stands behind the lyrics, dark enough to read over")
+    # A red cover: the backdrop must take its colour, stay dark, and blur away
+    # every sharp edge — the words are what the frame is for.
+    from PIL import Image as _Img
+    import base64 as _b64
+    import io as _io
+    cbuf = _io.BytesIO()
+    half = _Img.new("RGB", (320, 180), (230, 20, 20))
+    half.paste(_Img.new("RGB", (160, 180), (20, 20, 230)), (160, 0))
+    half.save(cbuf, "JPEG")
+    cover_uri = "data:image/jpeg;base64," + _b64.b64encode(cbuf.getvalue()).decode()
+    bgc = video.make_background(640, 360, cover_uri)
+    px_l = bgc.getpixel((80, 180))
+    px_r = bgc.getpixel((560, 180))
+    check("the backdrop takes the cover's colours",
+          px_l[0] > px_l[2] and px_r[2] > px_r[0], (px_l, px_r))
+    check("and stays dark enough to read over",
+          max(sum(bgc.getpixel((x, y))) for x, y in
+              [(80, 60), (320, 180), (560, 300)]) < 330,
+          [sum(bgc.getpixel(p2)) for p2 in [(80, 60), (320, 180), (560, 300)]])
+    mid = bgc.getpixel((320, 180))
+    check("the seam between the halves is blurred away",
+          abs(int(mid[0]) - int(mid[2])) < 60, mid)
+    check("a broken cover falls back to the gradient without a word",
+          video.make_background(64, 36, "data:image/jpeg;base64,AAAA").getpixel((2, 2))
+          == video.make_background(64, 36).getpixel((2, 2)))
+
     print("\nThe countdown aims at the singer's line")
     # A na-na-na in the gap is not the singer's cue: the dots and the pill both
     # skip backing lines when picking their target.
@@ -301,6 +328,43 @@ def main():
 
     check("the pill disappears once singing starts", len([c for c in top3 if sum(c) > 90]) < len(lit) / 3,
           f"was {len(lit)}, now {len([c for c in top3 if sum(c) > 90])}")
+
+    print("\nThe song's name is readable and clear of the countdown")
+    # The name grew from caption size to its own font — and the pill moved
+    # down. Neither may lean on the other: not one pixel row is shared.
+    named = {"colors": ["#00ff00", "#ff00ff"], "theme": {"bg": "#000000", "text": "#ffffff"},
+             "title": "Forevermore — Lorna Shore",
+             "data": {"title": "Forevermore", "artist": "Lorna Shore",
+                      "duration": 24.0, "lines": [
+                 {"text": "Первая строка после долгого ожидания",
+                  "start": 13.0, "end": 16.5, "voice": 1,
+                  "words": [{"w": "Первая", "t": 13.0, "d": 3.5, "s": 1}]}]}}
+    class A4:
+        width, height, fps, crf = 1280, 720, 5, 30
+        preset, font = "ultrafast", None
+        start, seconds, audio, timings = 3.0, 1.0, "minus", None
+        output = os.path.join(tmp, "named.mp4")
+    video.render(named, wav2, A4.output, A4())
+    png4 = os.path.join(tmp, "named.png")
+    subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "0.5", "-i", A4.output,
+                    "-frames:v", "1", png4], check=True)
+    im4 = Image.open(png4).convert("RGB")
+    W4, H4 = im4.size
+    # The name lives at the left edge, the pill's tail in the right half.
+    # The strips stay far apart on the x axis too: a wide pill reaches well
+    # into the left third, and must not be mistaken for the name.
+    t_rows = [y for y in range(0, int(H4 * 0.12))
+              for x in range(int(W4 * 0.04), int(W4 * 0.18), 2)
+              if sum(im4.getpixel((x, y))) > 90]
+    p_rows = [y for y in range(0, int(H4 * 0.25))
+              for x in range(int(W4 * 0.55), int(W4 * 0.96), 2)
+              if sum(im4.getpixel((x, y))) > 90]
+    check("the name is drawn large enough to read",
+          t_rows and (max(t_rows) - min(t_rows)) >= H4 * 0.017,
+          f"name rows span {max(t_rows) - min(t_rows) if t_rows else 0}px of {H4}")
+    check("the name and the pill do not touch",
+          t_rows and p_rows and max(t_rows) < min(p_rows) - H4 * 0.008,
+          f"name ends {max(t_rows) if t_rows else '—'}, pill starts {min(p_rows) if p_rows else '—'}")
 
     print("\nColours do not collapse into an empty frame")
     dark = {"colors": ["#050505", "#0a0a0a"], "theme": {"bg": "#000000", "text": "#050505"},
