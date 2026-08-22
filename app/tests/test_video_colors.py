@@ -273,6 +273,77 @@ def main():
     check("and the one after that is present but fainter",
           0 < next2b < nextb, f"{next2b} vs {nextb}")
 
+    print("\nThe frame speaks the language of the song")
+    # The countdown stands among the lyrics, not among the program's menus:
+    # “END” over a Russian song is somebody else's caption pasted on.
+    ru_song = {"data": {"lines": [{"text": "Пожелай мне удачи в бою"}]}}
+    en_song = {"data": {"lines": [{"text": "Tear out my heart and soul"}]}}
+    check("a Russian song is spoken to in Russian", video.frame_lang(ru_song) == "ru")
+    check("an English one in English", video.frame_lang(en_song) == "en")
+    check("and the page's own choice does not overrule the letters",
+          video.frame_lang({"uiLang": "en",
+                            "data": {"lines": [{"text": "Группа крови"}]}}) == "ru")
+    check("with no letters to judge by, that choice stands",
+          video.frame_lang({"uiLang": "ru", "data": {"lines": [{"text": "..."}]}}) == "ru")
+    ru_pill = video.pill_text("ru", -1, {"text": "Пожелай мне"}, 9.4)
+    en_pill = video.pill_text("en", 5, None, 4.0)
+    check("the intro pill is written the same way",
+          ru_pill.startswith("ВСТУПЛЕНИЕ") and "до «Пожелай мне»" in ru_pill
+          and "10 с" in ru_pill, ru_pill)
+    check("and an English song ends in English",
+          en_pill == "END   4 s   until the end", en_pill)
+
+    print("\nThe dots count a wait, and the song ends on an empty stage")
+    # Three dots under a line being sung, with the next line already in the
+    # queue below, told the singer nothing. They belong to a real wait. And a
+    # last line hanging lit to the end of the recording read as a frozen
+    # picture: it stays a few seconds, then the stage empties.
+    def one_line(text, a, b):
+        return {"text": text, "start": a, "end": b, "voice": 1,
+                "words": [{"w": text, "t": a, "d": b - a, "s": 1}]}
+    ending = {"colors": ["#00ff00", "#ff00ff"],
+              "theme": {"bg": "#000000", "text": "#ffffff"},
+              "data": {"title": "T", "duration": 24.0, "lines": [
+                  one_line("first line here", 1.0, 3.0),
+                  one_line("second right after", 3.5, 5.5),
+                  one_line("third after a pause", 12.0, 14.0)]}}
+    wav3 = tone(os.path.join(tmp, "c.wav"), 220.0, 24.0)
+    class A5:
+        width, height, fps, crf = 640, 360, 5, 30
+        preset, font = "ultrafast", None
+        start, seconds, audio, timings = 0.0, 24.0, "minus", None
+        output = os.path.join(tmp, "ending.mp4")
+    video.render(ending, wav3, A5.output, A5())
+
+    def band(at, y0, y1, lit=False):
+        # `lit` counts only the dots that burn: a grey dot and a lit one are
+        # both ink, and counting ink alone would call a countdown one that
+        # never counts.
+        shot = os.path.join(tmp, f"end-{at}.png")
+        subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", str(at),
+                        "-i", A5.output, "-frames:v", "1", shot], check=True)
+        im5 = Image.open(shot).convert("RGB")
+        W5, H5 = im5.size
+        px = (im5.getpixel((x, y))
+              for y in range(int(H5 * y0), int(H5 * y1)) for x in range(0, W5, 2))
+        if lit:                       # the main voice's colour, #00ff00 here
+            return sum(1 for r, g, b in px if g > 120 and r < 90 and b < 90)
+        return sum(1 for c in px if sum(c) > 90)
+
+    DOTS, SEAT = (0.50, 0.56), (0.38, 0.50)
+    check("no dots under a line being sung with the next one close behind",
+          band(2.0, *DOTS) == 0, band(2.0, *DOTS))
+    check("but the singing itself is there", band(2.0, *SEAT) > 150, band(2.0, *SEAT))
+    check("in a real wait the dots come up", band(6.5, *DOTS) > 20, band(6.5, *DOTS))
+    check("far from the line none of them burns yet",
+          band(6.5, *DOTS, lit=True) == 0, band(6.5, *DOTS, lit=True))
+    check("and they are lit as the line comes in",
+          band(11.5, *DOTS, lit=True) > 10, band(11.5, *DOTS, lit=True))
+    check("the last line stays a few seconds after it is sung",
+          band(16.0, *SEAT) > 150, band(16.0, *SEAT))
+    check("and then the stage empties instead of freezing",
+          band(20.0, *SEAT) == 0, band(20.0, *SEAT))
+
     print("\nThe intro countdown in the video")
     # The wait has to be a real one: a countdown is shown from ten seconds up,
     # because anything shorter is a breath between lines, not an interlude.

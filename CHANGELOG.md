@@ -7,6 +7,30 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.33.1
+
+**The dots in the video count a wait, and nothing else.** Three grey dots sat
+under every line being sung, with the next line already spelled out in the
+queue below them — decoration where a cue was meant. They now appear only when
+the singing has stopped and the pause is long enough to be worth counting, and
+they light up as the line comes in. Between lines that follow each other, the
+frame is clean.
+
+**A song that has ended looks ended.** The last line used to hang lit through
+the whole outro, as if the picture had frozen on it. It stays five seconds —
+long enough to let go of the note — and then the stage empties; on a long tail
+the strip at the top keeps saying how much of the recording is left. Both rules
+are measured in the rendered frames themselves, not in the code that draws
+them.
+
+**And it says it in the song's language.** “INTRO”, “until”, “END” came out
+in whatever language the program itself was speaking — English words hanging
+over a Russian song. The countdown now takes its language from the lyrics it
+stands among; the log at the keyboard keeps speaking the program's, because
+that one is read by a person, not by the frame.
+
+---
+
 ## 4.33.0
 
 **The clip stays in the picture.** A song brought in by link now keeps the

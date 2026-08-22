@@ -27,7 +27,7 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from kstudio.i18n import tr        # noqa: E402
+from kstudio.i18n import tr, lang as program_lang   # noqa: E402
 from kstudio import audio as AU      # noqa: E402
 from kstudio import build as B       # noqa: E402
 
@@ -44,6 +44,13 @@ COL_SIDE = (63, 69, 92)         # neighbouring lines
 COL_SECT = (255, 204, 77)       # section label
 COL_BAR = (77, 225, 255)
 COL_PIP = (52, 58, 82)          # guide dots between lines
+
+# A wait shorter than this is not counted down: it is a breath between lines,
+# and three dots under a line being sung say nothing anyone needs.
+PIP_MIN_GAP = 2.5
+# How long the last line stays after the song has been sung. Long enough to
+# let go of the note, short enough not to look like a frozen picture.
+END_HOLD = 5.0
 
 
 def _hex_rgb(value, fallback):
@@ -155,6 +162,37 @@ def next_sung(lines, i: int) -> int:
     return j
 
 
+def frame_lang(payload: dict) -> str:
+    """The language of the words drawn into the frame.
+
+    They stand among the lyrics, not among the program's menus: “END” over a
+    Russian song reads as somebody else's caption pasted on. The letters of
+    the song decide; when they say nothing at all, the language chosen for the
+    page, and then the program's own.
+    """
+    data = payload.get("data") or {}
+    text = " ".join(str(ln.get("text") or "") for ln in (data.get("lines") or []))
+    cyr = sum(1 for ch in text if "\u0400" <= ch <= "\u04ff")
+    lat = sum(1 for ch in text if "a" <= ch.lower() <= "z")
+    if cyr or lat:
+        return "ru" if cyr > lat else "en"
+    want = str(payload.get("uiLang") or "").strip().lower()
+    return want if want in ("ru", "en") else program_lang()
+
+
+def pill_text(said: str, idx: int, nxt, left: float) -> str:
+    """The line inside the countdown pill, in the song's own language."""
+    def t_(en, ru):
+        return ru if said == "ru" else en
+    head = (t_("INTRO", "ВСТУПЛЕНИЕ") if idx < 0 else
+            (t_("INTERLUDE", "ПРОИГРЫШ") if nxt else t_("END", "КОНЕЦ")))
+    num = (mmss(left) if left >= 60
+           else f"{int(math.ceil(left))} " + t_("s", "с"))
+    tail = (t_("until “", "до «") + nxt["text"][:34] + t_("”", "»")
+            if nxt else t_("until the end", "до конца записи"))
+    return f"{head}   {num}   {tail}"
+
+
 def pips_lit(gap: float, left: float) -> int:
     """How many countdown dots burn, `left` seconds before the next line.
 
@@ -163,7 +201,7 @@ def pips_lit(gap: float, left: float) -> int:
     others a full second each: a countdown that stutters is worse than none.
     The window is the last three seconds, or the whole pause when it is shorter.
     """
-    if gap <= 2.5 or left <= 0 or left > 3:
+    if gap <= PIP_MIN_GAP or left <= 0 or left > 3:
         return 0
     window = min(3.0, gap)
     done = max(0.0, 1.0 - left / window)
@@ -452,6 +490,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
            "-shortest", "-movflags", "+faststart", out_path]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
+    # The frame speaks the song's language; the log below keeps speaking the
+    # program's, because it is read by the person at the keyboard.
+    said = frame_lang(payload)
     title = (D.get("title") or "") + ((" — " + D["artist"]) if D.get("artist") else "")
     t0 = time.time()
 
@@ -473,8 +514,15 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                         duo = j
                         break
 
+            # The song has been sung and nothing follows: after a few seconds
+            # the seat empties. A last line hanging lit to the end of the
+            # recording reads as a frozen picture, not as an ending.
+            over = (0 <= idx == len(lines) - 1
+                    and t > lines[idx]["end"] + END_HOLD)
+            singing = idx >= 0 and t < lines[idx]["end"]
+
             duo_bottom = 0
-            if idx >= 0 and lines[idx].get("backing") and duo < 0:
+            if not over and idx >= 0 and lines[idx].get("backing") and duo < 0:
                 # The backing singing alone — the lead has ended, the na-na-na
                 # carries on. It used to be promoted to the main seat, full
                 # size, in the lead's way. It keeps its side seat instead: the
@@ -488,7 +536,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                     boxb = (0, 0, min(fxb, W), pic.h)
                     frame.paste(pic.hot.crop(boxb), (0, y_b), pic.hot.crop(boxb))
                 duo_bottom = y_b + pic.h
-            elif idx >= 0:
+            elif not over and idx >= 0:
                 # The lead stays exactly where a solo line sits; the backing is
                 # smaller, to the right, tucked under it like a reply — two full
                 # rows used to collide with the dots and the queue.
@@ -512,8 +560,10 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                         d.text((margin, y_j - int(H * 0.055)),
                                lines[j]["section"].upper(), font=small, fill=COL_SECT)
 
-            # Guide dots between lines, as in the player: always visible so the
-            # next line is expected, and they count down before it starts.
+            # Guide dots: a countdown, not decoration. On the page they are
+            # separators in a scrolling list; a frame has no scroll, so here
+            # they show up only once the singing has stopped and the wait is
+            # long enough to be worth counting.
             def dots(cy, lit=0):
                 r = max(int(H * 0.0055), 3)
                 for k in range(3):
@@ -522,14 +572,15 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                               fill=COL_HOT if k < lit else COL_PIP)
 
             n1 = next_sung(lines, idx)
-            if n1 < len(lines) and n1 != duo:
+            if not over and n1 < len(lines) and n1 != duo:
                 nx = get(n1, False)
                 frame.paste(nx.dim, (0, y_next - nx.h // 2), nx.dim)
 
                 gap = lines[n1]["start"] - (lines[idx]["end"] if idx >= 0 else 0)
                 left = lines[n1]["start"] - t
-                lit = pips_lit(gap, left)
-                dots(max((y_main + y_next) // 2, duo_bottom + int(H * 0.018)), lit)
+                if not singing and gap > PIP_MIN_GAP:
+                    dots(max((y_main + y_next) // 2, duo_bottom + int(H * 0.018)),
+                         pips_lit(gap, left))
 
                 # …and one more ahead, fainter: the singer reads forward, never
                 # back, and the queue keeps the frame symmetric.
@@ -546,7 +597,6 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 if ln["start"] > t and not ln.get("backing"):
                     nxt = ln
                     break
-            singing = idx >= 0 and t < lines[idx]["end"]
             if not singing:
                 prev_end = lines[idx]["end"] if idx >= 0 else 0.0
                 gap = (nxt["start"] - prev_end) if nxt else (duration - prev_end)
@@ -554,18 +604,12 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 # breath between lines, and counting it down is noise.
                 if gap >= 10.0:
                     left = (nxt["start"] if nxt else duration) - t
-                    head = (tr("INTRO", "ВСТУПЛЕНИЕ") if idx < 0 else
-                            (tr("INTERLUDE", "ПРОИГРЫШ") if nxt else tr("END", "КОНЕЦ")))
-                    num = (mmss(left) if left >= 60
-                           else f"{int(math.ceil(left))} " + tr("s", "с"))
-                    tail = (tr("until “", "до «") + nxt["text"][:34] + tr("”", "»")
-                            if nxt else tr("until the end", "до конца записи"))
                     # The pill is built around the text, and the text sits in its
                     # centre — horizontally and vertically.
                     # Low enough that even a wide pill clears the song's
                     # name in the corner above.
                     cx, cy = W // 2, int(H * 0.135)
-                    txt = f"{head}   {num}   {tail}"
+                    txt = pill_text(said, idx, nxt, left)
                     box = d.textbbox((0, 0), txt, font=pill_font)
                     tw, th = box[2] - box[0], box[3] - box[1]
                     pad_x, pad_y = int(H * 0.030), int(H * 0.022)
