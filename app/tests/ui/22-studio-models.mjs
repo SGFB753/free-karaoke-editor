@@ -9,8 +9,19 @@ const dom = new JSDOM(html, { runScripts:"dangerously", pretendToBeVisual:true,
   url: API + "/",
   beforeParse(w){
     w.__errs=[]; w.onerror=m=>w.__errs.push(String(m));
-    w.fetch = (...a) => fetch(typeof a[0]==="string" && a[0].startsWith("/")
-        ? API + a[0] : a[0], a[1]);
+    // Free memory is measured live and changes between two readings — the
+    // test and the page each asked and sometimes got different answers, and
+    // the “heavy” mark flickered with the machine's mood. Both see 1.5 GB.
+    w.fetch = async (...a) => {
+      const r = await fetch(typeof a[0]==="string" && a[0].startsWith("/")
+          ? API + a[0] : a[0], a[1]);
+      if (typeof a[0] === "string" && a[0].startsWith("/api/state")){
+        const j = await r.json();
+        if (j.caps) j.caps.freeGb = 1.5;
+        return {ok: r.ok, json: async () => j};
+      }
+      return r;
+    };
     w.AudioContext = class { constructor(){ this.state="running"; this.destination={}; }
       createGain(){ return {gain:{value:1, setTargetAtTime(v){this.value=v;}}, connect(){}}; }
       createBufferSource(){ return {connect(){},start(){},stop(){}}; }
@@ -29,6 +40,7 @@ await sleep(900);
 let fail=0; const ok=(n,c,e='')=>{console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c)fail++;};
 
 const st = await (await fetch(API+"/api/state")).json();
+st.caps.freeGb = 1.5;                 // the same pinned memory the page sees
 console.log('--- the server knows what is on disk ---');
 ok('the server returns the list of models', st.caps && st.caps.models &&
    typeof st.caps.models === 'object', JSON.stringify(st.caps && st.caps.models));

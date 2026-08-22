@@ -66,6 +66,13 @@ selected lines by syllables within each line's own span; the edges stay put.
 It works on locked lines too: the lock guards against the model, not against
 you.
 
+**The countdown is the singer's cue, so it aims at the singer's line.** The
+dots and the wait pill — in the video, on the page and in the studio — used to
+count down to whatever line came next, and sometimes that was the backing:
+“words in 10 s… to (Na-na-na)”. All three skip backing lines now and count to
+the next lead, and the video's queue of coming lines is built from the leads
+the same way.
+
 **A duet is drawn as a duet.** On the studio stage the second voice sounding
 with the first used to sit unlit — one line of the two being sung. Both light
 up now, and the words of both fill as they are sung. In the video the two full-

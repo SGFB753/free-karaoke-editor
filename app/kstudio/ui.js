@@ -1703,7 +1703,9 @@ function showWait(t, cur){
   if (cur >= 0){ box.classList.add("hide"); return; }
   // Seconds, not milliseconds: this is “how long to wait”, not timing.
   const left = s => s >= 60 ? fmt(s) : Math.ceil(s) + T.sec;
-  const next = lines.find(l => l.start > t);
+  // the wait is until the singer's own next line — a backing na-na-na in the
+  // middle of the gap is not what the countdown is for
+  const next = lines.find(l => l.start > t && !l.backing);
   if (!next){                              // the song is over
     if (dur - t < 3){ box.classList.add("hide"); return; }
     box.classList.remove("hide");

@@ -100,6 +100,22 @@ def main():
         check("the second line is below the first", min(b) > min(a),
               f"first y={min(a)}, second y={min(b)}")
 
+    print("\nThe countdown aims at the singer's line")
+    # A na-na-na in the gap is not the singer's cue: the dots and the pill both
+    # skip backing lines when picking their target.
+    q_lines = [
+        {"text": "lead", "start": 2.0, "end": 4.0, "voice": 1, "words": []},
+        {"text": "(na)", "start": 8.0, "end": 9.0, "voice": 2, "backing": True,
+         "words": []},
+        {"text": "(na again)", "start": 10.0, "end": 11.0, "voice": 2,
+         "backing": True, "words": []},
+        {"text": "next lead", "start": 20.0, "end": 22.0, "voice": 1, "words": []},
+    ]
+    check("the dots skip one backing line", video.next_sung(q_lines, 0) == 3)
+    check("and a chain of them", video.next_sung(q_lines, 1) == 3)
+    check("from before the first line too", video.next_sung(q_lines, -1) == 0)
+    check("and past the end they say so", video.next_sung(q_lines, 3) == 4)
+
     print("\nThe countdown dots burn one per second")
     # Two at once and then the third — how it used to go — reads as a stutter,
     # not a countdown. The staircase must match the player's: 1, 2, 3.

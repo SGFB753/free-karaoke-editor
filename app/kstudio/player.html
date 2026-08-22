@@ -605,7 +605,9 @@ function tick(){
 
   // the countdown before the next line (when the gap is over 2.5 s);
   // the DOM is touched only when the dots really change, not every frame
-  const nxt = idx + 1;
+  // the singer's cue points at the singer's line: backing does not count
+  let nxt = idx + 1;
+  while (nxt < lines.length && lines[nxt].backing) nxt++;
   let wantLine = -1, wantCount = 0;
   if (!tapping && nxt < lines.length){
     const gap = lines[nxt].start - (idx >= 0 ? lines[idx].end : 0);

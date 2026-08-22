@@ -143,6 +143,18 @@ def find_font(explicit=None) -> str:
                             "Не нашёл ни одного шрифта .ttf — укажите его ключом --font"))
 
 
+def next_sung(lines, i: int) -> int:
+    """The next line the singer actually sings: backing does not count.
+
+    The countdown — the dots and the pill alike — is the singer's cue. Aimed
+    at a na-na-na it told them to breathe in for a line that is not theirs.
+    """
+    j = i + 1
+    while j < len(lines) and lines[j].get("backing"):
+        j += 1
+    return j
+
+
 def pips_lit(gap: float, left: float) -> int:
     """How many countdown dots burn, `left` seconds before the next line.
 
@@ -486,19 +498,21 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                     d.ellipse([x - r, cy - r, x + r, cy + r],
                               fill=COL_HOT if k < lit else COL_PIP)
 
-            if idx + 1 < len(lines) and idx + 1 != duo:
-                nx = get(idx + 1, False)
+            n1 = next_sung(lines, idx)
+            if n1 < len(lines) and n1 != duo:
+                nx = get(n1, False)
                 frame.paste(nx.dim, (0, y_next - nx.h // 2), nx.dim)
 
-                gap = lines[idx + 1]["start"] - (lines[idx]["end"] if idx >= 0 else 0)
-                left = lines[idx + 1]["start"] - t
+                gap = lines[n1]["start"] - (lines[idx]["end"] if idx >= 0 else 0)
+                left = lines[n1]["start"] - t
                 lit = pips_lit(gap, left)
                 dots(max((y_main + y_next) // 2, duo_bottom + int(H * 0.018)), lit)
 
                 # …and one more ahead, fainter: the singer reads forward, never
                 # back, and the queue keeps the frame symmetric.
-                if idx + 2 < len(lines) and idx + 2 != duo:
-                    n2 = get(idx + 2, False)
+                n2i = next_sung(lines, n1)
+                if n2i < len(lines) and n2i != duo:
+                    n2 = get(n2i, False)
                     frame.paste(n2.faint, (0, y_next2 - n2.h // 2), n2.faint)
 
             # While nobody sings the screen is empty and it is unclear whether
@@ -506,7 +520,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             # in the program itself. Short gaps are not counted: they are obvious.
             nxt = None
             for ln in lines:
-                if ln["start"] > t:
+                if ln["start"] > t and not ln.get("backing"):
                     nxt = ln
                     break
             singing = idx >= 0 and t < lines[idx]["end"]

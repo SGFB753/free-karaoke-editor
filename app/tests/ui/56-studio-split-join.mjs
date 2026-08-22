@@ -321,16 +321,38 @@ await p.waitForSelector('.card', {timeout:20000});
 await p.click('.card');
 await p.waitForSelector('#scrEdit:not(.hide)', {timeout:20000});
 await sleep(700);
+// a backing line inside the gap, and the next lead far enough for the pill
+dl[2].voice = 2; dl[2].backing = true;
+dl[2].start = 10.0; dl[2].end = 12.0;
+dl[2].words = dl[2].words.map((w, i) => ({...w, t: 10.0 + i * 0.5, d: 0.4}));
+dl[3].start = 20.0; dl[3].end = 21.5;
+dl[3].words = dl[3].words.map((w, i) => ({...w, t: 20.0 + i * 0.4, d: 0.35}));
+await fetch(`${API}/api/project/${encodeURIComponent(PID)}/timings`, {method:'POST',
+  headers:{'Content-Type':'application/json'}, body: JSON.stringify({lines: dl})});
+await p.reload({waitUntil:'networkidle0'});
+await sleep(500);
+await p.waitForSelector('.card', {timeout:20000});
+await p.click('.card');
+await p.waitForSelector('#scrEdit:not(.hide)', {timeout:20000});
+await sleep(700);
 await p.keyboard.press('Space');
 await sleep(3200);                       // ~3.2 s in: inside the 2.5–5.5 overlap
 const litLines = await p.$$eval('#scroll .ln', els =>
   els.map((e, i) => e.classList.contains('cur') ? i : -1).filter(i => i >= 0));
-await p.keyboard.press('Space');
-ok('both lines of the duet are lit at once',
-   litLines.includes(0) && litLines.includes(1), JSON.stringify(litLines));
+// the fills are read now, while both lines are being sung — a moment later the
+// playback moves on and resets what is no longer current
 const fills = await p.$$eval('#scroll .ln',
   els => els.slice(0, 2).map(e =>
     [...e.querySelectorAll('.hl')].filter(h => parseFloat(h.style.width) > 0).length));
+// play on into the gap: the wait pill must aim at the next LEAD, not at the
+// backing na-na-na sitting in the middle of it
+await sleep(4300);                       // ~7.5 s in: lead over, gap running
+const waitTxt = await p.$eval('#waitTxt', e => e.textContent);
+await p.keyboard.press('Space');
+ok('both lines of the duet are lit at once',
+   litLines.includes(0) && litLines.includes(1), JSON.stringify(litLines));
+ok('the wait pill aims at the next lead, not the backing',
+   !/на-на|na-na|\(/.test(waitTxt), waitTxt);
 ok('and the words of both are filling', fills[0] > 0 && fills[1] > 0,
    JSON.stringify(fills));
 
