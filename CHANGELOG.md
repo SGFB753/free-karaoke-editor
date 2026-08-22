@@ -7,6 +7,23 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.35.0
+
+**The song is called what you call it.** The name in the corner of the video —
+the same one on the opening card, on the finished page and on the exported
+files — was whatever the audio file happened to be called, or whatever stood
+in the lyrics header. Click it in the editor and type: the song, the artist,
+Enter. A name given by hand is remembered as given: re-reading a lyrics file
+with a “title:” of its own no longer renames the song behind your back.
+
+**The count-in shows the words instead of hiding them.** The figure filled the
+frame, and the first line appeared only when the music did — too late to read
+it. The count now stands small in the seat where the singing will be, with the
+first lines already under it, laid out exactly as they will be when the song
+starts, so nothing jumps at the moment it does.
+
+---
+
 ## 4.34.0
 
 **A clip opens instead of starting.** The song's name stands large for three

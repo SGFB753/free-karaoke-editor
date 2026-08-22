@@ -291,6 +291,12 @@ const STR = {
     keepOffMsg: "You sing this line again",
     sungByOriginal: "original sings",
     saving: "saving…",
+    nameHint: "The song's name — click to fix it. It stands in the corner of "
+      + "the video, on its opening card and on the finished page, and it is "
+      + "what the exported files are called.",
+    namePlaceTitle: "song",
+    namePlaceArtist: "artist",
+    nameFixed: "The song is called that from now on",
     savedOk: "saved",
     saveBad: "not saved",
     saveErr: m => "Not saved: " + m + ". Your edits are safe, I will try again.",
@@ -616,6 +622,12 @@ const STR = {
     keepOffMsg: "Строку снова поёт человек",
     sungByOriginal: "поёт оригинал",
     saving: "сохраняю…",
+    nameHint: "Название песни — нажмите, чтобы поправить. Оно стоит в углу "
+      + "ролика, на его заставке и на готовой странице, и по нему называются "
+      + "выгруженные файлы.",
+    namePlaceTitle: "песня",
+    namePlaceArtist: "артист",
+    nameFixed: "Теперь песня называется так",
     savedOk: "сохранено",
     saveBad: "не сохранилось",
     saveErr: m => "Не сохранилось: " + m + ". Правки в окне целы, попробую снова.",
@@ -778,6 +790,7 @@ async function loadList(){
   st.projects.forEach(p => {
     const el = document.createElement("div");
     el.className = "card";
+    el.dataset.id = p.id;               // the card says which song it is
     el.innerHTML = `<div class="t"><b></b><span></span></div>
       <div class="badge">${p.stems ? T.twoTracks : T.oneTrack}</div>
       <div class="badge">${fmt(p.duration)}</div>
@@ -1454,7 +1467,9 @@ async function openProject(id){
   onsets = findOnsets();
   figureDoubt();
   sel = -1; curLine = -2; waOffset = 0; playing = false;
-  $("edTitle").textContent = data.title + (data.artist ? " — " + data.artist : "");
+  songName = data.title || "";
+  songArtist = data.artist || "";
+  showName();
   fillNoText(data);
   $("hint").textContent = T.hotkeys;
   showMade("");
@@ -2075,7 +2090,7 @@ async function saveNow(){
       {lines, colors, theme,
        noText: ($("edNoText").value || "").trim(),
        keepMarks: $("chkKeepMarks") ? $("chkKeepMarks").checked : true,
-       checkOff});
+       checkOff, title: songName, artist: songArtist});
     showProblems(r.problems);
     saveState("ok", T.savedOk);
   }catch(e){
@@ -2778,6 +2793,58 @@ function editText(i){
   inp.addEventListener("dblclick", e => e.stopPropagation());
 }
 
+let songName = "", songArtist = "", namingNow = false;
+
+function showName(){
+  $("edTitle").textContent = songName + (songArtist ? " — " + songArtist : "");
+}
+
+// The name is not only a label in the window: it stands in the corner of the
+// video, on its opening card, on the page, and it names the exported files.
+// Taken from a file name or a lyrics header it is often wrong, and there was
+// no way to say otherwise.
+function editName(){
+  if (namingNow) return;
+  namingNow = true;
+  const h = $("edTitle"), was = h.textContent;
+  const box = document.createElement("span");
+  box.className = "nameEdit";
+  const t = document.createElement("input");
+  t.className = "t"; t.value = songName; t.placeholder = T.namePlaceTitle;
+  t.setAttribute("aria-label", T.namePlaceTitle);
+  const dash = document.createElement("span");
+  dash.textContent = "—";
+  const a = document.createElement("input");
+  a.className = "a"; a.value = songArtist; a.placeholder = T.namePlaceArtist;
+  a.setAttribute("aria-label", T.namePlaceArtist);
+  box.append(t, dash, a);
+  h.replaceChildren(box);
+  t.focus(); t.select();
+
+  const finish = (save) => {
+    if (!namingNow) return;
+    namingNow = false;
+    const nt = t.value.trim(), na = a.value.trim();
+    const changed = save && (nt !== songName || na !== songArtist);
+    if (changed){ songName = nt; songArtist = na; }
+    h.replaceChildren();
+    showName();
+    if (!songName && !songArtist) h.textContent = was;   // nothing to show
+    if (changed){ touched(); toast(T.nameFixed); }
+  };
+  for (const inp of [t, a]){
+    inp.addEventListener("keydown", e => {
+      e.stopPropagation();              // Enter and Space belong to the stage
+      if (e.key === "Enter"){ e.preventDefault(); finish(true); }
+      if (e.key === "Escape"){ e.preventDefault(); finish(false); }
+    });
+    inp.addEventListener("blur", () => {
+      // Moving between the two fields is not leaving the name.
+      setTimeout(() => { if (![t, a].includes(document.activeElement)) finish(true); }, 0);
+    });
+  }
+}
+
 function spread(ln){
   const total = ln.words.reduce((s,w)=>s+(w.s||1),0)||1;
   // The span used to be forced up to 0.15 s here — and on a narrow line the
@@ -3157,6 +3224,10 @@ function langOf(){
   // the song, not to the window: read it off the text again.
   return "auto";
 }
+$("edTitle").addEventListener("click", editName);
+$("edTitle").addEventListener("keydown", e => {
+  if (e.key === "Enter" || e.key === " "){ e.preventDefault(); editName(); }
+});
 $("btnLyrics").addEventListener("click", () => {
   if (!confirm(T.askLyrics)) return;
   openBrowser("lyrics2");

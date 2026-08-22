@@ -463,17 +463,24 @@ def main():
     check("and it can be turned off altogether",
           video.intro_lead(NoIntro(), "Name") == 0.0, video.intro_lead(NoIntro(), "Name"))
 
+    # No artist here on purpose: on the card the artist's name rides just
+    # under the song's, in the very row where the first waiting line stands
+    # during the count — and the two phases could then not be told apart by
+    # their bands. That the artist is drawn is plain in any rendered card.
     opening = {"colors": ["#00ff00", "#ff00ff"],
                "theme": {"bg": "#000000", "text": "#ffffff"},
-               "data": {"title": "Named Song", "artist": "Somebody",
-                        "duration": 12.0, "lines": [
+               "data": {"title": "Named Song", "duration": 12.0, "lines": [
                    one_line("the first line of it", 7.0, 10.0)]}}
     wav4 = tone(os.path.join(tmp, "d.wav"), 220.0, 12.0)
     video.render(opening, wav4, AI.output, AI())
     check("the clip grew by the opening, and by exactly that much",
           abs(AU.duration(AI.output) - 18.0) < 0.35, AU.duration(AI.output))
 
-    def mid_ink(at, lit=False):
+    # Two bands: the seat where the name and then the count stand, and the
+    # queue below it where the words wait.
+    SEAT_B, WORDS_B = (0.38, 0.50), (0.55, 0.78)
+
+    def mid_ink(at, band=(0.30, 0.75), lit=False):
         # `lit` counts only what is being sung right now: before the song a
         # frame legitimately holds the coming line, dim, in the queue — ink
         # that says nothing about whether anybody has started singing.
@@ -482,16 +489,24 @@ def main():
                         "-i", AI.output, "-frames:v", "1", shot], check=True)
         imo = Image.open(shot).convert("RGB")
         Wo, Ho = imo.size
-        px = (imo.getpixel((x, y)) for y in range(int(Ho * 0.30), int(Ho * 0.75))
+        px = (imo.getpixel((x, y))
+              for y in range(int(Ho * band[0]), int(Ho * band[1]))
               for x in range(0, Wo, 2))
         if lit:
             return sum(1 for r, g, b in px if g > 120 and r < 90 and b < 90)
         return sum(1 for c in px if sum(c) > 110)
 
-    check("the name stands large on the opening card", mid_ink(1.0) > 200, mid_ink(1.0))
-    check("then the count takes its place", mid_ink(4.5) > 40, mid_ink(4.5))
-    check("and the count is one figure, not a line of words",
-          mid_ink(4.5) < mid_ink(1.0), f"{mid_ink(4.5)} vs {mid_ink(1.0)}")
+    check("the name stands large on the opening card",
+          mid_ink(1.0, SEAT_B) > 200, mid_ink(1.0, SEAT_B))
+    check("and the card holds nothing but the name",
+          mid_ink(1.0, WORDS_B) == 0, mid_ink(1.0, WORDS_B))
+    check("then the count takes its place", mid_ink(4.5, SEAT_B) > 10,
+          mid_ink(4.5, SEAT_B))
+    check("small enough to be a figure, not a poster",
+          mid_ink(4.5, SEAT_B) * 3 < mid_ink(1.0, SEAT_B),
+          f"{mid_ink(4.5, SEAT_B)} against the name's {mid_ink(1.0, SEAT_B)}")
+    check("and the words are already there to be read while it counts",
+          mid_ink(4.5, WORDS_B) > 40, mid_ink(4.5, WORDS_B))
     # The song itself is pushed back by the opening: what used to happen at 8 s
     # now happens at 14 s, and the sound waits with it.
     check("the singing arrives after the opening, not during it",

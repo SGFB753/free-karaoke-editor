@@ -535,8 +535,11 @@ up before the long part, not after it.
 
 Every clip opens with the song's name held large for three seconds, then a
 count of three, and only then the music: a karaoke that starts on the first
-frame catches everybody mid-breath. `--no-intro` starts with the song instead,
-and a sample cut from the middle (`--start`) never gets the card.
+frame catches everybody mid-breath. The count is small and the first lines
+stand under it, already where they will be when the singing starts. The name
+is the one you gave the song — click it in the editor's corner to change it.
+`--no-intro` starts with the song instead, and a sample cut from the middle
+(`--start`) never gets the card.
 
 During the intro and long instrumental stretches the video shows a countdown at
 the top — how long until the next line, which line it is, and a bar filling to

@@ -501,6 +501,17 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     y_next = int(H * 0.60)
     y_next2 = int(H * 0.72)
 
+    def draw_queue(frame, n1, duo=-1):
+        """The line coming next, and the one after it fainter still — the
+        singer reads forward, never back. The count-in shows the same queue,
+        so nothing jumps when the music finally starts."""
+        nx = get(n1, False)
+        frame.paste(nx.dim, (0, y_next - nx.h // 2), nx.dim)
+        n2i = next_sung(lines, n1)
+        if n2i < len(lines) and n2i != duo:
+            n2 = get(n2i, False)
+            frame.paste(n2.faint, (0, y_next2 - n2.h // 2), n2.faint)
+
     t_start = args.start
     if t_start >= duration:
         raise SystemExit(tr(
@@ -560,7 +571,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             card_font = fitted(card_name, int(H * 0.095), W - 2 * margin) if card_name else None
             art_font = (fitted(card_artist, int(H * 0.042), W - 2 * margin)
                         if card_artist else None)
-            num_font = ImageFont.truetype(font_path, int(H * 0.24))
+            num_font = ImageFont.truetype(font_path, int(H * 0.060))
             for n in range(lead_frames):
                 tt = n / args.fps
                 frame = bg.copy()
@@ -572,10 +583,17 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                         d.text((W // 2, int(H * 0.58)), card_artist, font=art_font,
                                fill=COL_DIM, anchor="mm")
                 else:
-                    # The number stands where the singing will stand.
+                    # The count stands small in the seat where the singing
+                    # will be, and the first words are already below it: a
+                    # figure filling the frame hid the very text people are
+                    # about to sing, and there is no reading it in three
+                    # seconds if it only appears when the music does.
                     left = max(lead - tt, 0.0)
-                    d.text((W // 2, int(H * 0.46)), str(int(math.ceil(left)) or 1),
+                    d.text((W // 2, y_main), str(int(math.ceil(left)) or 1),
                            font=num_font, fill=COL_HOT, anchor="mm")
+                    first = next_sung(lines, -1)
+                    if first < len(lines):
+                        draw_queue(frame, first)
                 furniture(d, 0.0)
                 proc.stdin.write(frame.tobytes())
         for n in range(total_frames):
@@ -653,21 +671,13 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
             n1 = next_sung(lines, idx)
             if not over and n1 < len(lines) and n1 != duo:
-                nx = get(n1, False)
-                frame.paste(nx.dim, (0, y_next - nx.h // 2), nx.dim)
+                draw_queue(frame, n1, duo)
 
                 gap = lines[n1]["start"] - (lines[idx]["end"] if idx >= 0 else 0)
                 left = lines[n1]["start"] - t
                 if not singing and gap > PIP_MIN_GAP:
                     dots(max((y_main + y_next) // 2, duo_bottom + int(H * 0.018)),
                          pips_lit(gap, left))
-
-                # …and one more ahead, fainter: the singer reads forward, never
-                # back, and the queue keeps the frame symmetric.
-                n2i = next_sung(lines, n1)
-                if n2i < len(lines) and n2i != duo:
-                    n2 = get(n2i, False)
-                    frame.paste(n2.faint, (0, y_next2 - n2.h // 2), n2.faint)
 
             # While nobody sings the screen is empty and it is unclear whether
             # the song is running. At the top — a countdown to the next line, as

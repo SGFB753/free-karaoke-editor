@@ -249,7 +249,8 @@ def keep_spans(data: Dict) -> List[List[float]]:
 
 
 def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,
-               no_text=None, keep_marks=None, check_off=None) -> Dict:
+               no_text=None, keep_marks=None, check_off=None,
+               title=None, artist=None) -> Dict:
     data = load(folder)
     data["lines"] = lines
     if colors:
@@ -265,6 +266,15 @@ def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,
         data["keepMarks"] = bool(keep_marks)
     if check_off is not None:
         data["checkOff"] = [str(k) for k in check_off][:500]
+    # A name given by hand. It stands in the corner of the video and on its
+    # opening card, and it is remembered as chosen: re-reading a lyrics file
+    # with a “title:” header of its own must not quietly rename the song back.
+    if title is not None:
+        data["title"] = str(title).strip()[:120]
+        data["titleSet"] = True
+    if artist is not None:
+        data["artist"] = str(artist).strip()[:120]
+        data["titleSet"] = True
     data["keepSpans"] = keep_spans(data)
     data["edited"] = time.time()
     save(folder, data)

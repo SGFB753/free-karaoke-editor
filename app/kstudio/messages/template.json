@@ -264,5 +264,9 @@
   "ignored": "",
   "restoreIgnored": "",
   "coverBg": "",
-  "coverHint": ""
+  "coverHint": "",
+  "nameHint": "",
+  "namePlaceTitle": "",
+  "namePlaceArtist": "",
+  "nameFixed": ""
 }

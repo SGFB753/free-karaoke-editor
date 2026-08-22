@@ -40,6 +40,17 @@
   header{display:flex; align-items:center; gap:14px; padding:13px 18px;
     border-bottom:1px solid var(--line); flex:none}
   header h1{font-size:0.9375rem; font-weight:700; letter-spacing:.2px}
+  /* The song's name is editable: it is what stands in the corner of the video
+     and on its opening card, so it must not be stuck with whatever the file
+     was called. */
+  header h1#edTitle{cursor:text; padding:.1rem .35rem; border-radius:.3rem;
+    border:1px solid transparent; max-width:36ch; overflow:hidden;
+    text-overflow:ellipsis; white-space:nowrap}
+  header h1#edTitle:hover{border-color:var(--line); background:var(--panel)}
+  header .nameEdit{display:flex; gap:.3rem; align-items:center}
+  header .nameEdit input{font:inherit; color:var(--text); background:var(--bg);
+    border:1px solid var(--accent); border-radius:.3rem; padding:.15rem .35rem}
+  header .nameEdit .t{width:16ch} header .nameEdit .a{width:11ch}
   header .sp{flex:1}
 
   /* ---------- song list ---------- */
@@ -494,7 +505,7 @@
 <div class="screen hide" id="scrEdit">
   <header>
     <button id="btnBack" data-t="songs">← Songs</button>
-    <h1 id="edTitle">—</h1>
+    <h1 id="edTitle" data-tt="nameHint" tabindex="0" role="button">—</h1>
     <span class="saved on ok" id="savedNote" data-t="savedNote">saved</span>
     <div class="sp"></div>
     <button id="btnLyrics" data-tt="lyricsHint" data-t="otherLyrics"

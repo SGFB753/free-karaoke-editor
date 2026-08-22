@@ -604,7 +604,9 @@ class Handler(BaseHTTPRequestHandler):
                                     theme=body.get("theme"),
                                     no_text=body.get("noText"),
                                     keep_marks=body.get("keepMarks"),
-                                    check_off=body.get("checkOff"))
+                                    check_off=body.get("checkOff"),
+                                    title=body.get("title"),
+                                    artist=body.get("artist"))
                 return self._json({"ok": True, "problems": P.problems(data)})
 
             m = re.match(r"^/api/project/([^/]+)/delete$", path)
@@ -864,8 +866,11 @@ def realign(folder: str, opts: dict, log) -> dict:
     data["keepSpans"] = P.keep_spans(data)
     data["model"] = model
     data["source_lyrics"] = os.path.abspath(src)
-    data["title"] = lyr.title or data.get("title") or ""
-    if lyr.artist:
+    # A name typed by hand outlives a re-timing: the header of a lyrics file
+    # does not get to rename a song its owner has already named.
+    if not data.get("titleSet"):
+        data["title"] = lyr.title or data.get("title") or ""
+    if lyr.artist and not data.get("titleSet"):
         data["artist"] = lyr.artist
     data["edited"] = time.time()
     P.save(folder, data)
