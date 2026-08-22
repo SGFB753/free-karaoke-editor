@@ -127,9 +127,9 @@ def main():
                       "words": [{"w": "lead", "t": 5.0, "d": 1.3, "s": 1},
                                 {"w": "line", "t": 6.3, "d": 1.3, "s": 1},
                                 {"w": "here", "t": 7.6, "d": 1.3, "s": 1}]},
-                     {"text": "(na-na-na)", "start": 5.5, "end": 8.5, "voice": 2,
+                     {"text": "(na-na-na)", "start": 5.5, "end": 10.5, "voice": 2,
                       "backing": True,
-                      "words": [{"w": "(na-na-na)", "t": 5.5, "d": 3.0, "s": 3}]},
+                      "words": [{"w": "(na-na-na)", "t": 5.5, "d": 5.0, "s": 3}]},
                      {"text": "next lead", "start": 12.0, "end": 14.0, "voice": 1,
                       "words": [{"w": "next", "t": 12.0, "d": 1.0, "s": 1},
                                 {"w": "lead", "t": 13.0, "d": 1.0, "s": 1}]}]}}
@@ -137,7 +137,7 @@ def main():
     class AD:
         width, height, fps, crf = 640, 360, 5, 30
         preset, font = "ultrafast", None
-        start, seconds, audio, timings = 5.8, 2.0, "minus", None
+        start, seconds, audio, timings = 5.8, 4.5, "minus", None
         output = os.path.join(tmp, "duet.mp4")
     video.render(duet_song, wavd, AD.output, AD())
     pngd = os.path.join(tmp, "duet.png")
@@ -160,6 +160,31 @@ def main():
     check("and it leans right, smaller than the lead",
           back_right > back_left * 1.5 and (back_left + back_right) < lead_ink,
           f"left {back_left}, right {back_right}, lead {lead_ink}")
+
+    # …and when the lead ends but the na-na-na carries on, the backing keeps
+    # its side seat instead of being promoted to the main one, full size, in
+    # the way of the lead text.
+    png_alone = os.path.join(tmp, "duet-alone.png")
+    subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "3.9", "-i", AD.output,
+                    "-frames:v", "1", png_alone], check=True)
+    ima = Image.open(png_alone).convert("RGB")
+    Wa, Ha = ima.size
+
+    def ink_a(y0, y1, x0=0.0, x1=1.0):
+        return sum(1 for y in range(int(Ha * y0), int(Ha * y1))
+                   for x in range(int(Wa * x0), int(Wa * x1), 2)
+                   if sum(ima.getpixel((x, y))) > 90)
+
+    main_seat = ink_a(0.36, 0.48)
+    side_left = ink_a(0.46, 0.58, 0.0, 0.5)
+    side_right = ink_a(0.46, 0.58, 0.5, 1.0)
+    check("with the lead gone, the main seat stays empty",
+          main_seat < 40, main_seat)
+    check("the lone backing still sits small to the right",
+          side_right > 30 and side_right > side_left * 1.5,
+          f"left {side_left}, right {side_right}")
+    check("and the next lead still waits below",
+          ink_a(0.58, 0.70) > 40, ink_a(0.58, 0.70))
 
     print("\nThe frame reads forward, not back")
     # The sung line is gone from the frame; the current line has the next one

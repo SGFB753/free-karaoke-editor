@@ -439,7 +439,21 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                         break
 
             duo_bottom = 0
-            if idx >= 0:
+            if idx >= 0 and lines[idx].get("backing") and duo < 0:
+                # The backing singing alone — the lead has ended, the na-na-na
+                # carries on. It used to be promoted to the main seat, full
+                # size, in the lead's way. It keeps its side seat instead: the
+                # main seat stays empty, and the queue below points at the next
+                # lead line as always.
+                pic = get(idx, main=False, duo_side=True)
+                y_b = y_main + int(H * 0.036)
+                frame.paste(pic.dim, (0, y_b), pic.dim)
+                fxb = int(pic.fill_x(lines[idx], t))
+                if fxb > 0:
+                    boxb = (0, 0, min(fxb, W), pic.h)
+                    frame.paste(pic.hot.crop(boxb), (0, y_b), pic.hot.crop(boxb))
+                duo_bottom = y_b + pic.h
+            elif idx >= 0:
                 # The lead stays exactly where a solo line sits; the backing is
                 # smaller, to the right, tucked under it like a reply — two full
                 # rows used to collide with the dots and the queue.

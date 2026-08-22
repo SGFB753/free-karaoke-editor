@@ -72,6 +72,10 @@ up now, and the words of both fill as they are sung. In the video the two full-
 size rows used to collide with the countdown dots; the lead now sits exactly
 where a solo line sits, and the backing is smaller, right-aligned, tucked under
 it like a reply — with its own highlight, and the dots move out of its way.
+And when the lead ends while the na-na-na carries on, the backing keeps that
+side seat instead of being promoted to the main one, full size, in the way of
+the lead text: the main seat stays empty, the queue below points at the next
+lead line.
 
 **The aligner never hears the backing text.** Alignment is linear: asked to
 place the na-na-na BETWEEN the lead lines, it dragged whole choruses into
