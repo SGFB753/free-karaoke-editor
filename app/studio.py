@@ -1329,6 +1329,7 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
         a.preset = opts.get("preset", "medium"); a.font = opts.get("font")
         a.start = 0.0; a.seconds = float(opts.get("seconds", 0) or 0)
         a.audio = opts.get("audio", "minus"); a.timings = None; a.output = out
+        a.intro = bool(opts.get("intro", True))   # the name and a count of three
 
         log(tr("Drawing the frames…", "Рисую кадры…"))
         payload = B.read_payload(tmp_html)

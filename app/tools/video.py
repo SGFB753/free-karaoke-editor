@@ -51,6 +51,11 @@ PIP_MIN_GAP = 2.5
 # How long the last line stays after the song has been sung. Long enough to
 # let go of the note, short enough not to look like a frozen picture.
 END_HOLD = 5.0
+# The opening: the song's name, then a count of three. A karaoke that starts
+# on the first frame catches everybody mid-breath — nobody is at the
+# microphone yet, and the first line is gone before it is read.
+INTRO_CARD = 3.0
+INTRO_COUNT = 3.0
 
 
 def _hex_rgb(value, fallback):
@@ -160,6 +165,17 @@ def next_sung(lines, i: int) -> int:
     while j < len(lines) and lines[j].get("backing"):
         j += 1
     return j
+
+
+def intro_lead(args, name: str) -> float:
+    """Seconds that run before the music: the card, and then the count.
+
+    A song with no name has no card to show — it is counted in, and that is
+    all of it.
+    """
+    if not getattr(args, "intro", True):
+        return 0.0
+    return (INTRO_CARD if name else 0.0) + INTRO_COUNT
 
 
 def frame_lang(payload: dict) -> str:
@@ -439,6 +455,14 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         cache_font[key] = f
         return f
 
+    def fitted(text, size, max_w):
+        """A font of the asked size, stepped down until the text fits."""
+        f = ImageFont.truetype(font_path, size)
+        while size > 18 and f.getlength(text) > max_w:
+            size -= 2
+            f = ImageFont.truetype(font_path, size)
+        return f
+
     bg = make_background(W, H, payload.get("cover") or "")
     small = ImageFont.truetype(font_path, int(H * 0.020))
     # The song's name deserves better than the caption size — and its own
@@ -463,6 +487,12 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         return store[i]
 
     starts = [ln["start"] for ln in lines]
+    # The song is over when its last sound has faded — and the last sound is
+    # not always the last line: a na-na-na is written after the lead it sings
+    # under, and a lead can outlast the backing that started later. Asking the
+    # array which line is last cleared the stage while somebody was still
+    # singing, or left the backing hanging alone at the end.
+    song_end = max(ln["end"] for ln in lines)
     # The line already sung is dead weight on the screen — the eye never goes
     # back to it. The frame holds the current line and the queue ahead: the
     # next line, and the one after it fainter still. Slightly above centre, so
@@ -481,22 +511,73 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     t_end = min(duration, t_start + args.seconds) if args.seconds else duration
     total_frames = max(int((t_end - t_start) * args.fps), 1)
 
+    # The opening runs before the music, and only when the render begins at the
+    # song's own beginning: a piece cut from the middle is a preview, and a
+    # title card in front of it would only be in the way.
+    card_name = str(D.get("title") or "").strip()
+    card_artist = str(D.get("artist") or "").strip()
+    lead = intro_lead(args, card_name) if t_start <= 0 else 0.0
+    lead_frames = int(lead * args.fps)
+
     cmd = [AU.ffmpeg(), "-y", "-v", "error",
            "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}",
            "-r", str(args.fps), "-i", "-",
-           "-ss", f"{t_start}", "-i", audio_wav,
-           "-c:v", "libx264", "-preset", args.preset, "-crf", str(args.crf),
-           "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
-           "-shortest", "-movflags", "+faststart", out_path]
+           "-ss", f"{t_start}", "-i", audio_wav]
+    if lead > 0:
+        # The song waits for the opening: the picture starts, the sound joins.
+        cmd += ["-af", f"adelay={int(lead * 1000)}:all=1"]
+    cmd += ["-c:v", "libx264", "-preset", args.preset, "-crf", str(args.crf),
+            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
+            "-shortest", "-movflags", "+faststart", out_path]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
 
     # The frame speaks the song's language; the log below keeps speaking the
     # program's, because it is read by the person at the keyboard.
     said = frame_lang(payload)
     title = (D.get("title") or "") + ((" — " + D["artist"]) if D.get("artist") else "")
+
+    def furniture(d, prog):
+        """The name in the corner and the bar along the bottom: on every frame
+        of the clip, the opening among them."""
+        if title:
+            shown = title
+            while len(shown) > 8 and name_font.getlength(shown) > W - 2 * margin:
+                shown = shown[:-2].rstrip() + "\u2026"
+            d.text((margin, int(H * 0.028)), shown, font=name_font,
+                   fill=(132, 140, 168))
+        bar_y, bar_h = int(H * 0.955), max(int(H * 0.004), 2)
+        d.rectangle([margin, bar_y, W - margin, bar_y + bar_h], fill=(40, 45, 68))
+        if prog > 0:
+            d.rectangle([margin, bar_y, margin + (W - 2 * margin) * prog,
+                         bar_y + bar_h], fill=COL_BAR)
+
     t0 = time.time()
 
     try:
+        # The opening: the name held large, then three, two, one. The music is
+        # delayed by exactly as long, so nobody is caught mid-breath.
+        if lead_frames:
+            card_font = fitted(card_name, int(H * 0.095), W - 2 * margin) if card_name else None
+            art_font = (fitted(card_artist, int(H * 0.042), W - 2 * margin)
+                        if card_artist else None)
+            num_font = ImageFont.truetype(font_path, int(H * 0.24))
+            for n in range(lead_frames):
+                tt = n / args.fps
+                frame = bg.copy()
+                d = ImageDraw.Draw(frame)
+                if card_font and tt < INTRO_CARD:
+                    d.text((W // 2, int(H * 0.44)), card_name, font=card_font,
+                           fill=_mix(COL_HOT, (255, 255, 255), 0.30), anchor="mm")
+                    if art_font:
+                        d.text((W // 2, int(H * 0.58)), card_artist, font=art_font,
+                               fill=COL_DIM, anchor="mm")
+                else:
+                    # The number stands where the singing will stand.
+                    left = max(lead - tt, 0.0)
+                    d.text((W // 2, int(H * 0.46)), str(int(math.ceil(left)) or 1),
+                           font=num_font, fill=COL_HOT, anchor="mm")
+                furniture(d, 0.0)
+                proc.stdin.write(frame.tobytes())
         for n in range(total_frames):
             t = t_start + n / args.fps
             frame = bg.copy()
@@ -514,11 +595,10 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                         duo = j
                         break
 
-            # The song has been sung and nothing follows: after a few seconds
-            # the seat empties. A last line hanging lit to the end of the
-            # recording reads as a frozen picture, not as an ending.
-            over = (0 <= idx == len(lines) - 1
-                    and t > lines[idx]["end"] + END_HOLD)
+            # The song has been sung: after a few seconds the seat empties. A
+            # last line hanging lit to the end of the recording reads as a
+            # frozen picture, not as an ending.
+            over = t > song_end + END_HOLD
             singing = idx >= 0 and t < lines[idx]["end"]
 
             duo_bottom = 0
@@ -630,26 +710,17 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                                 fill=_mix(BG_TOP, (255, 255, 255), 0.18))
                     d.rectangle([bx, by, bx + int(bw * done_k), by + bh], fill=COL_HOT)
 
-            if title:
-                shown = title
-                while len(shown) > 8 and name_font.getlength(shown) > W - 2 * margin:
-                    shown = shown[:-2].rstrip() + "\u2026"
-                d.text((margin, int(H * 0.028)), shown, font=name_font,
-                       fill=(132, 140, 168))
-
-            bar_y, bar_h = int(H * 0.955), max(int(H * 0.004), 2)
-            d.rectangle([margin, bar_y, W - margin, bar_y + bar_h], fill=(40, 45, 68))
-            prog = min(max(t / duration, 0), 1)
-            d.rectangle([margin, bar_y, margin + (W - 2 * margin) * prog, bar_y + bar_h],
-                        fill=COL_BAR)
+            furniture(d, min(max(t / duration, 0), 1))
 
             proc.stdin.write(frame.tobytes())
 
             if n % (args.fps * 5) == 0 or n == total_frames - 1:
-                done = (n + 1) / total_frames
+                done = (lead_frames + n + 1) / (lead_frames + total_frames)
                 el = time.time() - t0
                 eta = el / done - el if done > 0.01 else 0
-                msg = (tr("frame ", "кадр ") + f"{n+1}/{total_frames}  {done*100:5.1f}%  "
+                msg = (tr("frame ", "кадр ")
+                       + f"{lead_frames + n + 1}/{lead_frames + total_frames}"
+                       + f"  {done*100:5.1f}%  "
                        + tr("left ~", "осталось ~")
                        + f"{int(eta)//60}:{int(eta)%60:02d}")
                 if on_progress:
@@ -789,6 +860,8 @@ def main(argv=None) -> int:
     p.add_argument("--font", help="path to a .ttf")
     p.add_argument("--start", type=float, default=0.0, help="start from this second")
     p.add_argument("--seconds", type=float, default=0.0, help="render only N seconds (a sample)")
+    p.add_argument("--no-intro", dest="intro", action="store_false",
+                   help="start with the song instead of the name and a count of three")
     args = p.parse_args(argv)
 
     try:
@@ -853,7 +926,8 @@ def video_report(payload, args, song: float, want: float) -> str:
     audio_name = {"minus": tr("instrumental", "минусовка"),
                   "guide": tr("instrumental + quiet vocal", "минусовка + тихий вокал"),
                   "original": tr("the original", "оригинал")}.get(args.audio, args.audio)
-    fps, frames = args.fps, int(want * args.fps)
+    lead = intro_lead(args, str(D.get("title") or "").strip()) if not getattr(args, "start", 0) else 0.0
+    fps, frames = args.fps, int((want + lead) * args.fps)
     rows = [
         (tr("Song", "Песня"), (D.get("title") or "—") +
          ((" — " + D["artist"]) if D.get("artist") else "")),
@@ -874,6 +948,11 @@ def video_report(payload, args, song: float, want: float) -> str:
          f"{theme.get('bg')} / {theme.get('text')}" if theme.get("bg")
          else tr("default", "по умолчанию")),
         (tr("Audio", "Звук"), audio_name),
+        (tr("Opening", "Заставка"),
+         tr(f"the name, then a count of three — {mmss(lead)}",
+            f"название и счёт до трёх — {mmss(lead)}")
+         if lead else tr("none, the song starts at once",
+                         "нет, песня начинается сразу")),
         (tr("Frames", "Кадров"), f"{frames} ({fps} " + tr("fps", "к/с") + ")"),
     ]
     width = max(len(k) for k, _ in rows) + 2

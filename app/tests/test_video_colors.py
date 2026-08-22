@@ -7,8 +7,10 @@
 
 from __future__ import annotations
 
+import array
 import importlib.util
 import json
+import math
 import os
 import re
 import shutil
@@ -67,6 +69,8 @@ def main():
     class Args:
         width, height, fps, crf = 640, 360, 5, 30
         preset, font = "ultrafast", None
+        intro = False
+        intro = False        # these frames measure the song, not the opening
         start, seconds, audio, timings = 0.0, 6.0, "minus", None
         output = os.path.join(tmp, "out.mp4")
 
@@ -180,6 +184,7 @@ def main():
     class AD:
         width, height, fps, crf = 640, 360, 5, 30
         preset, font = "ultrafast", None
+        intro = False
         start, seconds, audio, timings = 5.8, 4.5, "minus", None
         output = os.path.join(tmp, "duet.mp4")
     video.render(duet_song, wavd, AD.output, AD())
@@ -251,6 +256,7 @@ def main():
     class AQ:
         width, height, fps, crf = 640, 360, 5, 30
         preset, font = "ultrafast", None
+        intro = False
         start, seconds, audio, timings = 5.5, 2.0, "minus", None
         output = os.path.join(tmp, "queue.mp4")
     video.render(frames_song, wavq, AQ.output, AQ())
@@ -311,6 +317,7 @@ def main():
     class A5:
         width, height, fps, crf = 640, 360, 5, 30
         preset, font = "ultrafast", None
+        intro = False
         start, seconds, audio, timings = 0.0, 24.0, "minus", None
         output = os.path.join(tmp, "ending.mp4")
     video.render(ending, wav3, A5.output, A5())
@@ -355,6 +362,7 @@ def main():
     class A3:
         width, height, fps, crf = 640, 360, 5, 30
         preset, font = "ultrafast", None
+        intro = False
         start, seconds, audio, timings = 0.0, 18.0, "minus", None
         output = os.path.join(tmp, "intro.mp4")
     video.render(intro, wav2, A3.output, A3())
@@ -413,6 +421,7 @@ def main():
     class A4:
         width, height, fps, crf = 1280, 720, 5, 30
         preset, font = "ultrafast", None
+        intro = False
         start, seconds, audio, timings = 3.0, 1.0, "minus", None
         output = os.path.join(tmp, "named.mp4")
     video.render(named, wav2, A4.output, A4())
@@ -436,6 +445,118 @@ def main():
     check("the name and the pill do not touch",
           t_rows and p_rows and max(t_rows) < min(p_rows) - H4 * 0.008,
           f"name ends {max(t_rows) if t_rows else '—'}, pill starts {min(p_rows) if p_rows else '—'}")
+
+    print("\nThe clip opens with the name and a count of three")
+    # A karaoke that starts on the first frame catches everybody mid-breath.
+    class AI:
+        width, height, fps, crf = 480, 270, 4, 30
+        preset, font = "ultrafast", None
+        intro = True
+        start, seconds, audio, timings = 0.0, 12.0, "minus", None
+        output = os.path.join(tmp, "opening.mp4")
+    class NoIntro(AI):
+        intro = False
+    check("the opening is the card and the count", video.intro_lead(AI(), "Name") == 6.0,
+          video.intro_lead(AI(), "Name"))
+    check("a nameless song is only counted in", video.intro_lead(AI(), "") == 3.0,
+          video.intro_lead(AI(), ""))
+    check("and it can be turned off altogether",
+          video.intro_lead(NoIntro(), "Name") == 0.0, video.intro_lead(NoIntro(), "Name"))
+
+    opening = {"colors": ["#00ff00", "#ff00ff"],
+               "theme": {"bg": "#000000", "text": "#ffffff"},
+               "data": {"title": "Named Song", "artist": "Somebody",
+                        "duration": 12.0, "lines": [
+                   one_line("the first line of it", 7.0, 10.0)]}}
+    wav4 = tone(os.path.join(tmp, "d.wav"), 220.0, 12.0)
+    video.render(opening, wav4, AI.output, AI())
+    check("the clip grew by the opening, and by exactly that much",
+          abs(AU.duration(AI.output) - 18.0) < 0.35, AU.duration(AI.output))
+
+    def mid_ink(at, lit=False):
+        # `lit` counts only what is being sung right now: before the song a
+        # frame legitimately holds the coming line, dim, in the queue — ink
+        # that says nothing about whether anybody has started singing.
+        shot = os.path.join(tmp, f"open-{at}.png")
+        subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", str(at),
+                        "-i", AI.output, "-frames:v", "1", shot], check=True)
+        imo = Image.open(shot).convert("RGB")
+        Wo, Ho = imo.size
+        px = (imo.getpixel((x, y)) for y in range(int(Ho * 0.30), int(Ho * 0.75))
+              for x in range(0, Wo, 2))
+        if lit:
+            return sum(1 for r, g, b in px if g > 120 and r < 90 and b < 90)
+        return sum(1 for c in px if sum(c) > 110)
+
+    check("the name stands large on the opening card", mid_ink(1.0) > 200, mid_ink(1.0))
+    check("then the count takes its place", mid_ink(4.5) > 40, mid_ink(4.5))
+    check("and the count is one figure, not a line of words",
+          mid_ink(4.5) < mid_ink(1.0), f"{mid_ink(4.5)} vs {mid_ink(1.0)}")
+    # The song itself is pushed back by the opening: what used to happen at 8 s
+    # now happens at 14 s, and the sound waits with it.
+    check("the singing arrives after the opening, not during it",
+          mid_ink(14.0, lit=True) > 20 and mid_ink(8.0, lit=True) == 0,
+          f"{mid_ink(14.0, lit=True)} lit at 14 s, {mid_ink(8.0, lit=True)} at 8 s")
+
+    heard = os.path.join(tmp, "opening.wav")
+    subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-i", AI.output,
+                    "-ac", "1", "-ar", "8000", heard], check=True)
+    with wave.open(heard) as fh:
+        sr_o = fh.getframerate()
+        pcm = array.array("h")
+        pcm.frombytes(fh.readframes(fh.getnframes()))
+
+    def loud(t0, t1):
+        seg = pcm[int(t0 * sr_o):int(t1 * sr_o)]
+        return math.sqrt(sum(x * x for x in seg) / max(len(seg), 1))
+
+    check("the music holds back while the count runs", loud(0.5, 5.5) < 20, loud(0.5, 5.5))
+    check("and comes in when the count is done", loud(7.0, 11.0) > 200, loud(7.0, 11.0))
+
+    print("\nThe backing does not keep the ending to itself")
+    # The last sound is not always the last line in the list: a na-na-na is
+    # written under the lead it answers, and a lead can outlast a backing that
+    # started later. Asking the list which line is last left the backing
+    # hanging alone at the end — and blanked a lead that was still singing.
+    tail = {"colors": ["#00ff00", "#ff00ff"],
+            "theme": {"bg": "#000000", "text": "#ffffff"},
+            "data": {"title": "T", "duration": 24.0, "lines": [
+                dict(one_line("then she said she liked", 7.0, 10.0)),
+                dict(one_line("(na-na-na)", 9.0, 12.0), voice=2, backing=True)]}}
+    wav5 = tone(os.path.join(tmp, "e.wav"), 220.0, 24.0)
+    class AT:
+        width, height, fps, crf = 480, 270, 4, 30
+        preset, font = "ultrafast", None
+        intro = False
+        start, seconds, audio, timings = 0.0, 24.0, "minus", None
+        output = os.path.join(tmp, "tail.mp4")
+    video.render(tail, wav5, AT.output, AT())
+
+    def tail_ink(at):
+        shot = os.path.join(tmp, f"tail-{at}.png")
+        subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", str(at),
+                        "-i", AT.output, "-frames:v", "1", shot], check=True)
+        imt = Image.open(shot).convert("RGB")
+        Wt, Ht = imt.size
+        return sum(1 for y in range(int(Ht * 0.30), int(Ht * 0.75))
+                   for x in range(0, Wt, 2) if sum(imt.getpixel((x, y))) > 110)
+
+    check("the lone backing is still there just after it is sung",
+          tail_ink(13.5) > 20, tail_ink(13.5))
+    check("and the stage empties five seconds after the backing, not the lead",
+          tail_ink(17.5) == 0, tail_ink(17.5))
+
+    # …and the mirror case: the backing is written last but ends first, while
+    # the lead sings on. Nothing may be blanked while a voice is sounding.
+    outlast = {"colors": ["#00ff00", "#ff00ff"],
+               "theme": {"bg": "#000000", "text": "#ffffff"},
+               "data": {"title": "T", "duration": 24.0, "lines": [
+                   dict(one_line("a lead that carries on and on", 7.0, 20.0)),
+                   dict(one_line("(na-na)", 9.0, 11.0), voice=2, backing=True)]}}
+    AT.output = os.path.join(tmp, "outlast.mp4")
+    video.render(outlast, wav5, AT.output, AT())
+    check("a lead that outlasts its backing keeps singing on screen",
+          tail_ink(19.0) > 20, tail_ink(19.0))
 
     print("\nColours do not collapse into an empty frame")
     dark = {"colors": ["#050505", "#0a0a0a"], "theme": {"bg": "#000000", "text": "#050505"},

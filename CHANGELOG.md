@@ -7,6 +7,23 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.34.0
+
+**A clip opens instead of starting.** The song's name stands large for three
+seconds, then a count of three, and only then the music — which waits exactly
+as long, so nobody is caught mid-breath with the first line already gone. A
+song with no name is simply counted in; `--no-intro` starts with the music as
+before, and a sample cut from the middle of a song never gets the card.
+
+**The backing no longer keeps the ending to itself.** The stage was cleared by
+asking the list of lines which one was last — and the last sound is not always
+the last line: a na-na-na is written under the lead it answers. So the backing
+hung alone at the end of the song, and a lead still singing over a backing that
+had finished could be blanked mid-word. The song now ends when its last sound
+does, whichever line held it.
+
+---
+
 ## 4.33.1
 
 **The dots in the video count a wait, and nothing else.** Three grey dots sat
