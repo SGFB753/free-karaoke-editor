@@ -62,7 +62,10 @@ console.log('\n--- the quiet stretches become marks with one press ---');
 const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disable-dev-shm-usage']});
 const p = await b.newPage();
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
-p.on('dialog', d => d.dismiss());
+// One handler, two moods: the questions are dismissed except when a test
+// step means to walk through one.
+let dlgMode = 'dismiss';
+p.on('dialog', d => dlgMode === 'accept' ? d.accept() : d.dismiss());
 await p.setViewport({width:1366, height:900});
 // The stand's song is short and holds no five-second silence of its own; what
 // is under test is the offer and the press, not the hearing — that is measured
@@ -113,6 +116,52 @@ if (chips.length){
     ok('and “mark them all” takes the rest', after.length >= before.length, after);
   }
 }
+
+console.log('\n--- the timing leaves for UltraStar and the subtitles ---');
+const usJob = await finish((await post(`/api/project/${encodeURIComponent(pid)}/export`,
+  {kind: 'ultrastar'})).job);
+ok('the UltraStar file is written', usJob.ok && usJob.result && !!usJob.result.path,
+   (usJob.log || []).slice(-1)[0]);
+if (usJob.ok && usJob.result.path){
+  const fs = await import('fs');
+  const us = fs.readFileSync(usJob.result.path, 'utf8');
+  ok('with the song named in its header', us.includes('#TITLE:Packed Song'),
+     us.split('\n')[0]);
+  ok('its notes freestyle and its end marked',
+     /\nF \d+ \d+ 0 /.test(us) && us.trim().endsWith('E'));
+  fs.unlinkSync(usJob.result.path);
+}
+const assJob = await finish((await post(`/api/project/${encodeURIComponent(pid)}/export`,
+  {kind: 'ass'})).job);
+ok('the subtitles are written', assJob.ok && assJob.result && !!assJob.result.path,
+   (assJob.log || []).slice(-1)[0]);
+if (assJob.ok && assJob.result.path){
+  const fs = await import('fs');
+  const sub = fs.readFileSync(assJob.result.path, 'utf8');
+  ok('with karaoke tags on the words', sub.includes('{\\k'), sub.slice(0, 60));
+  ok('and the styles for both voices', sub.includes('Style: Voice1')
+     && sub.includes('Style: Voice2'));
+  fs.unlinkSync(assJob.result.path);
+}
+
+console.log('\n--- found texts stand in the other-lyrics picker ---');
+// The search that worked only while building now answers in the editor too.
+// Through the very button a person presses: the window's functions live in
+// their own closure, and the test has no back door to them.
+dlgMode = 'accept';
+await p.click('#btnLyrics');
+await sleep(1800);
+dlgMode = 'dismiss';
+const rowsSeen = await p.evaluate(() => {
+  const rows = [...document.querySelectorAll('#brBody .row.found2 .nm')]
+    .map(e => e.textContent);
+  document.getElementById('browser').classList.add('hide');
+  return rows;
+});
+ok('the found records are offered above the files', rowsSeen.length > 0,
+   JSON.stringify(rowsSeen));
+ok('and a timed one says so', rowsSeen.some(t => /разметк|timing/i.test(t)),
+   JSON.stringify(rowsSeen));
 
 console.log('\n--- and the song travels in one file ---');
 const packed = await post(`/api/project/${encodeURIComponent(pid)}/pack`, {});

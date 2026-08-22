@@ -23,9 +23,11 @@ console.log('--- the field is there, and it is explained ---');
 await p.click('#btnAdd');
 await sleep(300);
 ok('the build screen has a field for wordless stretches', !!(await p.$('#inNoText')));
+// The explanation moved from a standing paragraph to the label's own
+// tooltip: the form got shorter, the words wait under the cursor.
 const hint = await p.$eval('#inNoText', e =>
-  e.closest('.field').querySelector('.hint').textContent);
-ok('and the hint says it claims nothing about the rest of the song',
+  e.closest('.field').querySelector('label').title);
+ok('and the label explains it claims nothing about the rest of the song',
    /остальн/i.test(hint) || /rest of the song/i.test(hint), hint.slice(0, 80));
 ok('it names the way of writing it in the lyrics file too',
    /\[/.test(hint) && /3:10/.test(hint), hint.slice(-60));

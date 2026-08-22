@@ -170,6 +170,11 @@ still there. If the download fails — a private video, a dead link, a country
 block — the reason the downloader gave is shown as it is, and the field is
 still open for another link.
 
+The editor's “⇪” exports the timing for other programs: an UltraStar file
+for the singing games (notes freestyle — pitch is not measured, so none is
+invented) and .ass subtitles with a word-by-word karaoke sweep in the
+project's colours.
+
 When the song's name finds the words on the lyrics library, a record that
 carries its own timing says so — and “Take it with the timing” keeps those
 times as sparse pegs: the model still lays out the words between them, but a

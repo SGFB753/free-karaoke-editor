@@ -8,7 +8,21 @@ const js   = await (await fetch(API + "/ui.js")).text();
 const dom = new JSDOM(html, { runScripts:"dangerously", pretendToBeVisual:true, url:API+"/",
   beforeParse(w){
     w.__errs=[]; w.onerror=m=>w.__errs.push(String(m));
-    w.fetch = (...a) => fetch(typeof a[0]==="string" && a[0].startsWith("/") ? API+a[0] : a[0], a[1]);
+    // undici does not know jsdom's File: handed one as a body it sends its
+    // toString, not its bytes — every "uploaded" file arrived as thirteen
+    // bytes of "[object File]". jsdom's Blob predates arrayBuffer(), so the
+    // draining goes through its own FileReader.
+    const drain = blob => new Promise(res => {
+      const fr = new w.FileReader();
+      fr.onload = () => res(Buffer.from(fr.result));
+      fr.readAsArrayBuffer(blob);
+    });
+    w.fetch = async (...a) => {
+      let opts = a[1];
+      if (opts && opts.body && opts.body instanceof w.Blob)
+        opts = {...opts, body: await drain(opts.body)};
+      return fetch(typeof a[0]==="string" && a[0].startsWith("/") ? API+a[0] : a[0], opts);
+    };
     w.AudioContext = class { constructor(){this.state="running";this.destination={};}
       get currentTime(){return 0;} createGain(){return {gain:{value:1, setTargetAtTime(v){this.value=v;}},connect(){}};}
       createBufferSource(){return {connect(){},start(){},stop(){}};}
@@ -56,6 +70,43 @@ ok('the path to the lyrics was filled in', /Dropped(-\d+)?\.txt/.test($('inLyric
 
 const st = await (await fetch(API+"/api/state")).json();
 ok('the files really landed on disk', true, 'projects: '+st.projects.length);
+
+console.log('\n--- a dropped pack opens itself ---');
+// A real pack, dropped into the window, must come back as a song in the
+// list — end to end: the window's functions live in their own closure, so
+// nothing short of the real road proves the wiring.
+const postJson = async (path, body) => (await (await fetch(API + path,
+  {method:'POST', headers:{'Content-Type':'application/json'},
+   body: JSON.stringify(body)})).json());
+const builtJob = (await postJson('/api/new', {audio: process.env.KARAOKE_SONG,
+  lyrics: process.env.KARAOKE_TEXT, align: 'energy', separate: false,
+  title: 'Dropped Pack', titleSet: true})).job;
+let packSrc = null;
+for (let i = 0; i < 240 && !packSrc; i++){
+  const j = await (await fetch(API + '/api/job?id=' + builtJob)).json();
+  if (j.done) packSrc = j.result;
+  else await sleep(500);
+}
+ok('a song to pack is built', !!packSrc, String(packSrc));
+const packed = await postJson(`/api/project/${encodeURIComponent(packSrc)}/pack`, {});
+ok('and packed into one file', !!packed.path, JSON.stringify(packed));
+const wasCount = (await (await fetch(API + '/api/state')).json()).projects.length;
+const packFile = new w.File([fs.readFileSync(packed.path)],
+  "dropped.karaoke.zip", {type: "application/zip"});
+fire('dragenter', [packFile]);
+fire('drop', [packFile]);
+let twin = null;
+for (let i = 0; i < 60 && !twin; i++){
+  await sleep(500);
+  const st2 = await (await fetch(API + '/api/state')).json();
+  if (st2.projects.length > wasCount)
+    twin = st2.projects.find(x => x.title === 'Dropped Pack' && x.id !== packSrc);
+}
+ok('the dropped pack came back as a song in the list', !!twin,
+   twin && twin.id);
+for (const id of [twin && twin.id, packSrc])
+  if (id) await postJson(`/api/project/${encodeURIComponent(id)}/delete`, {});
+try{ fs.unlinkSync(packed.path); }catch(e){}
 
 console.log('\n--- dropping something unrelated ---');
 const junk = new w.File([Buffer.from("x")], "picture.png", {type:"image/png"});

@@ -53,15 +53,17 @@ const STR = {
     loop: "↻ Loop", loopHint: "Play the selected line over and over",
     snapAll: "Snap all to the vocal",
     snapHint: "Move every line to the nearest moment singing starts",
-    howto: "Click a line → play up to where it starts being sung → <b>Enter</b>. " +
-      "Blue blocks are lines, the yellow ones under them are that line's words. " +
-      "Drag the middle to move, <b>drag the edges to set the length</b> " +
-      "(<b>Alt</b> squeezes the whole line). Fine-tune " +
-      "a line with <b>[</b> and <b>]</b>. Made a mistake — <b>Ctrl+Z</b>. " +
-      "The lyrics scroll with the wheel, <b>Home</b> and <b>End</b> jump to the ends. " +
-      "<b>Press and drag across the lines</b> to pick several — or " +
-      "<b>Shift</b>+click, <b>Ctrl</b>+click to add one. Voice, “original”, " +
-      "delete and paste then work on all of them at once.",
+    // One gesture stays in sight; the rest waits under the cursor. The full
+    // paragraph pushed the timeline up on every screen for the sake of a
+    // first day that only happens once.
+    howtoShort: "Click a line → play up to where it starts being sung → <b>Enter</b>.",
+    howtoMore: "Blue blocks are lines, the yellow ones under them are that "
+      + "line's words. Drag the middle to move, drag the edges to set the "
+      + "length (Alt squeezes the whole line). Fine-tune a line with [ and ]. "
+      + "Made a mistake — Ctrl+Z. The lyrics scroll with the wheel, Home and "
+      + "End jump to the ends. Press and drag across the lines to pick "
+      + "several — or Shift+click, Ctrl+click to add one. Voice, “original”, "
+      + "delete and paste then work on all of them at once.",
     voice: "Voice", cancel: "Cancel", dropBig: "Drop the files here",
     dropSub: "the song and the lyrics — or one at a time",
     langUi: "Interface language",
@@ -247,7 +249,7 @@ const STR = {
       + "measurement tells them apart, and the timing crawls onto them. Naming a "
       + "stretch keeps words off it — it says nothing about the rest of the song, "
       + "and claims no words for it. The same can be written in the lyrics file: "
-      + "<b>[Solo 3:10-3:50]</b>.",
+      + "[Solo 3:10-3:50].",
     // a link instead of a file, and the lyrics that go with it
     linkPh: "…or a link to a video — the sound will be taken out of it",
     fetchGo: "Take the sound",
@@ -307,6 +309,13 @@ const STR = {
     nameHint: "The song's name — click to fix it. It stands in the corner of "
       + "the video, on its opening card and on the finished page, and it is "
       + "what the exported files are called.",
+    moreExpHint: "The other ways out: an UltraStar file for the singing "
+      + "games, .ass subtitles with the karaoke sweep, or the whole song "
+      + "packed into one file to carry elsewhere.",
+    exportUs: "UltraStar (.txt)",
+    exportAss: "Subtitles (.ass)",
+    jobUs: "Writing the UltraStar file",
+    jobAss: "Writing the subtitles",
     packSong: "⇩ Pack",
     packHint: "Put the whole song into one file — the timing, the audio, the "
       + "cover — to carry to another computer or to keep. A rendered page or "
@@ -418,15 +427,14 @@ const STR = {
     loop: "↻ Повторять", loopHint: "Играть выбранную строку по кругу",
     snapAll: "Подогнать все к голосу",
     snapHint: "Подвинуть все строки к ближайшему началу пения",
-    howto: "Щёлкните строку → доиграйте до места, где её начинают петь → " +
-      "<b>Enter</b>. Синие блоки — строки, жёлтые под ними — слова этой строки. " +
-      "За середину — подвинуть, <b>за края — задать длину</b> "
-      + "(<b>Alt</b> сжимает всю строку). Точная подгонка " +
-      "строки — <b>[</b> и <b>]</b>. Ошиблись — <b>Ctrl+Z</b>. " +
-      "Текст листается колесом, <b>Home</b> и <b>End</b> — к началу и концу. " +
-      "<b>Зажмите и проведите по строкам</b> — выделятся все, по которым " +
-      "провели. Иначе <b>Shift</b>+щелчок или <b>Ctrl</b>+щелчок. Голос, " +
-      "«оригинал», удаление и вставка работают сразу по всем выделенным.",
+    howtoShort: "Щёлкните строку → доиграйте до места, где её начинают петь → <b>Enter</b>.",
+    howtoMore: "Синие блоки — строки, жёлтые под ними — слова этой строки. За "
+      + "середину — подвинуть, за края — задать длину (Alt сжимает всю "
+      + "строку). Точная подгонка строки — [ и ]. Ошиблись — Ctrl+Z. Текст "
+      + "листается колесом, Home и End — к началу и концу. Зажмите и "
+      + "проведите по строкам — выделятся все, по которым провели. Иначе "
+      + "Shift+щелчок или Ctrl+щелчок. Голос, «оригинал», удаление и вставка "
+      + "работают сразу по всем выделенным.",
     voice: "Голос", cancel: "Отмена", dropBig: "Отпустите файлы здесь",
     dropSub: "песня и текст — или каждый по отдельности",
     langUi: "Язык надписей",
@@ -610,7 +618,7 @@ const STR = {
     noTextHint: "Вокализ, крик без слов и спетая строка — всё это голос: ничем их "
       + "не отличить, и разметка на них наползает. Названный кусок слова обойдут — "
       + "про остальную песню это не говорит ничего и текста ей не приписывает. "
-      + "То же можно написать прямо в файле с текстом: <b>[Соло 3:10-3:50]</b>.",
+      + "То же можно написать прямо в файле с текстом: [Соло 3:10-3:50].",
     // ссылка вместо файла и текст к ней
     linkPh: "…или ссылка на видео — звук достанется из неё",
     fetchGo: "Достать звук",
@@ -671,6 +679,13 @@ const STR = {
     nameHint: "Название песни — нажмите, чтобы поправить. Оно стоит в углу "
       + "ролика, на его заставке и на готовой странице, и по нему называются "
       + "выгруженные файлы.",
+    moreExpHint: "Другие выходы: файл UltraStar для игр, где поют, "
+      + ".ass-субтитры с караоке-заливкой — или вся песня одним файлом, "
+      + "чтобы унести с собой.",
+    exportUs: "UltraStar (.txt)",
+    exportAss: "Субтитры (.ass)",
+    jobUs: "Пишу файл UltraStar",
+    jobAss: "Пишу субтитры",
     packSong: "⇩ Упаковать",
     packHint: "Положить песню целиком в один файл — разметку, звук, обложку, — "
       + "чтобы перенести на другой компьютер или сохранить. Готовая страница "
@@ -1076,6 +1091,41 @@ async function openBrowser(kind){
     : kind === "pack" ? T.openPack : T.pickFile;
   await showDir(startDir(kind));
 }
+// Looking the words up worked only while building; picking “another text”
+// for a finished song sent a person back to files alone. The same search now
+// stands above the file list — and a record that knows its times is taken
+// with them, as pegs.
+async function foundRows(box){
+  const name = songName || (data && data.title) || "";
+  if (!name) return;
+  let got;
+  try{
+    got = await api("/api/lyrics/find",
+      {track: name, artist: songArtist || (data && data.artist) || "",
+       duration: dur || 0});
+  }catch(e){ return; }                  // no library — the files are still here
+  (got.found || []).slice(0, 3).forEach(f => {
+    const r = document.createElement("div");
+    r.className = "row found2";
+    const timed = !!(f.timed && f.textTimed);
+    r.innerHTML = '<span class="ic">🔎</span><span class="nm"></span>' +
+      '<span class="sz"></span>';
+    r.querySelector(".nm").textContent =
+      (f.artist ? f.artist + " — " : "") + f.title +
+      (timed ? " · " + T.lyricsHasTimes : "");
+    r.querySelector(".sz").textContent = T.countLines(f.lines);
+    r.addEventListener("click", async () => {
+      $("browser").classList.add("hide");
+      try{
+        const saved = await api("/api/lyrics/save",
+          {text: (timed ? f.textTimed : f.text) || "", name});
+        realign(saved.path);
+      }catch(e){ toast(e.message); }
+    });
+    box.appendChild(r);
+  });
+}
+
 async function showDir(path){
   // “track” means audio, “lyrics2” means text, “pack” is a packed song
   const kind = pickTarget === "pack" ? "pack"
@@ -1086,6 +1136,7 @@ async function showDir(path){
   const body = $("brBody");
   body.dataset.parent = d.parent;
   body.innerHTML = "";
+  if (pickTarget === "lyrics2") await foundRows(body);
   (d.drives||[]).forEach(dr => body.appendChild(row("💽", dr, () => showDir(dr))));
   d.dirs.forEach(x => body.appendChild(row("📁", x.name, () => showDir(x.path))));
   d.files.forEach(x => body.appendChild(row("🎵", x.name, () => {
@@ -1140,6 +1191,18 @@ window.addEventListener("drop", async e => {
   e.preventDefault(); dragDepth = 0; $("dropHint").classList.add("hide");
   const files = Array.from(e.dataTransfer.files || []);
   if (!files.length) return;
+
+  // A packed song opens itself: drop the .karaoke.zip anywhere in the window
+  // and it goes back among the songs, no button hunted for.
+  const pack = files.find(f => /\.zip$/i.test(f.name));
+  if (pack){
+    toast(T.taking(pack.name));
+    try{
+      const up = await upload(pack);
+      await unpackSong(up.path);
+    }catch(err){ toast(T.dropFail + err.message); }
+    return;
+  }
 
   const audio = files.find(f => AUDIO_RE.test(f.name));
   const text  = files.find(f => TEXT_RE.test(f.name));
@@ -1531,6 +1594,7 @@ function stop(){ if(!playing) return; waOffset = mediaTime(); playing=false; sto
   slowStop();
   $("btnPlay").textContent="▶"; }
 function seek(t){ waOffset = clamp(t,0,dur); curLine=-2;
+  stillFollow();                        // the open frame moves with the song
   if (playing && rate !== 1){ slowPlayFrom(waOffset); return; }
   if (playing) playFrom(waOffset); else stopSrcs(); }
 // On marked lines the voice always plays: that is audible here, not only in
@@ -3429,9 +3493,18 @@ $("btnMadeHide").addEventListener("click", () => showMade(""));
 
 // A frame of the clip, drawn on the spot. Before this the only way to see
 // whether a line sits where it should was to render the whole file.
+// While the frame is open it follows the song: a seek redraws it where the
+// playhead now stands, and the arrows step through without touching the song.
+let stillT = 0, stillTimer = 0;
+function stillFollow(){
+  if ($("stillBox").classList.contains("hide")) return;
+  clearTimeout(stillTimer);
+  stillTimer = setTimeout(() => showStill(mediaTime(), false), 350);
+}
 async function showStill(at, opening){
   const box = $("stillBox"), img = $("stillImg");
   box.classList.remove("hide");
+  stillT = opening ? 0 : Math.max(0, at);
   $("stillAt").textContent = opening ? T.stillOpeningAt : T.stillAt(fmt(at));
   // Asked for in the song's own time: the clip runs ahead of it by the length
   // of the opening, and how long that is, only the drawing knows.
@@ -3449,6 +3522,7 @@ async function showStill(at, opening){
 // A song in one file: the folder it lives in does not travel between two
 // computers, and a zip of it does.
 $("btnPack").addEventListener("click", async () => {
+  $("expMenu").classList.add("hide");
   await flush();                        // pack what is on the screen, not what was
   toast(T.packing);
   try{
@@ -3462,6 +3536,26 @@ $("btnUnpack").addEventListener("click", () => openBrowser("pack"));
 $("btnStill").addEventListener("click", () => showStill(mediaTime(), false));
 $("stillOpening").addEventListener("click", () => showStill(0, true));
 $("stillHide").addEventListener("click", () => $("stillBox").classList.add("hide"));
+$("stillPrev").addEventListener("click", () => showStill(Math.max(0, stillT - 2), false));
+$("stillNext").addEventListener("click", () => showStill(Math.min(dur, stillT + 2), false));
+
+// The other doors out: the singing games and the subtitle world. Behind one
+// narrow button, because the header is a shelf, not a warehouse.
+$("btnExportMore").addEventListener("click", e => {
+  e.stopPropagation();
+  $("expMenu").classList.toggle("hide");
+});
+document.addEventListener("click", () => $("expMenu").classList.add("hide"));
+async function exportKind(kind, label){
+  $("expMenu").classList.add("hide");
+  await flush();
+  const j = await api(`/api/project/${encodeURIComponent(pid)}/export`, {kind});
+  watchJob(j.job, label, r => {
+    screen("scrEdit"); showMade(r.path); toast(T.jobReady);
+  });
+}
+$("btnExportUs").addEventListener("click", () => exportKind("ultrastar", T.jobUs));
+$("btnExportAss").addEventListener("click", () => exportKind("ass", T.jobAss));
 
 $("btnExportHtml").addEventListener("click", async () => {
   await flush();

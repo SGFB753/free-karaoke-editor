@@ -1348,6 +1348,43 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
         log(tr(f"Done: {out}", f"Готово: {out}"))
         return {"kind": "html", "path": out}
 
+    if kind == "ultrastar":
+        from kstudio import interop
+        # The singing games want the song itself beside the text. The audio it
+        # was built from is named when it is still there; otherwise the track
+        # the project keeps is laid out next to the file.
+        src = data.get("source_audio") or ""
+        if os.path.isfile(src) and os.path.dirname(os.path.abspath(src)) \
+                == os.path.abspath(out_dir):
+            audio_name = os.path.basename(src)
+        else:
+            track = (data.get("tracks") or {}).get("mix") \
+                or (data.get("tracks") or {}).get("instrumental")
+            if not track:
+                raise ValueError(tr("the song has no audio to put beside the file",
+                                    "у песни нет звука, который положить рядом"))
+            audio_name = base + os.path.splitext(track)[1]
+            import shutil as _sh
+            _sh.copyfile(os.path.join(folder, track),
+                         os.path.join(out_dir, audio_name))
+            log(tr(f"The audio goes with it: {audio_name}",
+                   f"Звук кладётся рядом: {audio_name}"))
+        out = os.path.join(out_dir, base + ".txt")
+        with open(out, "w", encoding="utf-8") as f:
+            f.write(interop.ultrastar_text(data, audio_name))
+        log(tr(f"Done: {out} — for UltraStar and its kin",
+               f"Готово: {out} — для UltraStar и его родни"))
+        return {"kind": "ultrastar", "path": out}
+
+    if kind == "ass":
+        from kstudio import interop
+        out = os.path.join(out_dir, base + ".ass")
+        with open(out, "w", encoding="utf-8") as f:
+            f.write(interop.ass_text(data))
+        log(tr(f"Done: {out} — subtitles with the karaoke sweep",
+               f"Готово: {out} — субтитры с караоке-заливкой"))
+        return {"kind": "ass", "path": out}
+
     if kind == "mp4":
         import importlib.util
         spec = importlib.util.spec_from_file_location(

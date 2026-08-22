@@ -7,6 +7,25 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.37.0
+
+**The timing leaves for other worlds.** Behind the new “⇪” in the editor:
+an UltraStar file for the singing games — fifty-millisecond beats, a duet
+part for the second voice, every note freestyle because nothing here measures
+pitch and nothing will be invented — and .ass subtitles whose karaoke sweep
+runs word by word in the project's own colours, the second voice in a style
+of its own. “⇩ Pack” moved in there too, off the crowded shelf.
+
+**The little things joined hands.** The lyrics search now answers in
+“⇄ Other lyrics” as well, not only while building — found records stand above
+the file list, and a timed one is taken with its pegs. The “▣ Frame” follows
+a seek and steps by arrows. A .karaoke.zip dropped into the window opens
+itself. And the long explanations on the build screen folded into hover
+tooltips behind a small “?” — the form got shorter, the words are one hover
+away, and not a letter of any song was touched.
+
+---
+
 ## 4.36.0
 
 **A found text brings its own timing.** The lyrics library answers with the

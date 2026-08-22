@@ -1334,6 +1334,58 @@ def main():
     check("a page without one carries nothing",
           BLD.read_payload(plain_c).get("cover") == "")
 
+    print("\nThe timing speaks UltraStar and .ass")
+    # Months of timing work should not be locked into one player: the same
+    # record leaves as an UltraStar duet and as subtitles with the karaoke
+    # sweep — and both say exactly what the editor saved.
+    from kstudio import interop as IO
+    duet_rec = {"title": "Forevermore", "artist": "Lorna Shore",
+                "colors": ["#4de1ff", "#ff8ad1"],
+                "lines": [
+                    {"text": "first line", "start": 12.0, "end": 14.0, "voice": 1,
+                     "words": [{"w": "first", "t": 12.0, "d": 0.8},
+                               {"w": "line", "t": 13.0, "d": 1.0}]},
+                    {"text": "(na-na)", "start": 13.5, "end": 15.0, "voice": 2,
+                     "backing": True,
+                     "words": [{"w": "(na-na)", "t": 13.5, "d": 1.5}]},
+                    {"text": "second", "start": 20.0, "end": 21.0, "voice": 1,
+                     "words": [{"w": "second", "t": 20.0, "d": 1.0}]}]}
+    us = IO.ultrastar_text(duet_rec, "forevermore.mp3")
+    check("the header names the song and its audio",
+          "#TITLE:Forevermore" in us and "#MP3:forevermore.mp3" in us)
+    check("the gap is the first word, in milliseconds", "#GAP:12000" in us, us[:120])
+    check("two voices make a duet file", "P1" in us.split() and "P2" in us.split())
+    notes = [l for l in us.splitlines() if l.startswith("F ")]
+    check("every note is freestyle: no pitch is invented",
+          notes and all(l.split()[3] == "0" for l in notes), notes[:2])
+    check("the beats are fifty-millisecond ticks",
+          notes[0].split()[1] == "0" and notes[1].split()[1] == "20",
+          [l.split()[1] for l in notes])
+    check("a note never runs into the word after it",
+          int(notes[0].split()[1]) + int(notes[0].split()[2])
+          <= int(notes[1].split()[1]))
+    check("the file ends the way the games expect", us.rstrip().endswith("E"))
+    lone = {"title": "Solo", "lines": duet_rec["lines"][:1]}
+    check("one voice stays a plain file", "P1" not in IO.ultrastar_text(lone, "a.mp3"))
+    try:
+        IO.ultrastar_text({"title": "x", "lines": []}, "a.mp3")
+        check("an empty song is refused, not written", False)
+    except ValueError:
+        check("an empty song is refused, not written", True)
+
+    ass = IO.ass_text(duet_rec)
+    check("the colours travel in the subtitle's own order",
+          "&H00FFE14D" in ass and "&H00D18AFF" in ass, ass[:0])
+    check("each word carries its karaoke tag",
+          "{\k100}first" in ass and "{\k100}line" in ass,
+          [l for l in ass.splitlines() if "first" in l])
+    check("the sweep runs to the start of the next word, not the word's end",
+          "{\k100}first" in ass)   # 12.0→13.0 s is 100 cs, though d is 0.8
+    check("the second voice has a style of its own",
+          any(l.startswith("Dialogue") and ",Voice2," in l for l in ass.splitlines()))
+    check("the lines stand in the order they are sung",
+          ass.index("first") < ass.index("(na-na)") < ass.index("second"))
+
     print("\nA song travels in one file")
     # A project folder stands on its own but does not travel — not to another
     # computer, not into a backup. Packed and unpacked it is the same song.
