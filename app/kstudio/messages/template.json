@@ -262,5 +262,7 @@
   "speedHint": "",
   "ignoreHint": "",
   "ignored": "",
-  "restoreIgnored": ""
+  "restoreIgnored": "",
+  "coverBg": "",
+  "coverHint": ""
 }

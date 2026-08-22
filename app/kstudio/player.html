@@ -272,6 +272,18 @@
 "use strict";
 const P = JSON.parse(document.getElementById("payload").textContent);
 const D = P.data;
+// The clip's cover behind the lyrics: blurred hard and darkened. The layer is
+// only created when there is a cover, so an ordinary page costs nothing.
+if (P.cover){
+  // The body::before gradient owns z-index:0, and anything below it is
+  // never seen. The cover takes the same level: being later in tree order
+  // it wins the ground, while the interface keeps its seat at z-index:1.
+  const cv = document.createElement("div");
+  cv.style.cssText = "position:fixed;inset:-40px;z-index:0;" +
+    "background:center/cover no-repeat url(" + JSON.stringify(P.cover) + ");" +
+    "filter:blur(18px) brightness(.34)";
+  document.body.prepend(cv);
+}
 
 /* ---------- the language of the page ----------
    The page travels to people whose native language is anything at all.

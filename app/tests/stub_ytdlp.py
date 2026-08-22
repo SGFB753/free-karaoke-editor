@@ -57,6 +57,20 @@ def main() -> int:
         with open(dst, "wb") as f:
             f.write(b"\0" * 4096)
     print("[download] 100% of 3.00MiB in 00:02")
+    if "--write-thumbnail" in args:
+        # Real downloaders sometimes keep the original webp beside the
+        # converted jpeg. Both are laid out, and the picker must not confuse
+        # junk under a pretty extension with the picture.
+        with open(os.path.join(folder, stem + ".webp"), "wb") as f:
+            f.write(b"RIFF\x00\x00\x00\x00WEBPjunk-not-a-jpeg")
+        # a 1x1 jpeg is a jpeg: the pipeline only moves it
+        import base64
+        tiny = base64.b64decode(
+            "/9j/4AAQSkZJRgABAQEAAAAAAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a"
+            "HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAA"
+            "AAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AVN//2Q==")
+        with open(os.path.join(folder, stem + ".jpg"), "wb") as f:
+            f.write(tiny)
     if "--write-info-json" in args:
         with open(os.path.join(folder, stem + ".info.json"), "w", encoding="utf-8") as f:
             json.dump({"title": TITLE, "id": "zzz123", "duration": 21,

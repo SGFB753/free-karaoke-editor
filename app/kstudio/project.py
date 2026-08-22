@@ -108,6 +108,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
            device: Optional[str] = None, codec: str = "mp3",
            skip=None, separator: str = "htdemucs",
            title: Optional[str] = None, artist: Optional[str] = None,
+           cover: Optional[str] = None, cover_bg: bool = False,
            log: Log = _noop) -> str:
     """Build a project. Returns the path to its folder."""
     lyr = L.load(lyrics_path)
@@ -199,6 +200,9 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             # what was said to hold no words: the editor shows it again, and a
             # re-time starts from what you told it last time
             "noText": ", ".join(f"{a:.1f}-{b:.1f}" for a, b in holes),
+            # the clip's cover, and whether the karaoke stands on it
+            "cover": "cover.jpg" if cover and os.path.isfile(cover) else None,
+            "coverBg": bool(cover_bg and cover and os.path.isfile(cover)),
             # a stretch with nothing to sing keeps the original sound on it,
             # or the karaoke has a hole where the vocalise was
             "keepMarks": True,
@@ -206,6 +210,8 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             "envelope": envelope,
             "lines": [ln.to_json() for ln in lyr.lines],
         }
+        if cover and os.path.isfile(cover):
+            shutil.copyfile(cover, os.path.join(folder, "cover.jpg"))
         save(folder, data)
         log(tr("The song is ready.", "Проект готов."))
         return folder

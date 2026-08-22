@@ -29,7 +29,7 @@ TIMEOUT = int(os.environ.get("KARAOKE_FETCH_TIMEOUT") or 900)
 MAX_MB = 600                      # the same ceiling a dropped file has
 
 # yt-dlp leaves these behind while it works; they are not the download.
-LEFTOVERS = (".part", ".ytdl", ".temp", ".info.json")
+LEFTOVERS = (".part", ".ytdl", ".temp", ".info.json", ".jpg", ".webp", ".png")
 
 # “Song (Official Video) [HD]” is a name for a page, not for a song: the words
 # in brackets and the marks that come with them only get in the way of looking
@@ -305,6 +305,8 @@ def _base_args(cmd: list, tmp: str) -> list:
         "--socket-timeout", "30",
         "--max-filesize", f"{MAX_MB}m",
         "--write-info-json",      # the name and the artist, for looking the lyrics up
+        # the video's cover, for an optional backdrop behind the lyrics
+        "--write-thumbnail", "--convert-thumbnails", "jpg",
         "-f", "bestaudio/best",   # no audio-only format on offer: take the video's
         "--restrict-filenames",   # Latin letters, like everywhere else here
         "-o", os.path.join(tmp, "%(title).60s [%(id)s].%(ext)s"),
@@ -407,6 +409,19 @@ def download(url: str, dest_dir: str, log: Optional[Callable] = None) -> dict:
         got = _pick(tmp)
         dst = _free_name(dest_dir, os.path.basename(got))
         shutil.move(got, dst)
+        # the cover rides along under the same name, if the site gave one.
+        # The conversion promises a jpg, but some downloaders keep the
+        # original beside it — when both survive, the real jpeg is the one
+        # that must not end up as webp bytes under a .jpg name.
+        cover = None
+        frames = sorted(
+            (n for n in os.listdir(tmp)
+             if n.lower().endswith((".jpg", ".jpeg", ".webp", ".png"))),
+            key=lambda n: not n.lower().endswith((".jpg", ".jpeg")))
+        if frames:
+            cover = _free_name(dest_dir,
+                               os.path.splitext(os.path.basename(dst))[0] + ".jpg")
+            shutil.move(os.path.join(tmp, frames[0]), cover)
     except FetchError:
         shutil.rmtree(tmp, ignore_errors=True)
         raise
@@ -426,4 +441,4 @@ def download(url: str, dest_dir: str, log: Optional[Callable] = None) -> dict:
         track = info["track"]
     return {"path": dst, "name": os.path.basename(dst),
             "title": clean_title(shown), "track": track, "artist": artist,
-            "duration": info.get("duration") or 0}
+            "cover": cover, "duration": info.get("duration") or 0}

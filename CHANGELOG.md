@@ -7,37 +7,23 @@ commits themselves are one click away in the history.
 
 ---
 
-## 4.32.0
+## 4.33.0
 
-**The marks are law now, not a wish.** The gentler passes moved lines out of a
-marked stretch only where there was room, and left them inside with a note when
-the neighbours pressed right against the hole — which is exactly where a
-screamed song puts them. A final pass now forces out whatever still overlaps a
-mark: onto the singing at a sung pace where there is room, and squeezed in
-tight right after the mark where there is none — cramped on purpose, with a
-loud note in the log. Better a tight line in the right place than words over
-the stretch you marked. The same guarantee runs in both engines, in partial
-re-timing and in “↹ Trim by the marks”. The crack lines used to slip through —
-starting a hair before the hole, too little left to trim — is closed.
+**The clip stays in the picture.** A song brought in by link now keeps the
+clip's cover: a checkbox appears next to the found lyrics, and with it on, the
+cover lies behind the words — on the page and in the video alike — blurred and
+dimmed so the text stays the brightest thing in the frame. Untick it and the
+woven gradient is back. A song from a file on disk is untouched: no cover, no
+checkbox. And this one was tested down to the pixels: a build with a plain red
+cover must actually show red through the blur, or the suite goes red itself —
+a payload field nobody can see is not a feature.
 
-**An article no longer hides under its neighbour.** The aligner gives a short
-word no time of its own: “A” and “chilling” started at the same instant, and
-the small chip vanished under the big one — it could not even be grabbed. The
-chips are laid in a ladder now: every word gets a visible sliver of its own,
-trimmed short of the next. The times underneath stay exactly as they are.
-
-**“≡ Even words”.** The line's edges are right — set by hand, perhaps locked —
-and the words inside are a mess. The new button re-lays the words of the
-selected lines by syllables within each line's own span; the edges stay put.
-It works on locked lines too: the lock guards against the model, not against
-you.
-
-# What changed
-
-Newest first. Each entry says what was wrong and what it means for you — the
-commits themselves are one click away in the history.
-
-*По-русски: [CHANGELOG.ru.md](CHANGELOG.ru.md)*
+**The song's name in the video grew up.** It sat in the corner in the caption
+size, small enough to read only from the front row — and the countdown pill
+could lean against it. The name now has a font of its own, half again larger,
+a long "Title — Artist" trims itself with an ellipsis instead of running off
+the frame, and the pill moved down a step: the two never share a pixel row,
+which is now a test, not a hope.
 
 ---
 

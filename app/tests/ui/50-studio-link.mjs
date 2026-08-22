@@ -73,6 +73,12 @@ ok('the sound reaches the song field', arrived, $('inAudio').value.slice(-40));
 ok('and the window says what came', /Звук на месте/.test($('linkNote').textContent),
    $('linkNote').textContent.slice(0, 60));
 
+console.log('\n--- the cover checkbox appears with the link ---');
+// The song from the link brought a cover: the backdrop choice shows up, on by
+// default. A song picked from disk never shows it.
+ok('the checkbox is visible', !$('grpCover').classList.contains('hide'));
+ok('and on by default', $('chkCover').checked);
+
 console.log('\n--- the words are offered underneath ---');
 const found = await until(() => $('lyricsFound').children.length > 0);
 ok('there are texts to choose from', found, $('lyricsNote').textContent.slice(0, 70));

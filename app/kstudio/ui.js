@@ -107,6 +107,10 @@ const STR = {
     model_turbo: "large-v3-turbo — 1.6 GB, nearly large at medium’s speed",
     model_large_v3: "large-v3 — 3 GB",
     fineSep: "separate finely",
+    coverBg: "clip cover as backdrop",
+    coverHint: "Put the clip's cover behind the lyrics — blurred hard and "
+      + "darkened, so the words stay readable — on the finished page and in "
+      + "the MP4. It appears when the song comes from a link.",
     fineSepHint: "Four passes over the song instead of one (htdemucs_ft): the "
       + "voice comes out cleaner, and the timing is made from that voice. "
       + "About four times longer, and 300 MB more to download the first time.",
@@ -428,6 +432,10 @@ const STR = {
     model_turbo: "large-v3-turbo — 1,6 ГБ, почти large на скорости medium",
     model_large_v3: "large-v3 — 3 ГБ",
     fineSep: "отделять тщательно",
+    coverBg: "фон — обложка клипа",
+    coverHint: "Подложить обложку клипа под текст — сильно размытую и "
+      + "затемнённую, чтобы слова читались, — на готовой странице и в MP4. "
+      + "Появляется, когда песня пришла по ссылке.",
     fineSepHint: "Четыре прохода по песне вместо одного (htdemucs_ft): вокал "
       + "выходит чище, а разметка считается именно по нему. Примерно вчетверо "
       + "дольше, и при первом запуске качается ещё 300 МБ.",
@@ -994,7 +1002,11 @@ async function showDir(path){
     $("browser").classList.add("hide");
     if (pickTarget === "track"){ replaceTrack(x.path); return; }
     if (pickTarget === "lyrics2"){ realign(x.path); return; }
-    if (pickTarget !== "lyrics") lastSong = null;   // not the song from the link
+    if (pickTarget !== "lyrics"){
+      lastSong = null;                              // not the song from the link
+      $("grpCover").classList.add("hide");          // and its cover goes with it
+      $("chkCover").checked = false;
+    }
     $(pickTarget === "lyrics" ? "inLyrics" : "inAudio").value = x.path;
     askReport();
   }, (x.size/1024/1024).toFixed(1)+T.mb)));
@@ -1047,6 +1059,8 @@ window.addEventListener("drop", async e => {
   try{
     if (audio){ toast(T.taking(audio.name));
       lastSong = null;                              // dropped by hand, not fetched
+      $("grpCover").classList.add("hide");
+      $("chkCover").checked = false;
       $("inAudio").value = (await upload(audio)).path; }
     if (text){ $("inLyrics").value = (await upload(text)).path; }
     toast(audio && text ? T.filesOk
@@ -1072,6 +1086,8 @@ let lastSong = null;
 
 function resetLink(){
   $("inLink").value = "";
+  $("grpCover").classList.add("hide");
+  $("chkCover").checked = false;
   $("lyricsFound").innerHTML = "";
   $("lyricsFound").classList.add("hide");
   $("pasteBox").classList.add("hide");
@@ -1129,6 +1145,8 @@ async function takeLink(){
       note("linkNote", line);
     });
     lastSong = got;
+    $("grpCover").classList.toggle("hide", !got.cover);
+    $("chkCover").checked = !!got.cover;
     $("inAudio").value = got.path;
     note("linkNote", T.linkGot(got.name));
     askReport();
@@ -1250,7 +1268,9 @@ $("btnBuild").addEventListener("click", async () => {
       // called something that survives every file system, not something a
       // person would read.
       title: (lastSong && (lastSong.track || lastSong.title)) || "",
-      artist: (lastSong && lastSong.artist) || ""});
+      artist: (lastSong && lastSong.artist) || "",
+      cover: (lastSong && lastSong.cover) || "",
+      coverBg: !!(lastSong && lastSong.cover && $("chkCover").checked)});
     watchJob(j.job, T.jobBuild, id => openProject(id));
   }catch(e){ toast(e.message); }
 });

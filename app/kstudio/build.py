@@ -121,7 +121,8 @@ def build_html(out_path: str, lyrics: Lyrics, duration: float,
                tracks: Dict[str, tuple], engine: str = "energy",
                embed: bool = True, title: Optional[str] = None,
                artist: Optional[str] = None, ui_lang: str = "auto",
-               colors=None, theme=None, keep_spans=None) -> str:
+               colors=None, theme=None, keep_spans=None,
+               cover_path: Optional[str] = None) -> str:
     """tracks: {\'mix\'|\'instrumental\'|\'vocals\': (path, mime)} → path to the HTML."""
     with open(TEMPLATE, "r", encoding="utf-8") as f:
         tpl = f.read()
@@ -152,6 +153,10 @@ def build_html(out_path: str, lyrics: Lyrics, duration: float,
         # blend into the background are not a style, they are a broken page.
         "theme": theme_colors(theme)[0],
         "id": hashlib.sha1(sig.encode("utf-8")).hexdigest()[:12],
+        # the clip's cover, blurred behind the lyrics — on the page and in the
+        # video alike. Empty means the woven gradient as always.
+        "cover": (_data_uri(cover_path, "image/jpeg")
+                  if cover_path and os.path.isfile(cover_path) else ""),
         "engineLabel": ENGINE_LABEL.get(engine, engine),
         "audio": audio,
         "data": {

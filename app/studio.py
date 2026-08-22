@@ -586,7 +586,10 @@ class Handler(BaseHTTPRequestHandler):
                             # a song taken from a link knows its own name;
                             # the file it landed in is called something safe
                             title=body.get("title") or "",
-                            artist=body.get("artist") or "")
+                            artist=body.get("artist") or "",
+                            # the clip's cover as the backdrop, if asked for
+                            cover=body.get("cover") or None,
+                            cover_bg=bool(body.get("coverBg")))
                 jid = start_job(tr("Building the song", "Собираю песню"), lambda log: os.path.basename(
                     P.create(audio, lyrics, PROJECTS, log=log, **opts)))
                 return self._json({"job": jid})
@@ -1296,7 +1299,9 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
         B.build_html(out, lyr, data["duration"], tracks, data.get("engine", ""),
                      embed=True, title=data.get("title"), artist=data.get("artist"),
                      colors=data.get("colors"), theme=data.get("theme"),
-                     keep_spans=P.keep_spans(data))
+                     keep_spans=P.keep_spans(data),
+                     cover_path=(os.path.join(folder, data["cover"])
+                                 if data.get("coverBg") and data.get("cover") else None))
         log(tr(f"Done: {out}", f"Готово: {out}"))
         return {"kind": "html", "path": out}
 
@@ -1311,7 +1316,9 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
         B.build_html(tmp_html, lyr, data["duration"], tracks, data.get("engine", ""),
                      embed=True, title=data.get("title"), artist=data.get("artist"),
                      colors=data.get("colors"), theme=data.get("theme"),
-                     keep_spans=P.keep_spans(data))
+                     keep_spans=P.keep_spans(data),
+                     cover_path=(os.path.join(folder, data["cover"])
+                                 if data.get("coverBg") and data.get("cover") else None))
         out = os.path.join(out_dir, base + ".mp4")
 
         class Args:

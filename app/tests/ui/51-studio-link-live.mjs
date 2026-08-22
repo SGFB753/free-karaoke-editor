@@ -110,6 +110,8 @@ if (built){
          (pay.data.lines || []).length >= 2, (pay.data.lines || []).length);
       ok('and the keep-spans field is there for the player',
          Array.isArray(pay.data.keepSpans), typeof pay.data.keepSpans);
+      ok('the clip cover rides along as a picture, not a path',
+         (pay.cover || '').startsWith('data:image'), (pay.cover || '').slice(0, 24));
     }
     fs.unlinkSync(expEnd.result.path);    // the stand stays as it was found
   }

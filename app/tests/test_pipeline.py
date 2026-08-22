@@ -1257,6 +1257,54 @@ def main():
           not any(t == "(Chorus)" for t, _, _ in texts),
           [t for t, _, _ in texts])
 
+    print("\nThe clip's cover becomes the backdrop, when asked")
+    # From a link the cover rides along; with the checkbox on it stands behind
+    # the lyrics — blurred and darkened — on the page and in the video alike.
+    from PIL import Image as _Im
+
+    from kstudio import build as BLD
+    from kstudio import project as PRJ
+    cover_src = os.path.join(tmp, "cover-src.jpg")
+    _Im.new("RGB", (320, 180), (200, 30, 30)).save(cover_src, "JPEG")
+    song_for_build = os.path.join(tmp, "for-build.wav")
+    text_for_build = os.path.join(tmp, "for-build.txt")
+    if not os.path.isfile(song_for_build):
+        make_song(song_for_build)
+        open(text_for_build, "w", encoding="utf-8").write(TEXT)
+
+    with_cover = PRJ.create(song_for_build, text_for_build, os.path.join(tmp, "cov"),
+                          align_engine="energy", separate=False,
+                          cover=cover_src, cover_bg=True)
+    rec_c = json.load(open(os.path.join(with_cover, "project.json"), encoding="utf-8"))
+    check("the cover is copied into the song's folder",
+          os.path.isfile(os.path.join(with_cover, "cover.jpg")))
+    check("and the song remembers to stand on it",
+          rec_c.get("cover") == "cover.jpg" and rec_c.get("coverBg") is True,
+          (rec_c.get("cover"), rec_c.get("coverBg")))
+
+    without = PRJ.create(song_for_build, text_for_build, os.path.join(tmp, "cov2"),
+                       align_engine="energy", separate=False,
+                       cover=cover_src, cover_bg=False)
+    rec_n = json.load(open(os.path.join(without, "project.json"), encoding="utf-8"))
+    check("without the tick the cover is kept but not used",
+          rec_n.get("cover") == "cover.jpg" and rec_n.get("coverBg") is False,
+          (rec_n.get("cover"), rec_n.get("coverBg")))
+
+    page_c = os.path.join(tmp, "covered.html")
+    lyr_c = L.parse(TEXT)
+    A.align_energy(lyr_c, song_for_build, 26.0)
+    BLD.build_html(page_c, lyr_c, 26.0, {"mix": (song_for_build, "audio/wav")},
+                 "energy", embed=False, cover_path=cover_src)
+    pay_c = BLD.read_payload(page_c)
+    check("the page carries the cover as its own data",
+          (pay_c.get("cover") or "").startswith("data:image"),
+          (pay_c.get("cover") or "")[:24])
+    plain_c = os.path.join(tmp, "plain.html")
+    BLD.build_html(plain_c, lyr_c, 26.0, {"mix": (song_for_build, "audio/wav")},
+                 "energy", embed=False)
+    check("a page without one carries nothing",
+          BLD.read_payload(plain_c).get("cover") == "")
+
     print("\nThe aligner never hears the backing text")
     # Asked to place na-na-na BETWEEN the lead lines, a linear aligner drags
     # whole choruses into silence to make room. So it is not asked.
@@ -1891,6 +1939,13 @@ def main():
           got["artist"] + " — " + got["track"])
     check("nothing half-downloaded is left behind",
           all(not n.startswith(".fetch-") for n in os.listdir(inbox)), os.listdir(inbox))
+    # The stub lays a junk webp beside the true jpeg, as real downloaders do:
+    # the cover that arrives must be the jpeg, by its first bytes and not by
+    # the extension someone renamed it to.
+    check("the clip's cover came along, and it is a real jpeg",
+          bool(got.get("cover")) and os.path.isfile(got["cover"])
+          and open(got["cover"], "rb").read(2) == b"\xff\xd8",
+          str(got.get("cover")))
 
     # What ffmpeg is called matters to the downloader: it is handed a folder
     # and looks in it for “ffmpeg” and “ffprobe”. The copy pip installs is one

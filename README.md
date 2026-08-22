@@ -170,6 +170,12 @@ still there. If the download fails — a private video, a dead link, a country
 block — the reason the downloader gave is shown as it is, and the field is
 still open for another link.
 
+The clip's cover comes along with the sound. A checkbox appears next to the
+found lyrics — leave it on, and the cover lies behind the words on the page
+and in the video, blurred and dimmed so the text stays the brightest thing in
+the frame; untick it for the plain woven background. A song taken from a file
+on disk has no cover and no checkbox.
+
 YouTube sometimes turns a player client away with something that says nothing
 about the video — “The page needs to be reloaded”, or a format list with
 nothing in it. The same link goes through as another client, so it is asked
