@@ -151,9 +151,9 @@ Nothing else sits in the root. Inside `app/`: the code, `settings.example.ini`,
 Songs live in `projects/` and are left alone by updates — only the `app` folder
 is replaced.
 
-Song folders are named in Latin letters: “Мамины Усы” becomes `maminy-usy`, so
-they open the same way on any system. The finished HTML and MP4 follow the same
-rule.
+Song folders are named in plain Latin letters — a name in any other alphabet
+is transliterated — so they open the same way on any system. The finished HTML
+and MP4 follow the same rule.
 
 ## A song from a link
 
@@ -169,6 +169,14 @@ Without it the window says so before anything is pasted, and the file picker is
 still there. If the download fails — a private video, a dead link, a country
 block — the reason the downloader gave is shown as it is, and the field is
 still open for another link.
+
+When the song's name finds the words on the lyrics library, a record that
+carries its own timing says so — and “Take it with the timing” keeps those
+times as sparse pegs: the model still lays out the words between them, but a
+line can no longer wander across the song. The stretches where nobody sings
+are offered as “no words here” marks with one press. And “⇩ Pack” in the
+editor puts the whole song into one `.karaoke.zip`, which “Open a packed
+song” restores on any other computer.
 
 The clip's cover comes along with the sound. A checkbox appears next to the
 found lyrics — leave it on, and the cover lies behind the words on the page
@@ -263,8 +271,8 @@ Repeats are written at the end of a line:
 Chorus x4
 ```
 
-The program spreads it into four lines by itself. `x4`, `×4` and the Russian
-`х4` all work, brackets are allowed — `(x4)` — and the number can be 2 to 99.
+The program spreads it into four lines by itself. `x4` and `×4` both work (the
+Cyrillic х too), brackets are allowed — `(x4)` — and the number can be 2 to 99.
 A section heading is not repeated with the line, and if the file has manual LRC
 timings, repeats are left alone: every line there has its own time.
 
@@ -287,7 +295,7 @@ there:
 
 ```
 [Guitar solo 3:10-3:50]
-[нет текста 1:02-1:40]
+[no words here 1:02-1:40]
 [6:20-7:05]
 ```
 

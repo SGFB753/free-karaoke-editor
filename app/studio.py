@@ -428,6 +428,19 @@ class Handler(BaseHTTPRequestHandler):
                 data["id"] = m.group(1)
                 return self._json(data)
 
+            m = re.match(r"^/api/project/([^/]+)/still$", path)
+            if m:
+                try:
+                    at = float(q.get("at", ["0"])[0])
+                except ValueError:
+                    at = 0.0
+                try:
+                    png = still_frame(project_dir(m.group(1)), at,
+                                      opening=q.get("opening", [""])[0] == "1")
+                except Exception as e:
+                    return self._err(400, str(e))
+                return self._send(200, png, "image/png")
+
             m = re.match(r"^/api/project/([^/]+)/audio/([a-z]+)$", path)
             if m:
                 folder = project_dir(m.group(1))
@@ -587,6 +600,8 @@ class Handler(BaseHTTPRequestHandler):
                             # the file it landed in is called something safe
                             title=body.get("title") or "",
                             artist=body.get("artist") or "",
+                            # typed into the field, not taken from a file name
+                            title_set=bool(body.get("titleSet")),
                             # the clip's cover as the backdrop, if asked for
                             cover=body.get("cover") or None,
                             cover_bg=bool(body.get("coverBg")))
@@ -608,6 +623,29 @@ class Handler(BaseHTTPRequestHandler):
                                     title=body.get("title"),
                                     artist=body.get("artist"))
                 return self._json({"ok": True, "problems": P.problems(data)})
+
+            m = re.match(r"^/api/project/([^/]+)/pack$", path)
+            if m:
+                folder = project_dir(m.group(1))
+                data = P.load(folder)
+                # Next to the audio it came from, where a person will find it.
+                out_dir = os.path.dirname(data.get("source_audio") or "") or PROJECTS
+                if not os.path.isdir(out_dir):
+                    out_dir = PROJECTS
+                try:
+                    return self._json({"path": P.pack(folder, out_dir)})
+                except (OSError, ValueError) as e:
+                    return self._err(400, str(e))
+
+            if path == "/api/unpack":
+                src = (body.get("path") or "").strip()
+                if not os.path.isfile(src):
+                    return self._err(400, tr("no such file", "нет такого файла"))
+                try:
+                    folder = P.unpack(src, PROJECTS)
+                except (OSError, ValueError, KeyError) as e:
+                    return self._err(400, str(e))
+                return self._json({"id": os.path.basename(folder)})
 
             m = re.match(r"^/api/project/([^/]+)/delete$", path)
             if m:
@@ -667,7 +705,7 @@ TEXT_EXT = {".txt", ".lrc"}
 
 def browse(path: str, kind: str) -> dict:
     """A simple folder browser — the browser gives us no file dialogs."""
-    exts = AUDIO_EXT if kind == "audio" else TEXT_EXT
+    exts = {"audio": AUDIO_EXT, "pack": (".zip",)}.get(kind, TEXT_EXT)
     if not path:
         path = os.path.expanduser("~")
     path = os.path.abspath(path)
@@ -1359,6 +1397,62 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
         return {"kind": "mp4", "path": out}
 
     raise ValueError(tr(f"unknown export kind: {kind}", f"неизвестный вид экспорта: {kind}"))
+
+
+def still_frame(folder: str, at: float, opening: bool = False) -> bytes:
+    """One frame of the clip as it will be, drawn now and shown at once.
+
+    Rendering a whole file to see whether a line sits where it should is
+    minutes; this is the same drawing code on one frame, so what the window
+    shows cannot differ from what the clip will hold. The song's own track
+    stands in for the karaoke audio — nothing is heard here, only its length
+    is needed.
+    """
+    import importlib.util
+    import shutil
+    import tempfile
+
+    # The same file the export runs, loaded the same way: “tools” is a folder
+    # of programs, not a package to import from.
+    spec = importlib.util.spec_from_file_location(
+        "video", os.path.join(ROOT, "tools", "video.py"))
+    video = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(video)
+
+    data = P.load(folder)
+    tracks = data.get("tracks") or {}
+    name = tracks.get("instrumental") or tracks.get("mix") or next(iter(tracks.values()), "")
+    if not name:
+        raise ValueError(tr("the song has no audio", "у песни нет звука"))
+
+    tmp = tempfile.mkdtemp(prefix="karaoke_still_")
+    try:
+        page = os.path.join(tmp, "page.html")
+        B.build_html(page, _lyrics_from(data), data["duration"], {}, data.get("engine", ""),
+                     embed=False, title=data.get("title"), artist=data.get("artist"),
+                     colors=data.get("colors"), theme=data.get("theme"),
+                     keep_spans=P.keep_spans(data),
+                     cover_path=(os.path.join(folder, data["cover"])
+                                 if data.get("coverBg") and data.get("cover") else None))
+        payload = B.read_payload(page)
+
+        class Args:
+            width, height, fps, crf = 1280, 720, 30, 20
+            preset, font, timings = "medium", None, None
+            start, seconds, audio = 0.0, 0.0, "minus"
+            intro = True
+        a = Args()
+        # Asked in the song's own time; the clip counts from its first frame,
+        # and between the two stands the opening.
+        lead = video.intro_lead(a, str(data.get("title") or "").strip())
+        a.still = (min(lead, video.INTRO_CARD / 2) if opening
+                   else lead + max(0.0, at))
+        a.output = os.path.join(tmp, "frame.png")
+        video.render(payload, os.path.join(folder, name), a.output, a)
+        with open(a.output, "rb") as f:
+            return f.read()
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def _lyrics_from(data: dict):

@@ -36,7 +36,7 @@
   .muted{color:var(--muted)}
   .hide{display:none !important}
 
-  .screen{height:100%; display:flex; flex-direction:column}
+  .screen{height:100%; display:flex; flex-direction:column; position:relative}
   header{display:flex; align-items:center; gap:14px; padding:13px 18px;
     border-bottom:1px solid var(--line); flex:none}
   header h1{font-size:0.9375rem; font-weight:700; letter-spacing:.2px}
@@ -99,6 +99,23 @@
   .found .one{display:flex; align-items:center; gap:12px; padding:10px 12px;
     border:1px solid var(--line); border-radius:10px; background:rgba(0,0,0,.22)}
   .found .one .t{flex:1; min-width:0}
+  /* The frame of the clip, shown over the timeline while it is looked at. */
+  .stillbox{position:absolute; right:1rem; bottom:9rem; z-index:20; width:28rem;
+    max-width:46vw; background:var(--bg2); border:1px solid var(--line);
+    border-radius:.5rem; box-shadow:0 .6rem 2rem rgba(0,0,0,.5); overflow:hidden}
+  .stillbox img{display:block; width:100%; height:auto; background:var(--bg)}
+  .stillbox .row{display:flex; align-items:center; gap:.4rem; padding:.35rem .5rem;
+    font-size:0.7812rem; color:var(--muted)}
+  .stillbox .row .sp{flex:1}
+  /* A stretch the program heard, and the “＋” that turns it into a mark. */
+  .sum .qchip{display:inline-flex; align-items:center; gap:.15rem; margin:0 .3rem 0 0}
+  .sum .qchip i{font-style:normal; cursor:pointer; color:var(--accent);
+    padding:0 .1rem; border-radius:.2rem}
+  .sum .qchip i:hover{background:var(--panel)}
+  .sum .qchip.taken u{opacity:.5; text-decoration-style:dotted}
+  /* “words only” stands next to “take it with the timing”: quieter, because
+     the timed one is nearly always the better answer. */
+  .found .one button.words{font-size:0.7812rem; padding:.3rem .5rem; opacity:.75}
   .found .one .t b{display:block; font-size:0.875rem; font-weight:600}
   .found .one .t span{font-size:0.7812rem; color:var(--muted)}
   .found .one .first{font-size:0.7812rem; color:var(--muted); font-style:italic;
@@ -405,6 +422,7 @@
     <span class="muted" id="capNote"></span>
     <div class="sp"></div>
     <button id="btnLang" data-tt="langUi" title="Interface language">EN</button>
+    <button id="btnUnpack" data-tt="unpackHint" data-t="openPack">Open a packed song</button>
     <button class="pri" id="btnAdd" data-t="addSong">＋ Add a song</button>
   </header>
   <div class="list">
@@ -481,6 +499,17 @@
         <div class="hint" id="modelNote"></div>
       </div>
       <div class="field">
+        <label data-t="nameLabel">What the song is called</label>
+        <div class="pickrow">
+          <input id="inTitle" data-tp="namePlaceTitle" placeholder="song">
+          <input id="inArtist" data-tp="namePlaceArtist" placeholder="artist">
+        </div>
+        <div class="hint" data-t="nameNewHint">Filled in from the link, or from
+          the name of the file. It stands in the corner of the video, on its
+          opening card and on the finished page — and it can be changed later,
+          in the corner of the editor.</div>
+      </div>
+      <div class="field">
         <label data-t="noTextLabel">Where there are no words</label>
         <div class="pickrow">
           <input id="inNoText" data-tp="noTextPh" placeholder="0:00-0:42, 3:10-3:50 — an intro, a vocalise, a solo">
@@ -516,6 +545,7 @@
             title="Time the selected lines again, and leave the rest of the song alone">↻ These lines</button>
     <button id="btnRealign" data-tt="realignHint" data-t="realign"
             title="Re-read the same lyrics file from disk and time it again — if you edited it">↻ Re-time</button>
+    <button id="btnPack" data-tt="packHint" data-t="packSong">⇩ Pack</button>
     <button id="btnExportHtml" data-t="exportHtml">Standalone HTML</button>
     <button id="btnExportMp4" data-t="exportMp4">MP4 video</button>
   </header>
@@ -546,12 +576,28 @@
     <button id="btnMadeHide" data-tt="hide" title="Hide">✕</button>
   </div>
 
+  <!-- A frame of the clip as it will be. Rendering a file to see whether a
+       line sits right takes minutes; this takes a moment. -->
+  <div class="stillbox hide" id="stillBox">
+    <img id="stillImg" alt="">
+    <div class="row">
+      <span id="stillAt"></span>
+      <div class="sp"></div>
+      <button id="stillOpening" data-t="showOpening">Opening</button>
+      <button id="stillHide" data-tt="hide" title="Hide">✕</button>
+    </div>
+  </div>
+
   <div class="timeline">
     <div class="tlhead">
       <span data-t="timeline">Timeline</span>
       <button id="btnZoomOut">−</button><button id="btnZoomIn">＋</button>
       <button id="btnFit" data-tt="fitHint" data-t="fitLine"
               title="Zoom so the selected line fills the timeline">⤢ Fit the line</button>
+      <!-- The frame belongs with the timeline: it shows the clip at the very
+           place the playhead stands. -->
+      <button id="btnStill" data-tt="stillHint" data-t="showFrame"
+              title="Show what the video will look like at this moment">▣ Frame</button>
       <span id="zoomNote">15 s</span>
       <span class="sp" style="flex:1"></span>
       <span id="selNote" data-t="noLine">no line selected</span>

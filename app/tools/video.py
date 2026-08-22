@@ -481,7 +481,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         store = art_duo if duo_side else (art if main else art_side)
         if i not in store:
             if len(store) > 10:
-                store.clear()
+                # the oldest goes, not the whole shelf: clearing everything
+                # made the very lines on screen be typeset again
+                store.pop(next(iter(store)))
             store[i] = LineArt(lines[i], font_for, W, margin, main,
                                align="right" if duo_side else "center")
         return store[i]
@@ -540,189 +542,208 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     cmd += ["-c:v", "libx264", "-preset", args.preset, "-crf", str(args.crf),
             "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k",
             "-shortest", "-movflags", "+faststart", out_path]
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
-
     # The frame speaks the song's language; the log below keeps speaking the
     # program's, because it is read by the person at the keyboard.
     said = frame_lang(payload)
     title = (D.get("title") or "") + ((" — " + D["artist"]) if D.get("artist") else "")
 
+    # The name in the corner never changes, and drawing it anew on each of
+    # thousands of frames was pure ceremony: it is painted into the background
+    # once, and every frame starts from a copy that already carries it.
+    if title:
+        shown = title
+        while len(shown) > 8 and name_font.getlength(shown) > W - 2 * margin:
+            shown = shown[:-2].rstrip() + "\u2026"
+        ImageDraw.Draw(bg).text((margin, int(H * 0.028)), shown, font=name_font,
+                                fill=(132, 140, 168))
+
     def furniture(d, prog):
-        """The name in the corner and the bar along the bottom: on every frame
-        of the clip, the opening among them."""
-        if title:
-            shown = title
-            while len(shown) > 8 and name_font.getlength(shown) > W - 2 * margin:
-                shown = shown[:-2].rstrip() + "\u2026"
-            d.text((margin, int(H * 0.028)), shown, font=name_font,
-                   fill=(132, 140, 168))
+        """The bar along the bottom: on every frame, the opening included."""
         bar_y, bar_h = int(H * 0.955), max(int(H * 0.004), 2)
         d.rectangle([margin, bar_y, W - margin, bar_y + bar_h], fill=(40, 45, 68))
         if prog > 0:
             d.rectangle([margin, bar_y, margin + (W - 2 * margin) * prog,
                          bar_y + bar_h], fill=COL_BAR)
 
-    t0 = time.time()
+    # The opening: the name held large, then three, two, one. The music is
+    # delayed by exactly as long, so nobody is caught mid-breath.
+    card_font = (fitted(card_name, int(H * 0.095), W - 2 * margin)
+                 if card_name and lead else None)
+    art_font = (fitted(card_artist, int(H * 0.042), W - 2 * margin)
+                if card_artist and lead else None)
+    num_font = ImageFont.truetype(font_path, int(H * 0.060)) if lead else None
 
-    try:
-        # The opening: the name held large, then three, two, one. The music is
-        # delayed by exactly as long, so nobody is caught mid-breath.
-        if lead_frames:
-            card_font = fitted(card_name, int(H * 0.095), W - 2 * margin) if card_name else None
-            art_font = (fitted(card_artist, int(H * 0.042), W - 2 * margin)
-                        if card_artist else None)
-            num_font = ImageFont.truetype(font_path, int(H * 0.060))
-            for n in range(lead_frames):
-                tt = n / args.fps
-                frame = bg.copy()
-                d = ImageDraw.Draw(frame)
-                if card_font and tt < INTRO_CARD:
-                    d.text((W // 2, int(H * 0.44)), card_name, font=card_font,
-                           fill=_mix(COL_HOT, (255, 255, 255), 0.30), anchor="mm")
-                    if art_font:
-                        d.text((W // 2, int(H * 0.58)), card_artist, font=art_font,
-                               fill=COL_DIM, anchor="mm")
-                else:
-                    # The count stands small in the seat where the singing
-                    # will be, and the first words are already below it: a
-                    # figure filling the frame hid the very text people are
-                    # about to sing, and there is no reading it in three
-                    # seconds if it only appears when the music does.
-                    left = max(lead - tt, 0.0)
-                    d.text((W // 2, y_main), str(int(math.ceil(left)) or 1),
-                           font=num_font, fill=COL_HOT, anchor="mm")
-                    first = next_sung(lines, -1)
-                    if first < len(lines):
-                        draw_queue(frame, first)
-                furniture(d, 0.0)
-                proc.stdin.write(frame.tobytes())
-        for n in range(total_frames):
-            t = t_start + n / args.fps
-            frame = bg.copy()
-            d = ImageDraw.Draw(frame)
+    def intro_frame(tt):
+        """A frame of the opening, `tt` seconds into it."""
+        frame = bg.copy()
+        d = ImageDraw.Draw(frame)
+        if card_font and tt < INTRO_CARD:
+            d.text((W // 2, int(H * 0.44)), card_name, font=card_font,
+                   fill=_mix(COL_HOT, (255, 255, 255), 0.30), anchor="mm")
+            if art_font:
+                d.text((W // 2, int(H * 0.58)), card_artist, font=art_font,
+                       fill=COL_DIM, anchor="mm")
+        else:
+            # The count stands small in the seat where the singing will be,
+            # and the first words are already below it: a figure filling the
+            # frame hid the very text people are about to sing, and there is
+            # no reading it in three seconds if it only appears when the music
+            # does.
+            left = max(lead - tt, 0.0)
+            d.text((W // 2, y_main), str(int(math.ceil(left)) or 1),
+                   font=num_font, fill=COL_HOT, anchor="mm")
+            first = next_sung(lines, -1)
+            if first < len(lines):
+                draw_queue(frame, first)
+        furniture(d, 0.0)
+        return frame
 
-            idx = bisect.bisect_right(starts, t) - 1
+    def song_frame(t):
+        """A frame of the song itself, at second `t` of the recording."""
+        frame = bg.copy()
+        d = ImageDraw.Draw(frame)
 
-            # The second voice can sound together with the main one. It is drawn
-            # on its own row below — otherwise the two texts would overlap.
-            duo = -1
-            if idx >= 0:
-                for j in (idx - 1, idx + 1):
-                    if 0 <= j < len(lines) and lines[j]["start"] <= t < lines[j]["end"] \
-                            and (lines[j].get("voice") == 2) != (lines[idx].get("voice") == 2):
-                        duo = j
-                        break
+        idx = bisect.bisect_right(starts, t) - 1
 
-            # The song has been sung: after a few seconds the seat empties. A
-            # last line hanging lit to the end of the recording reads as a
-            # frozen picture, not as an ending.
-            over = t > song_end + END_HOLD
-            singing = idx >= 0 and t < lines[idx]["end"]
-
-            duo_bottom = 0
-            if not over and idx >= 0 and lines[idx].get("backing") and duo < 0:
-                # The backing singing alone — the lead has ended, the na-na-na
-                # carries on. It used to be promoted to the main seat, full
-                # size, in the lead's way. It keeps its side seat instead: the
-                # main seat stays empty, and the queue below points at the next
-                # lead line as always.
-                pic = get(idx, main=False, duo_side=True)
-                y_b = y_main + int(H * 0.036)
-                frame.paste(pic.dim, (0, y_b), pic.dim)
-                fxb = int(pic.fill_x(lines[idx], t))
-                if fxb > 0:
-                    boxb = (0, 0, min(fxb, W), pic.h)
-                    frame.paste(pic.hot.crop(boxb), (0, y_b), pic.hot.crop(boxb))
-                duo_bottom = y_b + pic.h
-            elif not over and idx >= 0:
-                # The lead stays exactly where a solo line sits; the backing is
-                # smaller, to the right, tucked under it like a reply — two full
-                # rows used to collide with the dots and the queue.
-                pair = [idx] if duo < 0 else sorted(
-                    [idx, duo], key=lambda j: lines[j].get("voice") == 2)
-                y_j = 0
-                for k, j in enumerate(pair):
-                    is_back = k == 1
-                    pic = get(j, main=not is_back, duo_side=is_back)
-                    if not is_back:
-                        y_j = y_main - pic.h // 2
-                    else:
-                        y_j = y_j + get(pair[0]).h + int(H * 0.002)
-                        duo_bottom = y_j + pic.h
-                    frame.paste(pic.dim, (0, y_j), pic.dim)
-                    fx = int(pic.fill_x(lines[j], t))
-                    if fx > 0:
-                        box = (0, 0, min(fx, W), pic.h)
-                        frame.paste(pic.hot.crop(box), (0, y_j), pic.hot.crop(box))
-                    if k == 0 and lines[j].get("section"):
-                        d.text((margin, y_j - int(H * 0.055)),
-                               lines[j]["section"].upper(), font=small, fill=COL_SECT)
-
-            # Guide dots: a countdown, not decoration. On the page they are
-            # separators in a scrolling list; a frame has no scroll, so here
-            # they show up only once the singing has stopped and the wait is
-            # long enough to be worth counting.
-            def dots(cy, lit=0):
-                r = max(int(H * 0.0055), 3)
-                for k in range(3):
-                    x = W // 2 + (k - 1) * r * 5
-                    d.ellipse([x - r, cy - r, x + r, cy + r],
-                              fill=COL_HOT if k < lit else COL_PIP)
-
-            n1 = next_sung(lines, idx)
-            if not over and n1 < len(lines) and n1 != duo:
-                draw_queue(frame, n1, duo)
-
-                gap = lines[n1]["start"] - (lines[idx]["end"] if idx >= 0 else 0)
-                left = lines[n1]["start"] - t
-                if not singing and gap > PIP_MIN_GAP:
-                    dots(max((y_main + y_next) // 2, duo_bottom + int(H * 0.018)),
-                         pips_lit(gap, left))
-
-            # While nobody sings the screen is empty and it is unclear whether
-            # the song is running. At the top — a countdown to the next line, as
-            # in the program itself. Short gaps are not counted: they are obvious.
-            nxt = None
-            for ln in lines:
-                if ln["start"] > t and not ln.get("backing"):
-                    nxt = ln
+        # The second voice can sound together with the main one. It is drawn
+        # on its own row below — otherwise the two texts would overlap.
+        duo = -1
+        if idx >= 0:
+            for j in (idx - 1, idx + 1):
+                if 0 <= j < len(lines) and lines[j]["start"] <= t < lines[j]["end"] \
+                        and (lines[j].get("voice") == 2) != (lines[idx].get("voice") == 2):
+                    duo = j
                     break
-            if not singing:
-                prev_end = lines[idx]["end"] if idx >= 0 else 0.0
-                gap = (nxt["start"] - prev_end) if nxt else (duration - prev_end)
-                # Ten seconds, as in the program itself: a shorter gap is a
-                # breath between lines, and counting it down is noise.
-                if gap >= 10.0:
-                    left = (nxt["start"] if nxt else duration) - t
-                    # The pill is built around the text, and the text sits in its
-                    # centre — horizontally and vertically.
-                    # Low enough that even a wide pill clears the song's
-                    # name in the corner above.
-                    cx, cy = W // 2, int(H * 0.135)
-                    txt = pill_text(said, idx, nxt, left)
-                    box = d.textbbox((0, 0), txt, font=pill_font)
-                    tw, th = box[2] - box[0], box[3] - box[1]
-                    pad_x, pad_y = int(H * 0.030), int(H * 0.022)
-                    d.rounded_rectangle(
-                        [cx - tw // 2 - pad_x, cy - th // 2 - pad_y,
-                         cx + tw // 2 + pad_x, cy + th // 2 + pad_y],
-                        radius=int(th // 2 + pad_y),
-                        fill=_mix(BG_TOP, (255, 255, 255), 0.10),
-                        outline=_mix(BG_TOP, (255, 255, 255), 0.28))
-                    d.text((cx, cy), txt, font=pill_font,
-                           fill=_mix(COL_DIM, (255, 255, 255), 0.35), anchor="mm")
-                    # The bar is centred too, right under the pill.
-                    bw = max(int(W * 0.16), tw // 2)
-                    bx, by = cx - bw // 2, cy + th // 2 + pad_y + int(H * 0.012)
-                    bh = max(int(H * 0.004), 2)
-                    done_k = 0.0 if gap <= 0 else min(max((t - prev_end) / gap, 0), 1)
-                    d.rectangle([bx, by, bx + bw, by + bh],
-                                fill=_mix(BG_TOP, (255, 255, 255), 0.18))
-                    d.rectangle([bx, by, bx + int(bw * done_k), by + bh], fill=COL_HOT)
 
-            furniture(d, min(max(t / duration, 0), 1))
+        # The song has been sung: after a few seconds the seat empties. A
+        # last line hanging lit to the end of the recording reads as a
+        # frozen picture, not as an ending.
+        over = t > song_end + END_HOLD
+        singing = idx >= 0 and t < lines[idx]["end"]
 
-            proc.stdin.write(frame.tobytes())
+        duo_bottom = 0
+        if not over and idx >= 0 and lines[idx].get("backing") and duo < 0:
+            # The backing singing alone — the lead has ended, the na-na-na
+            # carries on. It used to be promoted to the main seat, full
+            # size, in the lead's way. It keeps its side seat instead: the
+            # main seat stays empty, and the queue below points at the next
+            # lead line as always.
+            pic = get(idx, main=False, duo_side=True)
+            y_b = y_main + int(H * 0.036)
+            frame.paste(pic.dim, (0, y_b), pic.dim)
+            fxb = int(pic.fill_x(lines[idx], t))
+            if fxb > 0:
+                boxb = (0, 0, min(fxb, W), pic.h)
+                frame.paste(pic.hot.crop(boxb), (0, y_b), pic.hot.crop(boxb))
+            duo_bottom = y_b + pic.h
+        elif not over and idx >= 0:
+            # The lead stays exactly where a solo line sits; the backing is
+            # smaller, to the right, tucked under it like a reply — two full
+            # rows used to collide with the dots and the queue.
+            pair = [idx] if duo < 0 else sorted(
+                [idx, duo], key=lambda j: lines[j].get("voice") == 2)
+            y_j = 0
+            for k, j in enumerate(pair):
+                is_back = k == 1
+                pic = get(j, main=not is_back, duo_side=is_back)
+                if not is_back:
+                    y_j = y_main - pic.h // 2
+                else:
+                    y_j = y_j + get(pair[0]).h + int(H * 0.002)
+                    duo_bottom = y_j + pic.h
+                frame.paste(pic.dim, (0, y_j), pic.dim)
+                fx = int(pic.fill_x(lines[j], t))
+                if fx > 0:
+                    box = (0, 0, min(fx, W), pic.h)
+                    frame.paste(pic.hot.crop(box), (0, y_j), pic.hot.crop(box))
+                if k == 0 and lines[j].get("section"):
+                    d.text((margin, y_j - int(H * 0.055)),
+                           lines[j]["section"].upper(), font=small, fill=COL_SECT)
+
+        # Guide dots: a countdown, not decoration. On the page they are
+        # separators in a scrolling list; a frame has no scroll, so here
+        # they show up only once the singing has stopped and the wait is
+        # long enough to be worth counting.
+        def dots(cy, lit=0):
+            r = max(int(H * 0.0055), 3)
+            for k in range(3):
+                x = W // 2 + (k - 1) * r * 5
+                d.ellipse([x - r, cy - r, x + r, cy + r],
+                          fill=COL_HOT if k < lit else COL_PIP)
+
+        n1 = next_sung(lines, idx)
+        if not over and n1 < len(lines) and n1 != duo:
+            draw_queue(frame, n1, duo)
+
+            gap = lines[n1]["start"] - (lines[idx]["end"] if idx >= 0 else 0)
+            left = lines[n1]["start"] - t
+            if not singing and gap > PIP_MIN_GAP:
+                dots(max((y_main + y_next) // 2, duo_bottom + int(H * 0.018)),
+                     pips_lit(gap, left))
+
+        # While nobody sings the screen is empty and it is unclear whether
+        # the song is running. At the top — a countdown to the next line, as
+        # in the program itself. Short gaps are not counted: they are obvious.
+        nxt = None
+        for ln in lines:
+            if ln["start"] > t and not ln.get("backing"):
+                nxt = ln
+                break
+        if not singing:
+            prev_end = lines[idx]["end"] if idx >= 0 else 0.0
+            gap = (nxt["start"] - prev_end) if nxt else (duration - prev_end)
+            # Ten seconds, as in the program itself: a shorter gap is a
+            # breath between lines, and counting it down is noise.
+            if gap >= 10.0:
+                left = (nxt["start"] if nxt else duration) - t
+                # The pill is built around the text, and the text sits in its
+                # centre — horizontally and vertically.
+                # Low enough that even a wide pill clears the song's
+                # name in the corner above.
+                cx, cy = W // 2, int(H * 0.135)
+                txt = pill_text(said, idx, nxt, left)
+                box = d.textbbox((0, 0), txt, font=pill_font)
+                tw, th = box[2] - box[0], box[3] - box[1]
+                pad_x, pad_y = int(H * 0.030), int(H * 0.022)
+                d.rounded_rectangle(
+                    [cx - tw // 2 - pad_x, cy - th // 2 - pad_y,
+                     cx + tw // 2 + pad_x, cy + th // 2 + pad_y],
+                    radius=int(th // 2 + pad_y),
+                    fill=_mix(BG_TOP, (255, 255, 255), 0.10),
+                    outline=_mix(BG_TOP, (255, 255, 255), 0.28))
+                d.text((cx, cy), txt, font=pill_font,
+                       fill=_mix(COL_DIM, (255, 255, 255), 0.35), anchor="mm")
+                # The bar is centred too, right under the pill.
+                bw = max(int(W * 0.16), tw // 2)
+                bx, by = cx - bw // 2, cy + th // 2 + pad_y + int(H * 0.012)
+                bh = max(int(H * 0.004), 2)
+                done_k = 0.0 if gap <= 0 else min(max((t - prev_end) / gap, 0), 1)
+                d.rectangle([bx, by, bx + bw, by + bh],
+                            fill=_mix(BG_TOP, (255, 255, 255), 0.18))
+                d.rectangle([bx, by, bx + int(bw * done_k), by + bh], fill=COL_HOT)
+
+        furniture(d, min(max(t / duration, 0), 1))
+        return frame
+
+    # One frame to look at, instead of a clip to wait for: the studio shows
+    # what a place in the song will look like without encoding anything. The
+    # very same drawing, so the preview cannot lie about the result.
+    still = getattr(args, "still", None)
+    if still is not None:
+        at = max(0.0, float(still))
+        (intro_frame(at) if at < lead
+         else song_frame(min(t_start + at - lead, duration))).save(out_path)
+        return
+
+    # The encoder is started only now: a single frame needs no encoder at all,
+    # and one left waiting on a pipe that never opens writes a broken file.
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    t0 = time.time()
+    try:
+        for n in range(lead_frames):
+            proc.stdin.write(intro_frame(n / args.fps).tobytes())
+        for n in range(total_frames):
+            proc.stdin.write(song_frame(t_start + n / args.fps).tobytes())
 
             if n % (args.fps * 5) == 0 or n == total_frames - 1:
                 done = (lead_frames + n + 1) / (lead_frames + total_frames)

@@ -1257,6 +1257,35 @@ def main():
           not any(t == "(Chorus)" for t, _, _ in texts),
           [t for t, _, _ in texts])
 
+    print("\nA found text brings its own times along")
+    # LRCLIB answers with “[02:27.10] Remember this day” for every line. Those
+    # times used to be stripped off and the model left to rediscover them —
+    # badly. They come through as pegs now: sparse, so the model still lays
+    # out the words and a record from another master cannot bake in its drift.
+    from kstudio import findlyrics as FL
+    rec = {"syncedLyrics": "\n".join(
+        [f"[00:{10 + i * 3:02d}.00] line {i + 1}" for i in range(6)]
+        + ["[01:30.00]", "[01:35.00] after the long pause", "[01:38.00] and one more"])}
+    pegged = FL.timed(rec)
+    lyr_p = L.parse(pegged)
+    pegs = [ln.start for ln in lyr_p.lines if ln.start is not None]
+    check("every line of the record is kept", len(lyr_p.lines) == 8, len(lyr_p.lines))
+    check("but only a few carry a time", 2 <= len(pegs) <= 4, pegs)
+    check("the first line is one of them", lyr_p.lines[0].start == 10.0,
+          lyr_p.lines[0].start)
+    check("and so is the line after a long pause",
+          any(abs(p - 95.0) < 0.01 for p in pegs), pegs)
+    check("the times run forward", pegs == sorted(pegs), pegs)
+    check("a record with no times gives none",
+          FL.timed({"plainLyrics": "just words"}) == "")
+    check("and the plain words are still the plain words",
+          FL.plain(rec).splitlines()[0] == "line 1", FL.plain(rec)[:20])
+    # Pegs are what makes the difference: with them the aligner works stretch
+    # by stretch, and a line cannot wander across the whole song.
+    check("a text with pegs is aligned between them, not spread by hand",
+          lyr_p.has_manual_times and len(pegs) < len(lyr_p.lines),
+          f"{len(pegs)} pegs on {len(lyr_p.lines)} lines")
+
     print("\nThe clip's cover becomes the backdrop, when asked")
     # From a link the cover rides along; with the checkbox on it stands behind
     # the lyrics — blurred and darkened — on the page and in the video alike.
@@ -1304,6 +1333,32 @@ def main():
                  "energy", embed=False)
     check("a page without one carries nothing",
           BLD.read_payload(plain_c).get("cover") == "")
+
+    print("\nA song travels in one file")
+    # A project folder stands on its own but does not travel — not to another
+    # computer, not into a backup. Packed and unpacked it is the same song.
+    packed_dir = os.path.join(tmp, "packed")
+    os.makedirs(packed_dir, exist_ok=True)
+    zip_path = PRJ.pack(with_cover, packed_dir)
+    check("the song packs into one file", os.path.isfile(zip_path), zip_path)
+    import zipfile
+    inside = zipfile.ZipFile(zip_path).namelist()
+    check("with the record and the sound in it",
+          "project.json" in inside and any(n.startswith("mix") or n.startswith("instrumental")
+                                           for n in inside), inside)
+    check("and the cover it stands on", "cover.jpg" in inside, inside)
+    back_root = os.path.join(tmp, "unpacked")
+    os.makedirs(back_root, exist_ok=True)
+    back = PRJ.unpack(zip_path, back_root)
+    rec_before = json.load(open(os.path.join(with_cover, "project.json"), encoding="utf-8"))
+    rec_after = json.load(open(os.path.join(back, "project.json"), encoding="utf-8"))
+    check("and comes back the same song",
+          rec_after.get("title") == rec_before.get("title")
+          and len(rec_after.get("lines") or []) == len(rec_before.get("lines") or []),
+          f"{rec_after.get('title')} / {len(rec_after.get('lines') or [])} lines")
+    check("with the sound beside it",
+          any(n.endswith((".mp3", ".wav", ".m4a", ".ogg")) for n in os.listdir(back)),
+          os.listdir(back))
 
     print("\nThe aligner never hears the backing text")
     # Asked to place na-na-na BETWEEN the lead lines, a linear aligner drags

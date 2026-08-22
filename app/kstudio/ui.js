@@ -161,6 +161,12 @@ const STR = {
     takes: " · takes ",
     langFromText: " · language worked out from the text",
     quietAt: "No singing: ",
+    quietTake: "Mark this stretch as holding no words",
+    quietTaken: "Already marked as holding no words",
+    quietTakeAll: "mark them all",
+    quietAdded: n => (n === 1 ? "One stretch is marked" : n + " stretches are marked")
+      + " as holding no words. The next timing will keep the lines out of them.",
+    quietNothingNew: "Every stretch here is marked already",
     aboutSec: n => "about " + n + " s",
     aboutMin: n => "about " + n + " min",
     aboutHour: (h, m) => "about " + h + " h " + m + " min",
@@ -264,7 +270,14 @@ const STR = {
     lyricsNone: src => "Nothing was found on " + src +
       ". Choose a file, or paste the text by hand.",
     lyricsUse: "Take it",
+    lyricsUseTimed: "Take it with the timing",
+    lyricsWordsOnly: "words only",
+    lyricsHasTimes: "comes with a timing",
     lyricsTook: "The text is in the box below — read it, correct it if need be.",
+    lyricsTookTimed: "Taken with the library's own times: they are pegs — every "
+      + "few lines is fixed to its place, and the words in between are laid "
+      + "out by the model. If the recording is another take, look the pegs "
+      + "over before building.",
     pastedIntoBox: "That is the lyrics, not a path to a file: the lines are in the "
       + "box below, whole, and saved as a text file.",
     linkMoved: "That is a link — it has gone into the field below, press “Take the sound”.",
@@ -294,6 +307,27 @@ const STR = {
     nameHint: "The song's name — click to fix it. It stands in the corner of "
       + "the video, on its opening card and on the finished page, and it is "
       + "what the exported files are called.",
+    packSong: "⇩ Pack",
+    packHint: "Put the whole song into one file — the timing, the audio, the "
+      + "cover — to carry to another computer or to keep. A rendered page or "
+      + "clip is not packed: they are made again in one press.",
+    packing: "Packing the song…",
+    packed: "The song is packed",
+    openPack: "Open a packed song",
+    unpackHint: "Take a packed song — a .karaoke.zip — and put it back among "
+      + "the songs, exactly as it was.",
+    unpacked: "The song is here, as it was",
+    showFrame: "▣ Frame",
+    showOpening: "Opening",
+    stillHint: "Show what the video will look like at this moment — without "
+      + "rendering it. The same drawing the clip is made of.",
+    stillAt: t => "the clip at " + t,
+    stillOpeningAt: "the opening",
+    stillFailed: "The frame could not be drawn: ",
+    nameLabel: "What the song is called",
+    nameNewHint: "Filled in from the link, or from the name of the file. It "
+      + "stands in the corner of the video, on its opening card and on the "
+      + "finished page — and it can be changed later, in the corner of the editor.",
     namePlaceTitle: "song",
     namePlaceArtist: "artist",
     nameFixed: "The song is called that from now on",
@@ -492,6 +526,12 @@ const STR = {
     takes: " · займёт ",
     langFromText: " · язык определён по тексту",
     quietAt: "Без пения: ",
+    quietTake: "Отметить кусок как «тут нет текста»",
+    quietTaken: "Уже отмечено как «тут нет текста»",
+    quietTakeAll: "отметить все",
+    quietAdded: n => "Отмечено кусков: " + n
+      + ". Следующая разметка не будет класть в них строки.",
+    quietNothingNew: "Здесь и так всё отмечено",
     aboutSec: n => "около " + n + " с",
     aboutMin: n => "около " + n + " мин",
     aboutHour: (h, m) => "около " + h + " ч " + m + " мин",
@@ -595,7 +635,13 @@ const STR = {
     lyricsNone: src => "На " + src +
       " ничего не нашлось. Выберите файл или вставьте текст руками.",
     lyricsUse: "Взять",
+    lyricsUseTimed: "Взять с разметкой",
+    lyricsWordsOnly: "только слова",
+    lyricsHasTimes: "есть готовая разметка",
     lyricsTook: "Текст в поле ниже — прочитайте, поправьте, если надо.",
+    lyricsTookTimed: "Взято вместе с временами библиотеки: это опоры — каждые "
+      + "несколько строк привязаны к своему месту, а слова между ними разложит "
+      + "модель. Если запись другая версия, просмотрите опоры перед сборкой.",
     pastedIntoBox: "Это текст песни, а не путь к файлу: строки целиком лежат в поле "
       + "ниже и сохранены текстовым файлом.",
     linkMoved: "Это ссылка — она перенесена в поле ниже, нажмите «Достать звук».",
@@ -625,6 +671,27 @@ const STR = {
     nameHint: "Название песни — нажмите, чтобы поправить. Оно стоит в углу "
       + "ролика, на его заставке и на готовой странице, и по нему называются "
       + "выгруженные файлы.",
+    packSong: "⇩ Упаковать",
+    packHint: "Положить песню целиком в один файл — разметку, звук, обложку, — "
+      + "чтобы перенести на другой компьютер или сохранить. Готовая страница "
+      + "и ролик не пакуются: они делаются заново одним нажатием.",
+    packing: "Упаковываю песню…",
+    packed: "Песня упакована",
+    openPack: "Открыть пакет",
+    unpackHint: "Взять упакованную песню — .karaoke.zip — и вернуть её к "
+      + "остальным ровно такой, какой она была.",
+    unpacked: "Песня на месте, как была",
+    showFrame: "▣ Кадр",
+    showOpening: "Заставка",
+    stillHint: "Показать, как будет выглядеть видео в этот момент, — не "
+      + "рендеря его. Рисуется тем же кодом, что и сам ролик.",
+    stillAt: t => "ролик на " + t,
+    stillOpeningAt: "заставка",
+    stillFailed: "Кадр не нарисовался: ",
+    nameLabel: "Как называется песня",
+    nameNewHint: "Заполняется из ссылки или из имени файла. Это имя стоит в "
+      + "углу ролика, на его заставке и на готовой странице — и его можно "
+      + "поменять потом, в углу редактора.",
     namePlaceTitle: "песня",
     namePlaceArtist: "артист",
     nameFixed: "Теперь песня называется так",
@@ -993,16 +1060,26 @@ function startDir(kind){
   }
   return "";
 }
+async function unpackSong(path){
+  try{
+    const r = await api("/api/unpack", {path});
+    toast(T.unpacked);
+    await loadList();
+    if (r.id) openProject(r.id);
+  }catch(e){ toast(e.message); }
+}
 async function openBrowser(kind){
   pickTarget = kind;
   $("browser").classList.remove("hide");
   $("brTitle").textContent = kind === "track" ? T.pickTrack
-    : kind === "lyrics2" ? T.pickLyrics : T.pickFile;
+    : kind === "lyrics2" ? T.pickLyrics
+    : kind === "pack" ? T.openPack : T.pickFile;
   await showDir(startDir(kind));
 }
 async function showDir(path){
-  // “track” means audio, “lyrics2” means text
-  const kind = (pickTarget === "lyrics" || pickTarget === "lyrics2") ? "text" : "audio";
+  // “track” means audio, “lyrics2” means text, “pack” is a packed song
+  const kind = pickTarget === "pack" ? "pack"
+    : (pickTarget === "lyrics" || pickTarget === "lyrics2") ? "text" : "audio";
   const d = await api("/api/browse?kind="+kind+"&path="+encodeURIComponent(path||""));
   $("brPath").value = d.path;
   rememberDir(pickTarget, d.path);       // this is where we come back next time
@@ -1013,6 +1090,7 @@ async function showDir(path){
   d.dirs.forEach(x => body.appendChild(row("📁", x.name, () => showDir(x.path))));
   d.files.forEach(x => body.appendChild(row("🎵", x.name, () => {
     $("browser").classList.add("hide");
+    if (pickTarget === "pack"){ unpackSong(x.path); return; }
     if (pickTarget === "track"){ replaceTrack(x.path); return; }
     if (pickTarget === "lyrics2"){ realign(x.path); return; }
     if (pickTarget !== "lyrics"){
@@ -1021,6 +1099,8 @@ async function showDir(path){
       $("chkCover").checked = false;
     }
     $(pickTarget === "lyrics" ? "inLyrics" : "inAudio").value = x.path;
+    if (pickTarget !== "lyrics" && !$("inTitle").value.trim())
+      $("inTitle").value = fileStem(x.path);
     askReport();
   }, (x.size/1024/1024).toFixed(1)+T.mb)));
   if (!d.dirs.length && !d.files.length)
@@ -1074,7 +1154,8 @@ window.addEventListener("drop", async e => {
       lastSong = null;                              // dropped by hand, not fetched
       $("grpCover").classList.add("hide");
       $("chkCover").checked = false;
-      $("inAudio").value = (await upload(audio)).path; }
+      $("inAudio").value = (await upload(audio)).path;
+      if (!$("inTitle").value.trim()) $("inTitle").value = fileStem(audio.name); }
     if (text){ $("inLyrics").value = (await upload(text)).path; }
     toast(audio && text ? T.filesOk
                         : T.filesHalf);
@@ -1097,8 +1178,21 @@ async function upload(file){
    there. */
 let lastSong = null;
 
+let nameTyped = false;          // the name was typed, not merely offered
+for (const id of ["inTitle", "inArtist"])
+  $(id).addEventListener("input", () => { nameTyped = true; });
+
+// “D:\\Music\\Lorna Shore - Forevermore.mp3” → “Lorna Shore - Forevermore”.
+function fileStem(path){
+  const name = String(path || "").split(/[\\/]/).pop() || "";
+  return name.replace(/\.[a-z0-9]{1,5}$/i, "").trim();
+}
+
 function resetLink(){
   $("inLink").value = "";
+  $("inTitle").value = "";
+  $("inArtist").value = "";
+  nameTyped = false;
   $("grpCover").classList.add("hide");
   $("chkCover").checked = false;
   $("lyricsFound").innerHTML = "";
@@ -1158,6 +1252,8 @@ async function takeLink(){
       note("linkNote", line);
     });
     lastSong = got;
+    if (!$("inTitle").value.trim()) $("inTitle").value = got.track || got.title || "";
+    if (!$("inArtist").value.trim()) $("inArtist").value = got.artist || "";
     $("grpCover").classList.toggle("hide", !got.cover);
     $("chkCover").checked = !!got.cover;
     $("inAudio").value = got.path;
@@ -1203,18 +1299,32 @@ function foundRow(f){
     [T.countLines(f.lines), f.duration ? fmt(f.duration) : "", f.source]
       .filter(Boolean).join(" · ");
   e.querySelector(".first").textContent = (f.text || "").split("\n")[0] || "";
+  // A record that knows when its lines are sung is worth more than one that
+  // only knows the words: those times become pegs, and the model no longer
+  // has to guess the places — which is the one thing it gets badly wrong.
+  const timed = !!(f.timed && f.textTimed);
   const btn = e.querySelector("button");
-  btn.textContent = T.lyricsUse;
-  btn.addEventListener("click", () => takeFound(f));
+  btn.textContent = timed ? T.lyricsUseTimed : T.lyricsUse;
+  if (timed) btn.classList.add("pri");
+  btn.addEventListener("click", () => takeFound(f, timed));
+  if (timed){
+    e.querySelector("span").textContent += " · " + T.lyricsHasTimes;
+    const words = document.createElement("button");
+    words.className = "words";
+    words.textContent = T.lyricsWordsOnly;
+    words.addEventListener("click", () => takeFound(f, false));
+    e.appendChild(words);
+  }
   return e;
 }
 // Taking a found text puts it in the box AND straight into the field: it works
 // with one press, and it is still there to be read and corrected.
-async function takeFound(f){
-  $("taLyrics").value = f.text || "";
+async function takeFound(f, withTimes){
+  const timed = !!(withTimes && f.textTimed);
+  $("taLyrics").value = (timed ? f.textTimed : f.text) || "";
   $("pasteBox").classList.remove("hide");
   countPasted();
-  note("lyricsNote", T.lyricsTook);
+  note("lyricsNote", timed ? T.lyricsTookTimed : T.lyricsTook);
   await useTyped(true);
 }
 $("btnPasteText").addEventListener("click", () => {
@@ -1277,11 +1387,14 @@ $("btnBuild").addEventListener("click", async () => {
       model: $("selModel").value, lang: $("selLang").value,
       separate: $("chkSep").checked, noText: $("inNoText").value.trim(),
       separator: $("chkFine").checked ? "htdemucs_ft" : "htdemucs",
-      // The name the song had where it came from: the file it landed in is
-      // called something that survives every file system, not something a
-      // person would read.
-      title: (lastSong && (lastSong.track || lastSong.title)) || "",
-      artist: (lastSong && lastSong.artist) || "",
+      // What the song is called. A link fills the fields in; a file from disk
+      // leaves them for the person, because the name that survives every file
+      // system is not the name anybody wants to read on a video.
+      title: $("inTitle").value.trim(),
+      artist: $("inArtist").value.trim(),
+      // Whether the name was typed or merely offered: a name of one's own
+      // outranks the “title:” inside a lyrics file, an offered one does not.
+      titleSet: nameTyped,
       cover: (lastSong && lastSong.cover) || "",
       coverBg: !!(lastSong && lastSong.cover && $("chkCover").checked)});
     watchJob(j.job, T.jobBuild, id => openProject(id));
@@ -2138,13 +2251,36 @@ function drawSummary(data){
   box.innerHTML = cells.map(([k, v]) =>
     `<div class="c"><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join("");
   if (q.length){
+    // The program hears these stretches itself. Until now it only pointed at
+    // them and left the marking to the mouse — on a screamed song that is the
+    // same handful of minutes, every time.
     const d = document.createElement("div");
     d.className = "c wide";
-    d.innerHTML = T.quietAt + q.slice(0, 12).map(x =>
-      `<u data-t="${x.start}">${fmt(x.start)}–${fmt(x.end)}</u>`).join("") +
-      (q.length > 12 ? T.andMore(q.length - 12) : "");
-    d.querySelectorAll("u").forEach(u => u.addEventListener("click",
-      () => seek(Math.max(0, +u.dataset.t - 0.5))));
+    d.append(T.quietAt);
+    q.slice(0, 12).forEach(x => {
+      const chip = document.createElement("span");
+      chip.className = "qchip" + (markedAlready(x) ? " taken" : "");
+      const u = document.createElement("u");
+      u.textContent = fmt(x.start) + "–" + fmt(x.end);
+      u.addEventListener("click", () => seek(Math.max(0, x.start - 0.5)));
+      chip.append(u);
+      if (!markedAlready(x)){
+        const add = document.createElement("i");
+        add.textContent = "＋";
+        add.title = T.quietTake;
+        add.addEventListener("click", ev => { ev.stopPropagation(); takeQuiet([x]); });
+        chip.append(add);
+      } else chip.title = T.quietTaken;
+      d.append(chip);
+    });
+    if (q.length > 12) d.append(T.andMore(q.length - 12));
+    if (q.some(x => !markedAlready(x))){
+      const all = document.createElement("button");
+      all.className = "words";
+      all.textContent = T.quietTakeAll;
+      all.addEventListener("click", () => takeQuiet(q));
+      d.append(all);
+    }
     box.appendChild(d);
   }
 }
@@ -2211,7 +2347,14 @@ function viewStart(){ return clamp(mediaTime() - zoom*0.35, 0, Math.max(dur-zoom
 function xOf(t){ return (t - viewStart()) * pps(); }
 function tOf(x){ return viewStart() + x / pps(); }
 
-function drawWave(){
+// Painting the waveform is the priciest thing this window does, and it used
+// to happen sixty times a second whether anything moved or not — a paused
+// editor warmed the room. It now runs only when the picture would differ:
+// every place that changes the data marks it dirty, and the clock tick
+// repaints on the mark or once the view itself has moved a pixel.
+let waveDirty = true, waveSig = "";
+function drawWave(){ waveDirty = true; }
+function paintWave(){
   const c=$("wave"), w=$("tlwrap").clientWidth, h=$("tlwrap").clientHeight;
   c.width = w*devicePixelRatio; c.height = h*devicePixelRatio;
   const g=c.getContext("2d"); g.scale(devicePixelRatio, devicePixelRatio);
@@ -2888,6 +3031,25 @@ $("tlwrap").addEventListener("pointerdown", e => {
    instead of reading seconds off and typing them into a field. */
 let marks = [], marking = false, markFrom = null, markTo = null;
 
+// A stretch the program heard is “taken” once a mark of ours covers it.
+function markedAlready(q){
+  return marks.some(([a, b]) => a <= q.start + 0.2 && b >= q.end - 0.2);
+}
+// Taking them is an edit like any other: undoable, saved, and the waveform
+// shows the result at once.
+function takeQuiet(list){
+  const fresh = list.filter(x => !markedAlready(x));
+  if (!fresh.length) return toast(T.quietNothingNew);
+  snap("");
+  let n = 0;
+  fresh.forEach(x => { if (addMark(x.start, x.end)) n++; });
+  if (!n){ past.pop(); refreshUndo(); return toast(T.quietNothingNew); }
+  touched();
+  drawWave();
+  drawSummary(lastData);
+  toast(T.quietAdded(n));
+}
+
 function marksFromField(){
   marks = ($("edNoText").value || "").split(/[;,]/).map(part => {
     const m = part.trim().match(/^([\d:.,]+)\s*[-–—]\s*([\d:.,]+)$/);
@@ -3114,9 +3276,19 @@ function tick(){
     if (idx>=0) fill(idx);
     if (duoIdx>=0) fill(duoIdx);
     $("tCur").textContent = fmtMs(t);
-    // The view is not recomputed while dragging: otherwise the timeline slides
-    // under the cursor and hitting the right spot is impossible.
-    if (!drag && !wdrag){ drawWave(); drawBlocks(); }
+    // The view is not recomputed while dragging — otherwise the timeline
+    // slides under the cursor — but an edit made DURING a drag still shows:
+    // its handler marks the wave dirty, and the mark is honoured here.
+    const kq2 = pps(), v0 = viewStart();
+    const sig = v0.toFixed(2) + "|" + kq2.toFixed(2) + "|"
+      + Math.round(t * kq2) + "|" + sel + "|" + curLine + "|"
+      + $("tlwrap").clientWidth + "x" + $("tlwrap").clientHeight
+      + "@" + devicePixelRatio;
+    if (waveDirty || (!drag && !wdrag && sig !== waveSig)){
+      waveDirty = false; waveSig = sig;
+      paintWave();
+    }
+    if (!drag && !wdrag) drawBlocks();
   }
   requestAnimationFrame(tick);
 }
@@ -3254,6 +3426,42 @@ $("btnReveal").addEventListener("click", async () => {
   await reveal(madeFile);
 });
 $("btnMadeHide").addEventListener("click", () => showMade(""));
+
+// A frame of the clip, drawn on the spot. Before this the only way to see
+// whether a line sits where it should was to render the whole file.
+async function showStill(at, opening){
+  const box = $("stillBox"), img = $("stillImg");
+  box.classList.remove("hide");
+  $("stillAt").textContent = opening ? T.stillOpeningAt : T.stillAt(fmt(at));
+  // Asked for in the song's own time: the clip runs ahead of it by the length
+  // of the opening, and how long that is, only the drawing knows.
+  const url = `/api/project/${encodeURIComponent(pid)}/still?at=`
+    + Math.max(0, at) + (opening ? "&opening=1" : "") + "&_=" + Date.now();
+  try{
+    const r = await fetch(url);
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+    img.src = URL.createObjectURL(await r.blob());
+  }catch(e){
+    box.classList.add("hide");
+    toast(T.stillFailed + e.message);
+  }
+}
+// A song in one file: the folder it lives in does not travel between two
+// computers, and a zip of it does.
+$("btnPack").addEventListener("click", async () => {
+  await flush();                        // pack what is on the screen, not what was
+  toast(T.packing);
+  try{
+    const r = await api(`/api/project/${encodeURIComponent(pid)}/pack`, {});
+    showMade(r.path);
+    toast(T.packed);
+  }catch(e){ toast(e.message); }
+});
+$("btnUnpack").addEventListener("click", () => openBrowser("pack"));
+
+$("btnStill").addEventListener("click", () => showStill(mediaTime(), false));
+$("stillOpening").addEventListener("click", () => showStill(0, true));
+$("stillHide").addEventListener("click", () => $("stillBox").classList.add("hide"));
 
 $("btnExportHtml").addEventListener("click", async () => {
   await flush();

@@ -109,6 +109,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
            skip=None, separator: str = "htdemucs",
            title: Optional[str] = None, artist: Optional[str] = None,
            cover: Optional[str] = None, cover_bg: bool = False,
+           title_set: bool = False,
            log: Log = _noop) -> str:
     """Build a project. Returns the path to its folder."""
     lyr = L.load(lyrics_path)
@@ -118,15 +119,18 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
     log(tr(f"Lyrics: {len(lyr.lines)} lines, {len(lyr.words)} words.",
            f"Текст: {len(lyr.lines)} строк, {len(lyr.words)} слов."))
 
-    # What the song is called, in order of how much it can be trusted: what the
-    # lyrics file says, then what the song was known as where it came from —
-    # a link carries its real name, while the file on disk is called
-    # “Forevermore_[kBjKqBvbbjM]” because the name had to survive every file
-    # system in the world.
-    title = lyr.title or (title or "").strip() or \
-        os.path.splitext(os.path.basename(audio_path))[0]
-    if artist and not lyr.artist:
-        lyr.artist = artist.strip()
+    # What the song is called, in order of how much it can be trusted: a name
+    # typed by hand, then what the lyrics file says, then what the song was
+    # known as where it came from — a link carries its real name, while the
+    # file on disk is called “Forevermore_[kBjKqBvbbjM]” because the name had
+    # to survive every file system in the world.
+    given, given_artist = (title or "").strip(), (artist or "").strip()
+    if title_set and given:
+        title = given
+    else:
+        title = lyr.title or given or os.path.splitext(os.path.basename(audio_path))[0]
+    if given_artist and (title_set or not lyr.artist):
+        lyr.artist = given_artist
     folder = os.path.join(root, slugify(title))
     n = 2
     while os.path.exists(folder):
@@ -189,6 +193,9 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             "version": __version__,
             "title": title,
             "artist": lyr.artist or "",
+            # A name given by hand is not to be undone by a lyrics file that
+            # carries a “title:” of its own on the next re-timing.
+            "titleSet": bool(title_set),
             "duration": round(dur, 3),
             "engine": engine,
             # which model timed it: a re-time must not quietly drop to another
@@ -246,6 +253,59 @@ def keep_spans(data: Dict) -> List[List[float]]:
     from . import align as A
     return [[round(a, 3), round(b, 3)]
             for a, b in A.spans(data.get("noText") or "", data.get("duration") or 0)]
+
+
+def pack(folder: str, out_dir: str) -> str:
+    """Everything a song is, in one file: the record, the audio, the cover.
+
+    A project is a folder that stands on its own, but a folder does not travel
+    — between two computers, or to somebody else, or into a backup. A zip of
+    it does, and it opens back into exactly the same song.
+    """
+    import zipfile
+    data = load(folder)
+    name = slugify(data.get("title") or os.path.basename(folder))
+    out = os.path.join(out_dir, name + ".karaoke.zip")
+    stem, n = out[:-len(".zip")], 2
+    while os.path.exists(out):
+        out = f"{stem}-{n}.zip"
+        n += 1
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        for entry in sorted(os.listdir(folder)):
+            path = os.path.join(folder, entry)
+            # Only the song itself: a rendered page or clip is made again in
+            # one press, and weighs more than everything else together.
+            if os.path.isfile(path) and not entry.startswith("_") \
+                    and not entry.lower().endswith((".mp4", ".html")):
+                z.write(path, entry)
+    return out
+
+
+def unpack(zip_path: str, root: str) -> str:
+    """A packed song back into a folder of its own. Returns the folder."""
+    import zipfile
+    with zipfile.ZipFile(zip_path) as z:
+        names = z.namelist()
+        if "project.json" not in names:
+            raise ValueError(tr("this is not a packed song: no project.json inside",
+                                "это не упакованная песня: внутри нет project.json"))
+        with z.open("project.json") as f:
+            data = json.load(f)
+        folder = os.path.join(root, slugify(data.get("title") or "song"))
+        n = 2
+        while os.path.exists(folder):
+            folder = os.path.join(root, f"{slugify(data.get('title') or 'song')}-{n}")
+            n += 1
+        os.makedirs(folder)
+        for entry in names:
+            # A name with a path in it belongs to another folder, and a zip is
+            # not to be trusted with where it unpacks: only plain names.
+            if entry.endswith("/") or os.path.basename(entry) != entry \
+                    or entry.startswith("."):
+                continue
+            with z.open(entry) as src, open(os.path.join(folder, entry), "wb") as dst:
+                shutil.copyfileobj(src, dst)
+    return folder
 
 
 def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,

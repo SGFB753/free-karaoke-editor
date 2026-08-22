@@ -7,6 +7,46 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.36.0
+
+**A found text brings its own timing.** The lyrics library answers with the
+time of every line — and until now those times were stripped off and the model
+left to rediscover them, badly. A record that has them shows “comes with a
+timing”, and “Take it with the timing” keeps them as pegs: sparse ones — the
+first line, every real pause, one in a few lines — so the model still lays out
+the words between them, and a record made from another master cannot bake its
+drift into the whole song. “Words only” is still there.
+
+**The heard silences become marks with one press.** The program already finds
+the stretches where nobody sings and shows them in the summary; turning them
+into “no words here” marks still meant drawing each one with the mouse. Every
+stretch now carries a “＋”, and “mark them all” takes the rest — undoable,
+saved, drawn on the waveform at once.
+
+**A frame of the clip, without rendering the clip.** “▣ Frame” next to the
+timeline shows what the video will hold at the playhead — the very same
+drawing code, one frame, a moment instead of minutes. The opening card can be
+looked at the same way.
+
+**A song travels in one file.** “⇩ Pack” puts the whole project — the timing,
+the audio, the cover — into one `.karaoke.zip` next to the song it was made
+from; “Open a packed song” on the first screen puts it back, the same song, on
+any computer. Finished pages and clips are not packed: they are made again in
+one press and weigh more than everything else together.
+
+**The name is asked for up front.** The build screen has fields for the song
+and the artist — filled from the link or from the file's name, and standing
+above whatever a lyrics file might say once they are typed by hand.
+
+**And it all runs cooler.** The editor repainted its waveform sixty times a
+second whether anything moved or not — a paused window warmed the room. It now
+repaints only when the picture would differ. The video renderer stopped
+lettering the song's name onto each of thousands of frames — it is painted
+into the background once — and stopped throwing away every typeset line when
+its shelf filled: a twenty-second 1080p clip renders about a sixth faster.
+
+---
+
 ## 4.35.0
 
 **The song is called what you call it.** The name in the corner of the video —
