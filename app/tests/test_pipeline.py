@@ -335,6 +335,14 @@ def main():
         {"start": 12.1, "end": 12.7, "words": [1]},
         {"start": 12.8, "end": 15.0, "keep": True, "words": [1]}]}})
     check("but not across the singer's own line", len(busy) == 2, busy)
+    # And the slack itself stops at the singer's words: kept voice bleeding
+    # over their first word is the chew, mirrored.
+    tight = _vid.keep_spans({"data": {"lines": [
+        {"start": 8.0, "end": 9.9, "words": [1]},
+        {"start": 10.0, "end": 12.0, "keep": True, "words": [1]},
+        {"start": 12.1, "end": 13.0, "words": [1]}]}})
+    check("the slack never reaches into the singer's own words",
+          tight == [(9.9, 12.1, 1.0)], tight)
     check("without marks there are no stretches", _vid.keep_spans({"data": {"lines": [{"start": 0, "end": 2}]}}) == [])
 
     print("\nSettings: a colour is not a comment")
@@ -1356,6 +1364,18 @@ def main():
                  "energy", embed=False)
     check("a page without one carries nothing",
           BLD.read_payload(plain_c).get("cover") == "")
+    # How dark the backdrop is rides with the page: covers differ, and the
+    # words must stay the brightest thing in the frame.
+    check("the darkness default stands at 66",
+          BLD.read_payload(plain_c).get("coverDark") == 66)
+    dark_c = os.path.join(tmp, "dark.html")
+    BLD.build_html(dark_c, lyr_c, 26.0, {"mix": (song_for_build, "audio/wav")},
+                 "energy", embed=False, cover_path=cover_src, cover_dark=30)
+    check("a chosen darkness rides along",
+          BLD.read_payload(dark_c).get("coverDark") == 30)
+    rec_d = PRJ.save_lines(with_cover, rec_c["lines"], cover_dark=150)
+    check("the saved darkness is clamped, not trusted",
+          rec_d.get("coverDark") == 95, rec_d.get("coverDark"))
 
     print("\nThe original's own lines live inside the marks")
     # An intro sung by the artist: its lines are marked “♪ Original” AND the

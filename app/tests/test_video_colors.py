@@ -279,6 +279,42 @@ def main():
     check("and the one after that is present but fainter",
           0 < next2b < nextb, f"{next2b} vs {nextb}")
 
+    print("\nThe quiet keep says so beside the line; the loud one stays silent")
+    # “Sing along with the original” stands at the top right while a quiet
+    # kept line is sung; a full-voice kept line gets no caption — the voice
+    # itself says whose line it is.
+    def tag_line(text, a, b):
+        return {"text": text, "start": a, "end": b, "voice": 1,
+                "words": [{"w": text, "t": a, "d": b - a, "s": 1}]}
+    tags_song = {"colors": ["#00ff00", "#ff00ff"],
+                 "theme": {"bg": "#000000", "text": "#ffffff"},
+                 "data": {"title": "T", "duration": 16.0, "lines": [
+        tag_line("sing along here", 2.0, 5.0), tag_line("original alone", 8.0, 11.0)]}}
+    tags_song["data"]["lines"][0].update(keep=True, keepSoft=True)
+    tags_song["data"]["lines"][1].update(keep=True)
+    wavt = tone(os.path.join(tmp, "h.wav"), 220.0, 16.0)
+    class ATG:
+        width, height, fps, crf = 640, 360, 5, 30
+        preset, font = "ultrafast", None
+        intro = False
+        start, seconds, audio, timings = 0.0, 12.0, "minus", None
+        output = os.path.join(tmp, "tags.mp4")
+    video.render(tags_song, wavt, ATG.output, ATG())
+
+    def corner_ink(at):
+        shot = os.path.join(tmp, f"tag-{at}.png")
+        subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", str(at),
+                        "-i", ATG.output, "-frames:v", "1", shot], check=True)
+        imt = Image.open(shot).convert("RGB")
+        Wt, Ht = imt.size
+        return sum(1 for y in range(int(Ht * 0.28), int(Ht * 0.40))
+                   for x in range(int(Wt * 0.55), Wt, 2)
+                   if sum(imt.getpixel((x, y))) > 90)
+    check("the sing-along caption stands beside the quiet kept line",
+          corner_ink(3.0) > 15, corner_ink(3.0))
+    check("and a full-voice kept line carries no caption",
+          corner_ink(9.5) == 0, corner_ink(9.5))
+
     print("\nA long line wraps instead of shrinking")
     # The line about the shown video shrank to letters read only from the
     # front row. It wraps onto a second row now — split between words — and
@@ -362,12 +398,25 @@ def main():
         Wv, Hv = imv.size
         return sum(1 for y in range(int(Hv * 0.38), int(Hv * 0.50))
                    for x in range(0, Wv, 2) if sum(imv.getpixel((x, y))) > 90)
-    inside = main_ink(7.5)        # both sound: the long one must still hold
-    after = main_ink(9.0)         # the long one ended: the short one is up
-    check("during the overlap the long line still holds the main seat",
-          inside > after * 2, f"overlap {inside}, after {after}")
-    check("and the next line takes it once the earlier is done",
-          after > 20, after)
+    def side_ink(at):
+        shot = os.path.join(tmp, f"ov-s-{at}.png")
+        subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", str(at),
+                        "-i", AO.output, "-frames:v", "1", shot], check=True)
+        imv = Image.open(shot).convert("RGB")
+        Wv, Hv = imv.size
+        return sum(1 for y in range(int(Hv * 0.50), int(Hv * 0.62))
+                   for x in range(int(Wv * 0.5), Wv, 2)
+                   if sum(imv.getpixel((x, y))) > 90)
+    inside = main_ink(7.5)        # both sound: the long one holds the seat
+    held = main_ink(9.0)          # the long one ended, the short still sings:
+    check("during the overlap the long line holds the main seat",
+          inside > 200, inside)
+    check("and it stays there to the end of the NEW line — the pair stands",
+          held > 200, held)
+    check("while the new line fills in the seat below",
+          side_ink(9.0) > 15, side_ink(9.0))
+    check("once the new line is done the pair breaks up",
+          main_ink(11.0) < held // 2, f"{main_ink(11.0)} vs held {held}")
 
     print("\nThe frame speaks the language of the song")
     # The countdown stands among the lyrics, not among the program's menus:

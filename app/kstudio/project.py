@@ -316,7 +316,7 @@ def unpack(zip_path: str, root: str) -> str:
 
 def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,
                no_text=None, keep_marks=None, check_off=None,
-               title=None, artist=None) -> Dict:
+               title=None, artist=None, cover_dark=None) -> Dict:
     data = load(folder)
     data["lines"] = lines
     if colors:
@@ -332,6 +332,10 @@ def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,
         data["keepMarks"] = bool(keep_marks)
     if check_off is not None:
         data["checkOff"] = [str(k) for k in check_off][:500]
+    if cover_dark is not None:
+        # how far the cover backdrop is darkened: covers differ, and the
+        # words must stay the brightest thing in the frame
+        data["coverDark"] = max(0, min(95, int(cover_dark)))
     # A name given by hand. It stands in the corner of the video and on its
     # opening card, and it is remembered as chosen: re-reading a lyrics file
     # with a “title:” header of its own must not quietly rename the song back.

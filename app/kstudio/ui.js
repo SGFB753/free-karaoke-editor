@@ -336,6 +336,11 @@ const STR = {
       + "on the finished page and in the MP4. Any image works, and so does "
       + "the clip itself: a frame is cut out of a picked video.",
     coverOffHint: "Take the cover away — back to the plain background.",
+    coverUrlPh: "…or paste a link to a picture",
+    coverUrlGo: "take it",
+    coverUrlBad: "That is not a link: it should start with http",
+    coverDarkHint: "How dark the cover backdrop is. Darker reads better; "
+      + "lighter shows more of the picture. The page and the video both obey.",
     coverSet: "The cover is on: it stands behind the lyrics, blurred",
     coverGone: "The cover is off — the plain background is back",
     pickCover: "A picture for the cover — or a clip to cut one from",
@@ -719,6 +724,11 @@ const STR = {
       + "на готовой странице и в MP4. Подойдёт любая картинка или сам клип: "
       + "из выбранного видео вырежется кадр.",
     coverOffHint: "Убрать обложку — вернуть обычный фон.",
+    coverUrlPh: "…или вставьте ссылку на картинку",
+    coverUrlGo: "взять",
+    coverUrlBad: "Это не ссылка: она начинается с http",
+    coverDarkHint: "Насколько затемнён фон-обложка. Темнее — читается лучше, "
+      + "светлее — виднее картинка. Слушаются и страница, и видео.",
     coverSet: "Обложка стоит: она за текстом, размытая",
     coverGone: "Обложка убрана — обычный фон вернулся",
     pickCover: "Картинка для обложки — или клип, из которого её вырезать",
@@ -1165,6 +1175,7 @@ async function showDir(path){
   body.dataset.parent = d.parent;
   body.innerHTML = "";
   if (pickTarget === "lyrics2") await foundRows(body);
+  if (pickTarget === "cover") coverUrlRow(body);
   (d.drives||[]).forEach(dr => body.appendChild(row("💽", dr, () => showDir(dr))));
   d.dirs.forEach(x => body.appendChild(row("📁", x.name, () => showDir(x.path))));
   d.files.forEach(x => body.appendChild(row("🎵", x.name, () => {
@@ -1578,19 +1589,25 @@ function inKeep(t){
   // is a guide to sing along with, 0 everywhere else. A breath between two
   // kept lines is kept too, unless the singer's own line stands in it —
   // muting the model's guess of a line end chewed a held word in half.
-  let best = 0, humanAt = false, prevEnd = -1, prevLvl = 0, bridge = 0;
+  // Where the singer's own line sounds, the original gets no slack and no
+  // bridge: kept voice bleeding over their first word is the chew, mirrored.
+  let humanAt = false;
   for (let i = 0; i < lines.length; i++){
     const ln = lines[i];
-    if (ln.keep){
-      const lvl = ln.keepSoft ? 0.35 : 1;
-      if (ln.start - 0.25 <= t && t < ln.end + 0.25) best = Math.max(best, lvl);
-      if (ln.end <= t && t - ln.end <= 2.0){ prevEnd = ln.end; prevLvl = lvl; }
-      if (t < ln.start && ln.start - t <= 2.0 && prevEnd >= 0
-          && ln.start - prevEnd <= 2.0)
-        bridge = Math.max(bridge, Math.max(prevLvl, lvl));
-    } else if (ln.words && ln.words.length && !ln.backing
-               && ln.start <= t && t < ln.end)
-      humanAt = true;                   // the singer's own line: no bridging
+    if (!ln.keep && ln.words && ln.words.length && !ln.backing
+        && ln.start <= t && t < ln.end){ humanAt = true; break; }
+  }
+  let best = 0, prevEnd = -1, prevLvl = 0, bridge = 0;
+  for (let i = 0; i < lines.length; i++){
+    const ln = lines[i];
+    if (!ln.keep) continue;
+    const lvl = ln.keepSoft ? 0.35 : 1;
+    const pad = humanAt ? 0 : 0.25;
+    if (ln.start - pad <= t && t < ln.end + pad) best = Math.max(best, lvl);
+    if (ln.end <= t && t - ln.end <= 2.0){ prevEnd = ln.end; prevLvl = lvl; }
+    if (t < ln.start && ln.start - t <= 2.0 && prevEnd >= 0
+        && ln.start - prevEnd <= 2.0)
+      bridge = Math.max(bridge, Math.max(prevLvl, lvl));
   }
   if (!humanAt) best = Math.max(best, bridge);
   if (best >= 1) return 1;
@@ -2265,7 +2282,8 @@ async function saveNow(){
       {lines, colors, theme,
        noText: ($("edNoText").value || "").trim(),
        keepMarks: $("chkKeepMarks") ? $("chkKeepMarks").checked : true,
-       checkOff, title: songName, artist: songArtist});
+       checkOff, title: songName, artist: songArtist,
+       coverDark: (data && data.coverDark != null) ? data.coverDark : undefined});
     showProblems(r.problems);
     saveState("ok", T.savedOk);
   }catch(e){
@@ -3533,8 +3551,25 @@ $("btnUnpack").addEventListener("click", () => openBrowser("pack"));
 // The cover, changeable after the build: a song from a file had nowhere to
 // get one, and a song from a link had no way to swap it.
 function refreshCover(){
-  $("btnCoverOff").classList.toggle("hide", !(data && data.cover && data.coverBg));
+  const on = !!(data && data.cover && data.coverBg);
+  $("btnCoverOff").classList.toggle("hide", !on);
+  $("grpCoverDark").classList.toggle("hide", !on);
+  const dark = (data && data.coverDark != null) ? data.coverDark : 66;
+  $("rCoverDark").value = dark;
+  $("vCoverDark").textContent = dark + "%";
 }
+// Darker reads better, lighter shows more of the picture — a matter of the
+// cover at hand, so it is a knob, not a constant. The open frame follows.
+$("rCoverDark").addEventListener("input", () => {
+  const dark = +$("rCoverDark").value;
+  $("vCoverDark").textContent = dark + "%";
+  data.coverDark = dark;
+  touched();
+  clearTimeout(stillTimer);
+  stillTimer = setTimeout(() => {
+    if (!$("stillBox").classList.contains("hide")) showStill(stillT, false);
+  }, 400);
+});
 $("btnCover").addEventListener("click", () => openBrowser("cover"));
 $("btnCoverOff").addEventListener("click", async () => {
   try{
@@ -3543,9 +3578,36 @@ $("btnCoverOff").addEventListener("click", async () => {
     refreshCover(); toast(T.coverGone);
   }catch(e){ toast(e.message); }
 });
-async function takeCover(path){
+// A cover can come by link too: a row above the files takes the address.
+function coverUrlRow(box){
+  const r = document.createElement("div");
+  r.className = "row urlrow";
+  r.innerHTML = '<span class="ic">🔗</span>' +
+    '<input class="nm" type="text">' +
+    '<button class="words"></button>';
+  const inp = r.querySelector("input");
+  inp.placeholder = T.coverUrlPh;
+  const btn = r.querySelector("button");
+  btn.textContent = T.coverUrlGo;
+  const go = () => {
+    const url = inp.value.trim();
+    if (!/^https?:\/\//.test(url)) return toast(T.coverUrlBad);
+    $("browser").classList.add("hide");
+    takeCover(null, url);
+  };
+  btn.addEventListener("click", go);
+  inp.addEventListener("keydown", e => {
+    e.stopPropagation();
+    if (e.key === "Enter") go();
+  });
+  inp.addEventListener("click", e => e.stopPropagation());
+  box.appendChild(r);
+}
+
+async function takeCover(path, url){
   try{
-    const r = await api(`/api/project/${encodeURIComponent(pid)}/cover`, {path});
+    const r = await api(`/api/project/${encodeURIComponent(pid)}/cover`,
+      url ? {url} : {path});
     data.cover = "cover.jpg"; data.coverBg = true;
     refreshCover(); toast(T.coverSet);
     if (!$("stillBox").classList.contains("hide")) showStill(stillT, false);

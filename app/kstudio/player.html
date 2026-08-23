@@ -135,10 +135,17 @@
   .spacer{flex:1}
   .knobgrp{display:flex; align-items:center; gap:9px; font-size:12px; color:var(--muted);
            background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:6px 12px}
-  input[type=range]{-webkit-appearance:none; appearance:none; height:4px; border-radius:99px;
-    background:rgba(255,255,255,.18); outline:none; width:110px}
-  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:14px; height:14px;
+  /* The track is a pseudo-element of its own: styling the input alone left
+     some browsers on their native slider, whose knob never reaches the ends. */
+  input[type=range]{-webkit-appearance:none; appearance:none; height:14px;
+    background:transparent; outline:none; width:110px}
+  input[type=range]::-webkit-slider-runnable-track{height:4px; border-radius:99px;
+    background:rgba(255,255,255,.18)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; appearance:none;
+    width:14px; height:14px; margin-top:-5px;
     border-radius:50%; background:var(--accent); cursor:pointer}
+  input[type=range]::-moz-range-track{height:4px; border-radius:99px;
+    background:rgba(255,255,255,.18)}
   input[type=range]::-moz-range-thumb{width:14px; height:14px; border:none; border-radius:50%;
     background:var(--accent); cursor:pointer}
   .val{min-width:62px; text-align:right; color:var(--text); font-variant-numeric:tabular-nums}
@@ -279,9 +286,10 @@ if (P.cover){
   // never seen. The cover takes the same level: being later in tree order
   // it wins the ground, while the interface keeps its seat at z-index:1.
   const cv = document.createElement("div");
+  const bright = (100 - (P.coverDark == null ? 66 : P.coverDark)) / 100;
   cv.style.cssText = "position:fixed;inset:-40px;z-index:0;" +
     "background:center/cover no-repeat url(" + JSON.stringify(P.cover) + ");" +
-    "filter:blur(18px) brightness(.34)";
+    "filter:blur(18px) brightness(" + bright + ")";
   document.body.prepend(cv);
 }
 
@@ -889,19 +897,25 @@ function inKeep(t){
   // and 0 everywhere else. The breath between two kept lines counts as kept
   // too, when nobody's own line stands in it: the ends of lines are the
   // model's guesses, and muting the guess chewed a held word in half.
-  let best = 0, humanAt = false, prevEnd = -1, prevLvl = 0, bridge = 0;
+  // Where the singer's own line sounds, the original gets no slack and no
+  // bridge: kept voice bleeding over their first word is the chew, mirrored.
+  let humanAt = false;
   for (let i = 0; i < lines.length; i++){
     const ln = lines[i];
-    if (ln.keep){
-      const lvl = ln.keepSoft ? 0.35 : 1;
-      if (ln.start - 0.25 <= t && t < ln.end + 0.25) best = Math.max(best, lvl);
-      if (ln.end <= t && t - ln.end <= 2.0){ prevEnd = ln.end; prevLvl = lvl; }
-      if (t < ln.start && ln.start - t <= 2.0 && prevEnd >= 0
-          && ln.start - prevEnd <= 2.0)
-        bridge = Math.max(bridge, Math.max(prevLvl, lvl));
-    } else if (ln.words && ln.words.length && !ln.backing
-               && ln.start <= t && t < ln.end)
-      humanAt = true;                   // the singer's own line: no bridging
+    if (!ln.keep && ln.words && ln.words.length && !ln.backing
+        && ln.start <= t && t < ln.end){ humanAt = true; break; }
+  }
+  let best = 0, prevEnd = -1, prevLvl = 0, bridge = 0;
+  for (let i = 0; i < lines.length; i++){
+    const ln = lines[i];
+    if (!ln.keep) continue;
+    const lvl = ln.keepSoft ? 0.35 : 1;
+    const pad = humanAt ? 0 : 0.25;
+    if (ln.start - pad <= t && t < ln.end + pad) best = Math.max(best, lvl);
+    if (ln.end <= t && t - ln.end <= 2.0){ prevEnd = ln.end; prevLvl = lvl; }
+    if (t < ln.start && ln.start - t <= 2.0 && prevEnd >= 0
+        && ln.start - prevEnd <= 2.0)
+      bridge = Math.max(bridge, Math.max(prevLvl, lvl));
   }
   if (!humanAt) best = Math.max(best, bridge);
   if (best >= 1) return 1;

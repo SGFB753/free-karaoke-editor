@@ -207,6 +207,19 @@ const stillC = Buffer.from(await (await fetch(
   `${API}/api/project/${encodeURIComponent(pid)}/still?at=1`)).arrayBuffer());
 ok('the preview frame changed with the backdrop',
    Buffer.compare(stillC, png) !== 0 && stillC.length > 5000, stillC.length);
+// A cover can come by link too — the stand's own frame endpoint serves as
+// the picture on the other end of one.
+const byUrl = await post(`/api/project/${encodeURIComponent(pid)}/cover`,
+  {url: `${API}/api/project/${encodeURIComponent(pid)}/still?at=2`});
+ok('a cover arrives by link', byUrl.ok === true && byUrl.cover === true,
+   JSON.stringify(byUrl));
+// The darkness knob is saved with the ordinary edits and clamped.
+const pdNow = await get('/api/project/' + encodeURIComponent(pid));
+await post(`/api/project/${encodeURIComponent(pid)}/timings`,
+  {lines: pdNow.lines, coverDark: 40});
+const pdDark = await get('/api/project/' + encodeURIComponent(pid));
+ok('the backdrop darkness is remembered', pdDark.coverDark === 40, pdDark.coverDark);
+
 const cOff = await post(`/api/project/${encodeURIComponent(pid)}/cover`, {remove: true});
 ok('and it can be taken away', cOff.ok === true && cOff.cover === false,
    JSON.stringify(cOff));

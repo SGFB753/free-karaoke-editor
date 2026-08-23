@@ -260,8 +260,15 @@ def keep_spans(payload: dict) -> list:
             b = float(ln.get("end") or 0)
             if b <= a:
                 continue              # no length — nothing to keep, pad or not
-            out.append((max(0.0, a - KEEP_PAD), b + KEEP_PAD,
-                        SOFT_KEEP if ln.get("keepSoft") else 1.0))
+            pa, pb = max(0.0, a - KEEP_PAD), b + KEEP_PAD
+            # the slack must never reach into the singer's own words: kept
+            # voice bleeding over their first word is the mirror of the chew
+            for s0, e0 in sung:
+                if e0 <= a:
+                    pa = max(pa, e0)
+                if s0 >= b:
+                    pb = min(pb, s0)
+            out.append((pa, pb, SOFT_KEEP if ln.get("keepSoft") else 1.0))
     for pair in data.get("keepSpans") or []:
         try:
             a, b = float(pair[0]), float(pair[1])
@@ -486,19 +493,19 @@ class LineArt:
 _BG_MEMO: dict = {}
 
 
-def make_background(W, H, cover_uri: str = ""):
-    key = (W, H, hash(cover_uri))
+def make_background(W, H, cover_uri: str = "", dark: int = 66):
+    key = (W, H, hash(cover_uri), int(dark))
     hit = _BG_MEMO.get(key)
     if hit is not None:
         return hit.copy()
-    img = _draw_background(W, H, cover_uri)
+    img = _draw_background(W, H, cover_uri, dark)
     if len(_BG_MEMO) > 4:
         _BG_MEMO.clear()
     _BG_MEMO[key] = img
     return img.copy()
 
 
-def _draw_background(W, H, cover_uri: str = ""):
+def _draw_background(W, H, cover_uri: str = "", dark: int = 66):
     from PIL import Image, ImageEnhance, ImageFilter
 
     if cover_uri.startswith("data:image"):
@@ -517,7 +524,8 @@ def _draw_background(W, H, cover_uri: str = ""):
             y0 = (img.height - H) // 2
             img = img.crop((x0, y0, x0 + W, y0 + H))
             img = img.filter(ImageFilter.GaussianBlur(radius=max(H // 55, 6)))
-            return ImageEnhance.Brightness(img).enhance(0.34)
+            k = (100 - max(0, min(95, int(dark)))) / 100.0
+            return ImageEnhance.Brightness(img).enhance(k)
         except Exception:
             pass
     # Every row is one colour: a single-pixel-wide column stretched to the
@@ -580,7 +588,8 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             f = ImageFont.truetype(font_path, size)
         return f
 
-    bg = make_background(W, H, payload.get("cover") or "")
+    bg = make_background(W, H, payload.get("cover") or "",
+                         int(payload.get("coverDark") or 66))
     small = ImageFont.truetype(font_path, int(H * 0.020))
     # The song's name deserves better than the caption size — and its own
     # font, so growing it does not swell every section heading with it.
@@ -722,20 +731,25 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
         idx = bisect.bisect_right(starts, t) - 1
 
-        # A line that runs past the start of the next one keeps its seat
-        # until it is finished: sung words must not vanish mid-word just
-        # because the line after them has begun. The next line waits below,
-        # in the queue, where it already stands.
-        while idx > 0 and t < lines[idx - 1]["end"] \
+        # A line that runs past the start of the next one keeps the main seat
+        # until the NEXT one is finished: the pair stands together like a
+        # duet — the older above, the newer smaller below — and nothing jumps
+        # seats mid-line. Sung words must not vanish mid-word just because
+        # the line after them has begun.
+        runover = -1
+        if idx > 0 and t < lines[idx]["end"] \
+                and lines[idx - 1]["end"] > lines[idx]["start"] \
                 and not lines[idx - 1].get("backing") \
+                and not lines[idx].get("backing") \
                 and (lines[idx].get("voice") == 2) \
                 == (lines[idx - 1].get("voice") == 2):
+            runover = idx
             idx -= 1
 
         # The second voice can sound together with the main one. It is drawn
         # on its own row below — otherwise the two texts would overlap.
-        duo = -1
-        if idx >= 0:
+        duo = runover
+        if idx >= 0 and duo < 0:
             for j in (idx - 1, idx + 1):
                 if 0 <= j < len(lines) and lines[j]["start"] <= t < lines[j]["end"] \
                         and (lines[j].get("voice") == 2) != (lines[idx].get("voice") == 2):
@@ -786,6 +800,15 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 if k == 0 and lines[j].get("section"):
                     d.text((margin, y_j - int(H * 0.055)),
                            lines[j]["section"].upper(), font=small, fill=COL_SECT)
+                if k == 0 and lines[j].get("keep") and lines[j].get("keepSoft"):
+                    # A quiet original is an invitation — say so beside the
+                    # line. A full-voice one needs no caption: the voice
+                    # itself says the line is not yours.
+                    tag = ("в унисон с оригиналом" if said == "ru"
+                           else "sing along with the original")
+                    d.text((W - margin, y_j - int(H * 0.055)), tag,
+                           font=small, fill=_mix(COL_DIM, (255, 255, 255), 0.3),
+                           anchor="ra")
 
         # Guide dots: a countdown, not decoration. On the page they are
         # separators in a scrolling list; a frame has no scroll, so here

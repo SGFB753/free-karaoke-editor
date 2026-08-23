@@ -7,6 +7,38 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.40.1
+
+**The slack learned where the singer stands.** The little margin that keeps a
+held note from being clipped at a kept line's edge could reach into the
+singer's own first word — the original bled where only they belong. The slack
+and the breath-bridge now stop dead wherever their line stands: the original
+gets its note, the singer gets their word, and the boundary is theirs.
+
+**And a cover comes by link.** The cover picker takes a pasted address next
+to the files: the picture is fetched — thirty megabytes at most — and judged
+by its bytes, not its name.
+
+**And the sliders reach their ends.** On some browsers the voice knob was
+drawn by the system, whose thumb never touches the edges — zero looked like
+ten percent. The track is the program's own now, in both the editor and the
+finished page: zero stands at the left end, a hundred at the right.
+
+**The overlap stands as a pair.** A line that runs past the start of the
+next one now keeps the main seat until the NEW line is finished — the newer
+one sings from the smaller seat below, the way a duet stands — and nothing
+jumps seats mid-line. And a quietly kept line says “sing along with the
+original” beside itself in the frame; a full-voice one carries no caption —
+the voice itself says whose line it is.
+
+**How dark the backdrop is, is yours to set.** A cover with a bright streak
+in it could swallow the not-yet-sung words whatever the fixed darkening did.
+Next to the cover buttons stands a small 🌗 knob — zero to ninety-five
+percent, sixty-six by default, the page and the video both obeying — so every
+cover can be darkened exactly as far as its own brightness demands.
+
+---
+
 ## 4.40.0
 
 **The original can stay quietly — to be sung along with.** “♪ Original” walks

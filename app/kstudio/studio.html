@@ -108,6 +108,11 @@
     cursor:help; margin-left:.2rem}
   /* Texts found by name stand above the files, tinted so they read as offers. */
   .browser .row.found2 .nm{color:var(--accent)}
+  /* the link row in the cover picker: an input living where a name would be */
+  .browser .row.urlrow input.nm{flex:1; min-width:0; font:inherit;
+    color:var(--text); background:var(--bg); border:1px solid var(--line);
+    border-radius:.3rem; padding:.25rem .45rem}
+  .browser .row.urlrow{cursor:default}
 
   .moreexp .menu{position:absolute; right:0; top:calc(100% + .3rem); z-index:30;
     display:flex; flex-direction:column; gap:.2rem; padding:.3rem;
@@ -246,6 +251,11 @@
     border-color:rgba(255,138,209,.6); color:#ffd7ee}
   /* Four swatches in a row read as one set. A label and a divider say which
      pair is responsible for what. */
+  /* the darkness knob dresses like a colour pick, but it is not one: the
+     tests and the eye both count the picks as pairs of swatches */
+  .darkknob{display:flex; align-items:center; gap:6px; font-size:0.7812rem;
+    color:var(--muted); padding-left:9px; border-left:1px solid var(--line);
+    flex:none; white-space:nowrap}
   .pick{display:flex; align-items:center; gap:6px; font-size:0.7812rem; color:var(--muted);
     padding-left:9px; border-left:1px solid var(--line);
     /* Never squeezed: under pressure the label used to shrink into the
@@ -403,9 +413,19 @@
     min-width:78px}
   .knob{display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--muted);
     background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:5px 11px}
-  input[type=range]{-webkit-appearance:none; appearance:none; height:4px; border-radius:99px;
-    background:rgba(255,255,255,.2); outline:none; width:96px}
-  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:13px; height:13px;
+  /* The track is styled as a pseudo-element of its own: styling the input
+     alone leaves some browsers drawing their native slider, whose knob never
+     reaches the ends — and 0% looked like 10%. */
+  input[type=range]{-webkit-appearance:none; appearance:none; height:14px;
+    background:transparent; outline:none; width:96px}
+  input[type=range]::-webkit-slider-runnable-track{height:4px; border-radius:99px;
+    background:rgba(255,255,255,.2)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; appearance:none;
+    width:13px; height:13px; margin-top:-4.5px;
+    border-radius:50%; background:var(--accent); cursor:pointer}
+  input[type=range]::-moz-range-track{height:4px; border-radius:99px;
+    background:rgba(255,255,255,.2)}
+  input[type=range]::-moz-range-thumb{width:13px; height:13px; border:none;
     border-radius:50%; background:var(--accent); cursor:pointer}
   .drop{position:fixed; inset:0; z-index:70; background:rgba(6,9,20,.82);
     display:grid; place-items:center; pointer-events:none}
@@ -662,6 +682,10 @@
       <button id="btnCover" data-tt="coverPickHint" data-t="coverBtn"
               title="A picture — or a frame from the clip itself — behind the lyrics, blurred">⛰ Cover</button>
       <button id="btnCoverOff" class="hide" data-tt="coverOffHint" title="Back to the plain background">⛰✕</button>
+      <span class="darkknob hide" id="grpCoverDark" data-tt="coverDarkHint"
+            title="How dark the cover backdrop is: darker reads better, lighter shows more of the picture">
+        <b>🌗</b><input type="range" id="rCoverDark" min="0" max="95" value="66"
+        style="width:64px"><b id="vCoverDark">66%</b></span>
       <button id="btnLoop" data-tt="loopHint" data-t="loop"
               title="Play the selected line over and over">↻ Loop</button>
       <button id="btnSnap" data-tt="snapHint" data-t="snapAll"

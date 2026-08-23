@@ -621,7 +621,8 @@ class Handler(BaseHTTPRequestHandler):
                                     keep_marks=body.get("keepMarks"),
                                     check_off=body.get("checkOff"),
                                     title=body.get("title"),
-                                    artist=body.get("artist"))
+                                    artist=body.get("artist"),
+                                    cover_dark=body.get("coverDark"))
                 return self._json({"ok": True, "problems": P.problems(data)})
 
             m = re.match(r"^/api/project/([^/]+)/cover$", path)
@@ -638,7 +639,17 @@ class Handler(BaseHTTPRequestHandler):
                     data["coverBg"] = False
                     P.save(folder, data)
                     return self._json({"ok": True, "cover": False})
-                src = (body.get("path") or "").strip()
+                src = (body.get("path") or body.get("url") or "").strip()
+                tmp_dl = None
+                if re.match(r"^https?://", src):
+                    # a link to a picture: fetched here, sized within reason,
+                    # and treated like any file from then on
+                    try:
+                        tmp_dl = fetch_cover_url(src)
+                        src = tmp_dl
+                    except Exception as e:
+                        return self._err(400, tr(f"could not fetch the picture: {e}",
+                                                 f"не вышло скачать картинку: {e}"))
                 if not os.path.isfile(src):
                     return self._err(400, tr("no such file", "нет такого файла"))
                 try:
@@ -646,6 +657,12 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     return self._err(400, tr(f"could not read a picture out of it: {e}",
                                              f"не вышло достать картинку: {e}"))
+                finally:
+                    if tmp_dl:
+                        try:
+                            os.remove(tmp_dl)
+                        except OSError:
+                            pass
                 data = P.load(folder)
                 data["cover"] = "cover.jpg"
                 data["coverBg"] = True
@@ -1375,7 +1392,8 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
                      colors=data.get("colors"), theme=data.get("theme"),
                      keep_spans=P.keep_spans(data),
                      cover_path=(os.path.join(folder, data["cover"])
-                                 if data.get("coverBg") and data.get("cover") else None))
+                                 if data.get("coverBg") and data.get("cover") else None),
+                     cover_dark=data.get("coverDark"))
         log(tr(f"Done: {out}", f"Готово: {out}"))
         return {"kind": "html", "path": out}
 
@@ -1429,7 +1447,8 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
                      colors=data.get("colors"), theme=data.get("theme"),
                      keep_spans=P.keep_spans(data),
                      cover_path=(os.path.join(folder, data["cover"])
-                                 if data.get("coverBg") and data.get("cover") else None))
+                                 if data.get("coverBg") and data.get("cover") else None),
+                     cover_dark=data.get("coverDark"))
         out = os.path.join(out_dir, base + ".mp4")
 
         class Args:
@@ -1484,6 +1503,37 @@ def _video_module():
     return _VIDEO_MODULE
 
 
+def fetch_cover_url(url: str) -> str:
+    """A picture from a link, into a temporary file.
+
+    Thirty megabytes is more cover than anyone prints; anything larger is
+    refused rather than swallowed. The file's own bytes decide what it is —
+    set_cover reads them, not the address.
+    """
+    import tempfile
+    import urllib.request
+    req = urllib.request.Request(url, headers={
+        "User-Agent": f"KaraokeStudio/{__version__}"})
+    fd, tmp = tempfile.mkstemp(prefix="cover_dl_",
+                               suffix=os.path.splitext(url.split("?")[0])[1] or ".img")
+    got = 0
+    with urllib.request.urlopen(req, timeout=20) as r, os.fdopen(fd, "wb") as f:
+        while True:
+            chunk = r.read(262144)
+            if not chunk:
+                break
+            got += len(chunk)
+            if got > 30 * 1024 * 1024:
+                f.close()
+                os.remove(tmp)
+                raise ValueError(tr("larger than 30 MB", "больше 30 МБ"))
+            f.write(chunk)
+    if not got:
+        os.remove(tmp)
+        raise ValueError(tr("the link answered with nothing", "по ссылке пусто"))
+    return tmp
+
+
 def set_cover(folder: str, src: str) -> None:
     """A picture — or a frame out of a clip — becomes the song's cover.
 
@@ -1494,12 +1544,16 @@ def set_cover(folder: str, src: str) -> None:
     """
     from PIL import Image
     dst = os.path.join(folder, "cover.jpg")
-    ext = os.path.splitext(src)[1].lower()
-    if ext in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
-        img = Image.open(src).convert("RGB")
+    # The bytes decide, not the name: a picture fetched from a link may carry
+    # any extension or none. Whatever Pillow cannot read is tried as a clip.
+    try:
+        img = Image.open(src)
+        img = img.convert("RGB")
         img.thumbnail((1280, 1280))
         img.save(dst, "JPEG", quality=88)
         return
+    except Exception:
+        pass
     # a video: take a frame from a third of the way in
     import subprocess as sp
     at = max(AU.duration(src) * 0.3, 1.0)
@@ -1538,7 +1592,8 @@ def still_frame(folder: str, at: float, opening: bool = False) -> bytes:
                      colors=data.get("colors"), theme=data.get("theme"),
                      keep_spans=P.keep_spans(data),
                      cover_path=(os.path.join(folder, data["cover"])
-                                 if data.get("coverBg") and data.get("cover") else None))
+                                 if data.get("coverBg") and data.get("cover") else None),
+                     cover_dark=data.get("coverDark"))
         payload = B.read_payload(page)
 
         class Args:
