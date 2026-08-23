@@ -398,7 +398,10 @@ class LineArt:
 
         rows = [words]
         self.font = font_for(text, max_w, main)
-        if main and align == "center" and len(words) > 1 \
+        # The main seat wraps, and so does the side one: a long answer in a
+        # duet used to run off the edge of the frame — its base font sat
+        # below the shrink floor, so it could not even shrink.
+        if len(words) > 1 and align in ("center", "right") \
                 and font_for(text, 10 ** 9, main).size > self.font.size:
             # It shrank to fit. Balance the words over two rows instead: the
             # break lands where the halves come out most even.
@@ -574,7 +577,10 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         if key in cache_font:
             return cache_font[key]
         f = ImageFont.truetype(font_path, size)
-        while size > 18 and f.getlength(text) > max_w:
+        # the floor scales with the seat: a side font can start BELOW a fixed
+        # floor, and then a long line simply ran off the edge, unshrunk
+        floor = max(10, min(18, size - 2))
+        while size > floor and f.getlength(text) > max_w:
             size -= 2
             f = ImageFont.truetype(font_path, size)
         cache_font[key] = f
@@ -736,15 +742,22 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         # duet — the older above, the newer smaller below — and nothing jumps
         # seats mid-line. Sung words must not vanish mid-word just because
         # the line after them has begun.
+        # The pair is found among the LEADS: a backing line starting over a
+        # runover must not break it up — with three voices sounding and two
+        # seats in the frame, the words the singer sings win, and the
+        # na-na-na waits for a free seat.
         runover = -1
-        if idx > 0 and t < lines[idx]["end"] \
-                and lines[idx - 1]["end"] > lines[idx]["start"] \
-                and not lines[idx - 1].get("backing") \
-                and not lines[idx].get("backing") \
-                and (lines[idx].get("voice") == 2) \
-                == (lines[idx - 1].get("voice") == 2):
-            runover = idx
-            idx -= 1
+        lead = idx
+        while lead > 0 and lines[lead].get("backing"):
+            lead -= 1
+        if lead > 0 and not lines[lead].get("backing") \
+                and t < max(lines[lead]["end"], lines[lead - 1]["end"]) \
+                and lines[lead - 1]["end"] > lines[lead]["start"] \
+                and not lines[lead - 1].get("backing") \
+                and (lines[lead].get("voice") == 2) \
+                == (lines[lead - 1].get("voice") == 2):
+            runover = lead
+            idx = lead - 1
 
         # The second voice can sound together with the main one. It is drawn
         # on its own row below — otherwise the two texts would overlap.
@@ -760,7 +773,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         # last line hanging lit to the end of the recording reads as a
         # frozen picture, not as an ending.
         over = t > song_end + END_HOLD
-        singing = idx >= 0 and t < lines[idx]["end"]
+        singing = idx >= 0 and (t < lines[idx]["end"]
+                                or (runover >= 0
+                                    and t < lines[runover]["end"]))
 
         duo_bottom = 0
         if not over and idx >= 0 and lines[idx].get("backing") and duo < 0:

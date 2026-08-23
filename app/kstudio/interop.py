@@ -22,7 +22,12 @@ US_TICK = 60.0 / US_BPM / 4.0
 
 
 def _line_words(ln: Dict) -> List[Dict]:
-    return [w for w in (ln.get("words") or []) if (w.get("w") or "").strip()]
+    # Sorted by their time: a hand-mangled record with words out of order
+    # would otherwise write beats that run backwards, which the singing
+    # games refuse whole.
+    return sorted((w for w in (ln.get("words") or [])
+                   if (w.get("w") or "").strip()),
+                  key=lambda w: float(w.get("t") or 0))
 
 
 def _sung_lines(data: Dict) -> List[Dict]:

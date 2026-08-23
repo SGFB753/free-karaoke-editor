@@ -1465,6 +1465,16 @@ def main():
         {"text": "x", "start": 1.0, "end": 2.0, "voice": 1,
          "words": [{"w": "{evil}\\tag", "t": 1.0, "d": 1.0}]}]}
     tricky_ass = IO.ass_text(tricky)
+    # Words shuffled out of order in a mangled record would write beats that
+    # run backwards — the singing games refuse such a file whole.
+    shuffled = {"title": "T", "lines": [
+        {"text": "x", "start": 1.0, "end": 3.0, "voice": 1,
+         "words": [{"w": "б", "t": 2.0, "d": 0.4}, {"w": "а", "t": 1.0, "d": 0.5}]}]}
+    us_sh = IO.ultrastar_text(shuffled, "a.mp3")
+    sh_beats = [int(l.split()[1]) for l in us_sh.splitlines()
+                if l.startswith(("F ", "- "))]
+    check("shuffled words leave in the order they are sung",
+          sh_beats == sorted(sh_beats), sh_beats)
     check("a word cannot smuggle subtitle tags in",
           "{evil}" not in tricky_ass and "\\tag" not in tricky_ass
           and "(evil)/tag" in tricky_ass,
@@ -1513,6 +1523,10 @@ def main():
               str(e)[:60])
     finally:
         ZF.ZipFile.infolist = real_infolist
+    # a coverDark that is not a number must not fail the save it rides in
+    rec_junk = PRJ.save_lines(with_cover, rec_c["lines"], cover_dark="no")
+    check("garbage darkness is ignored, not fatal",
+          rec_junk.get("coverDark") in (None, 30, 66, 95), rec_junk.get("coverDark"))
 
     print("\nThe aligner never hears the backing text")
     # Asked to place na-na-na BETWEEN the lead lines, a linear aligner drags

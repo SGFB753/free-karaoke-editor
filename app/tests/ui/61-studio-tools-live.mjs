@@ -229,6 +229,12 @@ ok('leaving the plain background', !pd.cover && !pd.coverBg,
 fs2.rmSync(ctmp, {recursive: true, force: true});
 
 console.log('\n--- and the song travels in one file ---');
+// a corrupt zip gets a calm sentence, not a stack trace
+const badZip = await fetch(`${API}/api/unpack`, {method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify({path: process.env.KARAOKE_SONG})});
+ok('a non-zip is refused politely', badZip.status === 400, badZip.status);
+
 const packed = await post(`/api/project/${encodeURIComponent(pid)}/pack`, {});
 ok('the song packs', !!packed.path && /\.karaoke\.zip$/.test(packed.path || ''), packed.path);
 const backIn = await post('/api/unpack', {path: packed.path});

@@ -334,8 +334,12 @@ def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,
         data["checkOff"] = [str(k) for k in check_off][:500]
     if cover_dark is not None:
         # how far the cover backdrop is darkened: covers differ, and the
-        # words must stay the brightest thing in the frame
-        data["coverDark"] = max(0, min(95, int(cover_dark)))
+        # words must stay the brightest thing in the frame. Garbage in the
+        # field must not fail the whole save the words travel in.
+        try:
+            data["coverDark"] = max(0, min(95, int(cover_dark)))
+        except (TypeError, ValueError):
+            pass
     # A name given by hand. It stands in the corner of the video and on its
     # opening card, and it is remembered as chosen: re-reading a lyrics file
     # with a “title:” header of its own must not quietly rename the song back.

@@ -7,6 +7,26 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.40.2
+
+**The pair holds until both are done.** The overlap rule watched only the
+newer line's end — and when a long line contained a short one outright, the
+short one vanished from its lower seat the moment its own end passed, mid-
+pair. The pair now stands until the later of the two ends, whichever line
+that is.
+
+**And an evening of torture found three more.** With three voices sounding —
+a lead running over a lead, a na-na-na on top — the first lead vanished
+mid-word: the pair is now found among the leads, and the backing waits for a
+free seat. A long line in the SIDE seat ran off the edge of the frame — its
+base font sat below the shrink floor, so it could not even shrink; the side
+seat wraps and shrinks now like the main one. A mangled record with words out
+of order wrote UltraStar beats that ran backwards; they leave sorted. A
+corrupt zip and a nonsense darkness value answer with a calm sentence instead
+of a stack trace.
+
+---
+
 ## 4.40.1
 
 **The slack learned where the singer stands.** The little margin that keeps a

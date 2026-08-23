@@ -417,6 +417,66 @@ def main():
           side_ink(9.0) > 15, side_ink(9.0))
     check("once the new line is done the pair breaks up",
           main_ink(11.0) < held // 2, f"{main_ink(11.0)} vs held {held}")
+    # The mirror case: the long line CONTAINS the short one — the short must
+    # keep its lower seat to the long one's end, not vanish at its own.
+    contain_song = {"colors": ["#00ff00", "#ff00ff"],
+                    "theme": {"bg": "#000000", "text": "#ffffff"},
+                    "data": {"title": "T", "duration": 16.0, "lines": [
+        {"text": "a very long line that keeps going and going", "start": 2.0,
+         "end": 11.0, "voice": 1, "words": [
+             {"w": "a very long line", "t": 2.0, "d": 4.0, "s": 4},
+             {"w": "that keeps going and going", "t": 6.0, "d": 5.0, "s": 5}]},
+        {"text": "short inside", "start": 6.0, "end": 8.0, "voice": 1,
+         "words": [{"w": "short inside", "t": 6.0, "d": 2.0, "s": 2}]}]}}
+    AO.output = os.path.join(tmp, "contain.mp4")
+    video.render(contain_song, wav6, AO.output, AO())
+    check("the contained line still sits below after its own end",
+          side_ink(9.0) > 15, side_ink(9.0))
+    check("and the long line still holds the main seat then",
+          main_ink(9.0) > 200, main_ink(9.0))
+
+    print("\nThree voices, two seats: the leads win, and the side seat wraps")
+    # A backing line starting over a runover pair used to break the pair —
+    # the first lead vanished mid-word. And a long line in the SIDE seat ran
+    # off the edge of the frame: its base font sat below the shrink floor.
+    triple = {"colors": ["#00ff00", "#ff00ff"],
+              "theme": {"bg": "#000000", "text": "#ffffff"},
+              "data": {"title": "T", "duration": 16.0, "lines": [
+        {"text": "первый лид тянется и тянется", "start": 2.0, "end": 9.0,
+         "voice": 1, "words": [
+             {"w": "первый лид", "t": 2.0, "d": 3.0, "s": 2},
+             {"w": "тянется и тянется", "t": 5.0, "d": 4.0, "s": 3}]},
+        {"text": "второй лид врывается и он очень многословный длинный не влезает",
+         "start": 7.0, "end": 12.0, "voice": 1, "words": [
+             {"w": w, "t": 7.0 + i * 0.5, "d": 0.5, "s": 1} for i, w in
+             enumerate("второй лид врывается и он очень многословный длинный не влезает".split())]},
+        {"text": "(на-на)", "start": 8.0, "end": 10.0, "voice": 2,
+         "backing": True,
+         "words": [{"w": "(на-на)", "t": 8.0, "d": 2.0, "s": 1}]}]}}
+    wav8 = tone(os.path.join(tmp, "i.wav"), 220.0, 16.0)
+    class AT3:
+        width, height, fps, crf = 640, 360, 5, 30
+        preset, font = "ultrafast", None
+        intro = False
+        start, seconds, audio, timings = 0.0, 13.0, "minus", None
+        output = os.path.join(tmp, "triple.mp4")
+    video.render(triple, wav8, AT3.output, AT3())
+    shot3 = os.path.join(tmp, "triple.png")
+    subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "8.5",
+                    "-i", AT3.output, "-frames:v", "1", shot3], check=True)
+    im8 = Image.open(shot3).convert("RGB")
+    W8, H8 = im8.size
+    def band8(y0, y1, x0=0.0):
+        return sum(1 for y in range(int(H8 * y0), int(H8 * y1))
+                   for x in range(int(W8 * x0), W8, 2)
+                   if sum(im8.getpixel((x, y))) > 90)
+    check("the first lead still holds the main seat over the na-na-na",
+          band8(0.30, 0.50) > 200, band8(0.30, 0.50))
+    check("the second lead stands below it", band8(0.52, 0.70) > 50,
+          band8(0.52, 0.70))
+    edge8 = sum(1 for y in range(int(H8 * 0.3), int(H8 * 0.75))
+                if sum(im8.getpixel((W8 - 3, y))) > 90)
+    check("and nothing runs off the frame's edge", edge8 == 0, edge8)
 
     print("\nThe frame speaks the language of the song")
     # The countdown stands among the lyrics, not among the program's menus:

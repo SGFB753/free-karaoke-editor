@@ -688,7 +688,9 @@ class Handler(BaseHTTPRequestHandler):
                     return self._err(400, tr("no such file", "нет такого файла"))
                 try:
                     folder = P.unpack(src, PROJECTS)
-                except (OSError, ValueError, KeyError) as e:
+                except Exception as e:
+                    # a corrupt zip raises its own kind — the answer is the
+                    # same calm sentence, not a stack trace
                     return self._err(400, str(e))
                 return self._json({"id": os.path.basename(folder)})
 
