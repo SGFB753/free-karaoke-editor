@@ -268,38 +268,22 @@ ok('and the untouched words kept their times',
      Math.abs(w.t - afterDots.words[k + 1].t) < 0.002),
    `${afterFix.words[lastK].t.toFixed(2)} vs ${afterDots.words[lastK].t.toFixed(2)}`);
 
-console.log('\n--- slowed listening, same pitch ---');
-// Half speed to catch mistakes while editing: time stretches, the pitch stays,
-// and the clock the editor lives by follows the slowed playback.
-await p.select('#selSpeed', '0.5');
-await sleep(200);
-const clock = async () => p.$eval('#tCur', e => {
-  const m = e.textContent.trim().match(/^(\d+):(\d+(?:\.\d+)?)/);
-  return m ? parseInt(m[1], 10) * 60 + parseFloat(m[2]) : NaN;
+console.log('\n--- the control bar holds its edges ---');
+// Slowed listening is gone: it stretched the sound while the stage kept its
+// own pace, and the scrub cursor does the job honestly. What remains must
+// stand apart — the play button and the clock on the left edge, the voice
+// knob on the right — not bunched in the middle.
+ok('the speed control is gone with the feature', !(await p.$('#selSpeed')));
+const bar = await p.evaluate(() => {
+  const f = document.querySelector('footer').getBoundingClientRect();
+  const play = document.getElementById('btnPlay').getBoundingClientRect();
+  const knob = document.getElementById('grpVoice').getBoundingClientRect();
+  return {left: play.left - f.left, right: f.right - knob.right, width: f.width};
 });
-await p.keyboard.press('Space');
-await sleep(300);
-const t1 = await clock();
-await sleep(1600);
-const t2 = await clock();
-await p.keyboard.press('Space');
-await sleep(200);
-const gained = t2 - t1;
-ok('the song moves at about half its pace', gained > 0.45 && gained < 1.2,
-   gained.toFixed(2) + ' s per 1.6 s');
-// pitch preservation is a property of the hidden players; reach them through
-// a DOM hook the app exposes for exactly this kind of look
-ok('the speed control shows the chosen rate',
-   (await p.$eval('#selSpeed', e => e.value)) === '0.5');
-await p.select('#selSpeed', '1');
-await sleep(200);
-await p.keyboard.press('Space');
-await sleep(1100);
-const t3 = await clock();
-await p.keyboard.press('Space');
-await sleep(150);
-ok('back at 1× the song runs at full pace again', t3 - t2 > 0.75,
-   (t3 - t2).toFixed(2) + ' s per 1.1 s');
+ok('the play button holds the left edge', bar.left < bar.width * 0.1,
+   JSON.stringify(bar));
+ok('and the voice knob the right one', bar.right < bar.width * 0.1,
+   JSON.stringify(bar));
 
 console.log('\n--- both duet lines light up on the stage ---');
 // The second voice sounding with the first used to sit unlit: the stage

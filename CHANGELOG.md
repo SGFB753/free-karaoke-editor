@@ -7,6 +7,21 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.39.0
+
+**Slowed listening is gone.** It stretched the sound and kept the pitch — but
+the stage lived at its own pace regardless, so the one thing it promised, a
+slow look at the words as they light up, it did not deliver. A feature that
+lies is worse than no feature: removed, together with its hidden players and
+its speed menu. The scrub cursor and a click on any line do the same work,
+honestly.
+
+**The control bar holds its edges.** The play button and the clock stand on
+the left edge, the voice knob on the right, the hint floats between — instead
+of everything bunching in one corner of the row.
+
+---
+
 ## 4.38.0
 
 **The frame preview answers three and a half times faster.** Every “▣ Frame”

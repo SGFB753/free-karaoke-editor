@@ -225,8 +225,6 @@ const STR = {
       + "does. It stays dismissed; the link under the list brings them all back.",
     ignored: "Dismissed. The link under the list brings them back.",
     restoreIgnored: n => `dismissed: ${n} — bring them back`,
-    speedHint: "Slower without changing the pitch — to catch mistakes while "
-      + "editing. Playback only: the song and the video are untouched.",
     evenWords: "≡ Even words",
     evenHint: "Re-lay the words of the selected lines by syllables, inside each "
       + "line's own span — the edges stay put. Works on locked lines too: the "
@@ -595,8 +593,6 @@ const STR = {
       + "проверке правописания. Останется скрытым; ссылка под списком вернёт все.",
     ignored: "Скрыто. Ссылка под списком вернёт обратно.",
     restoreIgnored: n => `скрыто: ${n} — вернуть`,
-    speedHint: "Медленнее без смены тона — чтобы успевать замечать косяки при "
-      + "правке. Только прослушивание: песня и ролик не меняются.",
     evenWords: "≡ Слова ровно",
     evenHint: "Переложить слова выбранных строк по слогам внутри их собственных "
       + "границ — края не двигаются. Работает и на запертых: замок защищает от "
@@ -1501,70 +1497,17 @@ window.addEventListener("beforeunload", () => {
 /* ================= audio ================= */
 let ctx=null, bufs=null, gains=null, srcs=null, audioNames=["mix"];
 let waStart=0, waOffset=0, playing=false, dur=0, voiceLevel=0, hasStems=false;
-/* Slowed listening. WebAudio buffers change pitch with speed, so at any rate
-   other than 1× playback goes through hidden <audio> elements instead: the
-   browser stretches time and keeps the pitch. Only the listening slows down —
-   the song, the timing and the video know nothing about it. */
-let rate = 1, sAud = null, sSync = 0;
-
+/* ---------- sound ---------- */
 function mediaTime(){
-  // While paused, waOffset is the truth in every mode: a seek moves it at
-  // once, and the hidden players catch up only when play is pressed.
-  if (rate !== 1 && sAud && sAud[0] && playing)
-    return Math.min(sAud[0].currentTime, dur);
+  // While paused, waOffset is the truth: a seek moves it at once.
   return playing ? Math.min(Math.max(waOffset + (ctx.currentTime - waStart), waOffset), dur)
                  : waOffset;
-}
-function slowEls(){
-  if (sAud) return sAud;
-  const names = hasStems ? ["instrumental", "vocals"] : [audioNames[0]];
-  sAud = names.map(n => {
-    const a = new Audio(`/api/project/${encodeURIComponent(pid)}/audio/${n}`);
-    a.preload = "auto";
-    // the whole point: slower, same pitch
-    a.preservesPitch = true;
-    a.mozPreservesPitch = true;
-    a.webkitPreservesPitch = true;
-    return a;
-  });
-  sAud[0].addEventListener("ended", () => { if (playing) stop(); });
-  return sAud;
-}
-function slowPlayFrom(t){
-  const els = slowEls();
-  els.forEach(a => { a.playbackRate = rate; a.currentTime = t; });
-  els.forEach(a => a.play().catch(() => {}));
-  waOffset = t; playing = true;
-  $("btnPlay").textContent = "⏸";
-  // Two elements drift apart on their own clocks: a hard nudge every few
-  // seconds keeps the voice with the backing. Fine sync belongs to 1×.
-  clearInterval(sSync);
-  if (els.length > 1)
-    sSync = setInterval(() => {
-      if (!playing || rate === 1) return clearInterval(sSync);
-      if (Math.abs(els[1].currentTime - els[0].currentTime) > 0.06)
-        els[1].currentTime = els[0].currentTime;
-    }, 3000);
-}
-function slowStop(){
-  clearInterval(sSync);
-  if (sAud) sAud.forEach(a => a.pause());
-}
-function setRate(r){
-  const was = playing, at = mediaTime();
-  if (playing) stop();
-  rate = r;
-  applyVoice();
-  if (was){ waOffset = at; play(); }
 }
 async function loadAudio(pid, tracks){
   ctx = new (window.AudioContext||window.webkitAudioContext)();
   hasStems = !!(tracks.instrumental && tracks.vocals);
   const names = hasStems ? ["instrumental","vocals"] : [Object.keys(tracks)[0]];
   audioNames = names;
-  if (sAud){ slowStop(); sAud = null; }        // another song, other tracks
-  rate = 1;
-  if ($("selSpeed")) $("selSpeed").value = "1";
   const raw = await Promise.all(names.map(n =>
     fetch(`/api/project/${encodeURIComponent(pid)}/audio/${n}`).then(r => r.arrayBuffer())));
   bufs = await Promise.all(raw.map(b => ctx.decodeAudioData(b)));
@@ -1588,14 +1531,11 @@ function playFrom(t){
 }
 function play(){ if(!bufs) return; if (ctx.state==="suspended") ctx.resume();
   if (waOffset >= dur-0.05) waOffset = 0;
-  if (rate !== 1){ slowPlayFrom(waOffset); return; }
   playFrom(waOffset); }
 function stop(){ if(!playing) return; waOffset = mediaTime(); playing=false; stopSrcs();
-  slowStop();
   $("btnPlay").textContent="▶"; }
 function seek(t){ waOffset = clamp(t,0,dur); curLine=-2;
   stillFollow();                        // the open frame moves with the song
-  if (playing && rate !== 1){ slowPlayFrom(waOffset); return; }
   if (playing) playFrom(waOffset); else stopSrcs(); }
 // On marked lines the voice always plays: that is audible here, not only in
 // the finished karaoke.
@@ -1612,10 +1552,6 @@ function inKeep(t){
 }
 function applyVoice(){
   const lvl = keepOn ? 1 : voiceLevel;
-  if (rate !== 1 && sAud){
-    sAud[0].volume = 1;
-    if (hasStems && sAud[1]) sAud[1].volume = lvl;
-  }
   if (gains){ gains[0].gain.value = 1;
     if (hasStems){
       const g = gains[1].gain;
@@ -3454,7 +3390,6 @@ function fillNoText(d){
 // Typed by hand, dragged with the mouse — one and the same thing underneath.
 $("edNoText").addEventListener("change", () => { marksFromField(); touched(); drawWave(); });
 $("chkKeepMarks").addEventListener("change", touched);
-$("selSpeed").addEventListener("change", () => setRate(parseFloat($("selSpeed").value) || 1));
 function langOf(){
   // Re-timing has no picker of its own, and the language of a song belongs to
   // the song, not to the window: read it off the text again.
