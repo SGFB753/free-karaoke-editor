@@ -1436,6 +1436,23 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
     raise ValueError(tr(f"unknown export kind: {kind}", f"неизвестный вид экспорта: {kind}"))
 
 
+_VIDEO_MODULE = None
+
+
+def _video_module():
+    """tools/video.py, loaded once. “tools” is a folder of programs, not a
+    package to import from — and the previews ask for it on every seek, so
+    re-reading the file each time would throw away its background memo too."""
+    global _VIDEO_MODULE
+    if _VIDEO_MODULE is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "video", os.path.join(ROOT, "tools", "video.py"))
+        _VIDEO_MODULE = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(_VIDEO_MODULE)
+    return _VIDEO_MODULE
+
+
 def still_frame(folder: str, at: float, opening: bool = False) -> bytes:
     """One frame of the clip as it will be, drawn now and shown at once.
 
@@ -1445,16 +1462,9 @@ def still_frame(folder: str, at: float, opening: bool = False) -> bytes:
     stands in for the karaoke audio — nothing is heard here, only its length
     is needed.
     """
-    import importlib.util
     import shutil
     import tempfile
-
-    # The same file the export runs, loaded the same way: “tools” is a folder
-    # of programs, not a package to import from.
-    spec = importlib.util.spec_from_file_location(
-        "video", os.path.join(ROOT, "tools", "video.py"))
-    video = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(video)
+    video = _video_module()
 
     data = P.load(folder)
     tracks = data.get("tracks") or {}

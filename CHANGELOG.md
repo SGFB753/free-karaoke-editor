@@ -7,6 +7,25 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.38.0
+
+**The frame preview answers three and a half times faster.** Every “▣ Frame”
+was painting its background from scratch — a gradient laid down pixel by
+pixel in Python, or a cover blurred anew — and re-reading the renderer's own
+file for good measure. The background is remembered now (and handed out as a
+copy, since the render letters the song's name straight into it), the
+gradient is drawn as a one-pixel column stretched wide — the same picture to
+the last pixel — and the renderer is loaded once. Fifty milliseconds instead
+of one hundred and eighty: scrubbing feels like scrubbing.
+
+**Two holes closed before anyone fell in.** A word carrying braces or a
+backslash — “{evil}” — would have broken every subtitle tag after it in an
+exported .ass; such characters now leave as their harmless lookalikes. And a
+packed song that claims to unpack into gigabytes is refused by its own
+manifest before a byte lands on the disk.
+
+---
+
 ## 4.37.0
 
 **The timing leaves for other worlds.** Behind the new “⇪” in the editor:

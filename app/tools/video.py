@@ -385,7 +385,27 @@ class LineArt:
         return self.word_x[-1] + self.word_w[-1]
 
 
+# The background is the same picture for every frame of a clip — and for
+# every frame the studio's preview asks for, one request at a time. Built
+# anew it costs a blur or a million pixel writes; remembered, a copy. The
+# copy matters: the render letters the song's name straight into its
+# background, and a shared image would collect one name per call.
+_BG_MEMO: dict = {}
+
+
 def make_background(W, H, cover_uri: str = ""):
+    key = (W, H, hash(cover_uri))
+    hit = _BG_MEMO.get(key)
+    if hit is not None:
+        return hit.copy()
+    img = _draw_background(W, H, cover_uri)
+    if len(_BG_MEMO) > 4:
+        _BG_MEMO.clear()
+    _BG_MEMO[key] = img
+    return img.copy()
+
+
+def _draw_background(W, H, cover_uri: str = ""):
     from PIL import Image, ImageEnhance, ImageFilter
 
     if cover_uri.startswith("data:image"):
@@ -407,14 +427,16 @@ def make_background(W, H, cover_uri: str = ""):
             return ImageEnhance.Brightness(img).enhance(0.34)
         except Exception:
             pass
-    img = Image.new("RGB", (W, H))
-    px = img.load()
+    # Every row is one colour: a single-pixel-wide column stretched to the
+    # full width says the same thing as a million pixel writes, in a
+    # thousandth of the time.
+    col = Image.new("RGB", (1, H))
+    px = col.load()
     for y in range(H):
         f = y / max(H - 1, 1)
-        row = tuple(int(BG_TOP[i] + (BG_BOTTOM[i] - BG_TOP[i]) * f) for i in range(3))
-        for x in range(W):
-            px[x, y] = row
-    return img
+        px[0, y] = tuple(int(BG_TOP[i] + (BG_BOTTOM[i] - BG_TOP[i]) * f)
+                         for i in range(3))
+    return col.resize((W, H), Image.NEAREST)
 
 
 # ---------------------------------------------------------------- render

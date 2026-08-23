@@ -1385,6 +1385,16 @@ def main():
           any(l.startswith("Dialogue") and ",Voice2," in l for l in ass.splitlines()))
     check("the lines stand in the order they are sung",
           ass.index("first") < ass.index("(na-na)") < ass.index("second"))
+    # A word carrying braces or a backslash would break every tag after it:
+    # swapped for lookalikes, the singer reads the same thing.
+    tricky = {"title": "T", "lines": [
+        {"text": "x", "start": 1.0, "end": 2.0, "voice": 1,
+         "words": [{"w": "{evil}\\tag", "t": 1.0, "d": 1.0}]}]}
+    tricky_ass = IO.ass_text(tricky)
+    check("a word cannot smuggle subtitle tags in",
+          "{evil}" not in tricky_ass and "\\tag" not in tricky_ass
+          and "(evil)/tag" in tricky_ass,
+          [l for l in tricky_ass.splitlines() if "evil" in l])
 
     print("\nA song travels in one file")
     # A project folder stands on its own but does not travel — not to another
@@ -1411,6 +1421,24 @@ def main():
     check("with the sound beside it",
           any(n.endswith((".mp3", ".wav", ".m4a", ".ogg")) for n in os.listdir(back)),
           os.listdir(back))
+    # A zip that claims to unpack into a disk's worth is not a song.
+    import zipfile as ZF
+    bomb = os.path.join(tmp, "bomb.karaoke.zip")
+    with ZF.ZipFile(bomb, "w", ZF.ZIP_DEFLATED) as z:
+        z.writestr("project.json", "{}")
+    # an honest bomb is expensive to build — the claimed size is faked instead
+    class FakeInfo:
+        file_size = 3 * 1024 ** 3
+    real_infolist = ZF.ZipFile.infolist
+    ZF.ZipFile.infolist = lambda self: [FakeInfo()]
+    try:
+        PRJ.unpack(bomb, back_root)
+        check("a zip claiming gigabytes is refused", False)
+    except ValueError as e:
+        check("a zip claiming gigabytes is refused", "MB" in str(e) or "МБ" in str(e),
+              str(e)[:60])
+    finally:
+        ZF.ZipFile.infolist = real_infolist
 
     print("\nThe aligner never hears the backing text")
     # Asked to place na-na-na BETWEEN the lead lines, a linear aligner drags

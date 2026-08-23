@@ -98,6 +98,13 @@ def _ass_colour(hex_colour: str, fallback: str) -> str:
     return f"&H00{b}{g}{r}".upper()
 
 
+def _ass_word(w: str) -> str:
+    """Braces open override tags in .ass and a backslash starts an escape:
+    a word carrying either would break every tag after it. Swapped for their
+    harmless lookalikes — the singer reads the same thing."""
+    return w.replace("{", "(").replace("}", ")").replace("\\", "/")
+
+
 def _ass_time(t: float) -> str:
     t = max(0.0, t)
     h = int(t // 3600)
@@ -155,7 +162,8 @@ def ass_text(data: Dict) -> str:
         for j, w in enumerate(words):
             until = words[j + 1]["t"] if j + 1 < len(words) else end
             cs = max(1, int(round((until - w["t"]) * 100)))
-            parts.append("{\\k%d}%s" % (cs, w["w"] + (" " if j + 1 < len(words) else "")))
+            parts.append("{\\k%d}%s" % (cs, _ass_word(w["w"])
+                                          + (" " if j + 1 < len(words) else "")))
         style = "Voice2" if (ln.get("voice") == 2 or ln.get("backing")) else "Voice1"
         rows.append((start, f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},"
                             f"{style},,0,0,0,,{''.join(parts)}"))

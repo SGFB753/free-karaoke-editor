@@ -289,6 +289,12 @@ def unpack(zip_path: str, root: str) -> str:
         if "project.json" not in names:
             raise ValueError(tr("this is not a packed song: no project.json inside",
                                 "это не упакованная песня: внутри нет project.json"))
+        # A zip states how big it claims to unpack; a claim the size of a disk
+        # is not a song. Two gigabytes holds any record with its audio.
+        told = sum(i.file_size for i in z.infolist())
+        if told > 2 * 1024 ** 3:
+            raise ValueError(tr(f"this unpacks to {told // 1024 ** 2} MB — not a song",
+                                f"это распакуется в {told // 1024 ** 2} МБ — не песня"))
         with z.open("project.json") as f:
             data = json.load(f)
         folder = os.path.join(root, slugify(data.get("title") or "song"))
