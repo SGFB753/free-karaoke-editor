@@ -117,6 +117,29 @@ if (chips.length){
   }
 }
 
+console.log('\n--- the keep button walks its circle: full, quiet, yours ---');
+// One press leaves the line to the original, another holds the original back
+// to a guide — to be sung along with — and a third gives the line back.
+await p.click('#scroll .ln');
+await sleep(300);
+const keepState = async () => {
+  await sleep(900);                     // the autosave walks to the disk
+  const d = await get('/api/project/' + encodeURIComponent(pid));
+  return {keep: !!d.lines[0].keep, soft: !!d.lines[0].keepSoft,
+          btn: await p.$eval('#btnKeep', e => e.textContent)};
+};
+await p.click('#btnKeep');
+let ks = await keepState();
+ok('one press leaves the line to the original', ks.keep && !ks.soft,
+   JSON.stringify(ks));
+await p.click('#btnKeep');
+ks = await keepState();
+ok('a second holds it back to a guide', ks.keep && ks.soft, JSON.stringify(ks));
+ok('and the button says so', /quiet|тихо/i.test(ks.btn), ks.btn);
+await p.click('#btnKeep');
+ks = await keepState();
+ok('a third gives the line back', !ks.keep && !ks.soft, JSON.stringify(ks));
+
 console.log('\n--- the timing leaves for UltraStar and the subtitles ---');
 const usJob = await finish((await post(`/api/project/${encodeURIComponent(pid)}/export`,
   {kind: 'ultrastar'})).job);
@@ -162,6 +185,35 @@ ok('the found records are offered above the files', rowsSeen.length > 0,
    JSON.stringify(rowsSeen));
 ok('and a timed one says so', rowsSeen.some(t => /разметк|timing/i.test(t)),
    JSON.stringify(rowsSeen));
+
+console.log('\n--- the cover can be given, cut from a clip, and taken away ---');
+// A song from a file on disk had nowhere to get a cover. Now any picture
+// serves — and so does a clip: a frame is cut from a third of the way in.
+const { execFileSync } = await import('child_process');
+const os2 = await import('os');
+const path2 = await import('path');
+const fs2 = await import('fs');
+const ctmp = fs2.mkdtempSync(path2.join(os2.tmpdir(), 'cover61_'));
+const clip = path2.join(ctmp, 'clip.mp4');
+execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi',
+  '-i', 'color=c=red:s=64x36:d=3', '-pix_fmt', 'yuv420p', clip]);
+const cSet = await post(`/api/project/${encodeURIComponent(pid)}/cover`, {path: clip});
+ok('a frame is cut out of the clip', cSet.ok === true && cSet.cover === true,
+   JSON.stringify(cSet));
+let pd = await get('/api/project/' + encodeURIComponent(pid));
+ok('and the song stands on it now', pd.cover === 'cover.jpg' && pd.coverBg === true,
+   `${pd.cover} / ${pd.coverBg}`);
+const stillC = Buffer.from(await (await fetch(
+  `${API}/api/project/${encodeURIComponent(pid)}/still?at=1`)).arrayBuffer());
+ok('the preview frame changed with the backdrop',
+   Buffer.compare(stillC, png) !== 0 && stillC.length > 5000, stillC.length);
+const cOff = await post(`/api/project/${encodeURIComponent(pid)}/cover`, {remove: true});
+ok('and it can be taken away', cOff.ok === true && cOff.cover === false,
+   JSON.stringify(cOff));
+pd = await get('/api/project/' + encodeURIComponent(pid));
+ok('leaving the plain background', !pd.cover && !pd.coverBg,
+   `${pd.cover} / ${pd.coverBg}`);
+fs2.rmSync(ctmp, {recursive: true, force: true});
 
 console.log('\n--- and the song travels in one file ---');
 const packed = await post(`/api/project/${encodeURIComponent(pid)}/pack`, {});

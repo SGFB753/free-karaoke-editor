@@ -238,7 +238,10 @@ try {
   if (SHOTS) await page.screenshot({path: path.join(shotDir, '5-narrow.png')});
   await firstScreen(page, 'narrow window', errs);
   const narrow = await page.evaluate(() => {
-    const btns = [...document.querySelectorAll('.tlhead button')];
+    // a button hidden on purpose (display:none until it has work to do) is
+    // not a collapsed one — only a visible button squeezed to nothing is
+    const btns = [...document.querySelectorAll('.tlhead button')]
+      .filter(b => getComputedStyle(b).display !== 'none');
     return { hidden: btns.filter(b => b.getBoundingClientRect().width < 4).length,
              tl: document.querySelector('.timeline').getBoundingClientRect().height };
   });

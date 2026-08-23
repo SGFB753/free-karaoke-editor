@@ -279,10 +279,11 @@ def main():
                   {"keep": False, "start": 6.0, "end": 8.0}],
         "keepSpans": [[10.0, 40.0], [4.8, 5.6]]}})
     check("the marked stretches are in the video's keep list",
-          any(abs(a - 10.0) < 0.01 and abs(b - 40.0) < 0.01 for a, b in got_spans),
+          any(abs(a - 10.0) < 0.01 and abs(b - 40.0) < 0.01 for a, b, _ in got_spans),
           got_spans)
     check("and a mark touching a kept line merges with it",
-          any(abs(a - 3.0) < 0.01 and abs(b - 5.6) < 0.01 for a, b in got_spans),
+          any(abs(a - (3.0 - video_mod.KEEP_PAD)) < 0.01 and abs(b - 5.6) < 0.01
+              for a, b, _ in got_spans),
           got_spans)
     check("a broken pair is dropped, not crashed on",
           video_mod.keep_spans({"data": {"keepSpans": [["x"], None, [1.0]]}}) == [])
@@ -425,14 +426,24 @@ def check_video(tmp):
                          "vocals": os.path.basename(voc)},
                "data": {"lines": [
                    {"start": 1.0, "end": 3.0, "keep": False},
-                   {"start": 5.0, "end": 8.0, "keep": True}]}}
+                   {"start": 5.0, "end": 8.0, "keep": True},
+                   # …and a stretch to be sung along with: the original held
+                   # back to a guide, not a soloist
+                   {"start": 8.6, "end": 9.6, "keep": True, "keepSoft": True}]}}
     spans = video.keep_spans(payload)
-    check("the stretch with the original was found", spans == [(5.0, 8.0)], str(spans))
+    P0 = video.KEEP_PAD
+    check("the stretches with the original were found, each with its loudness",
+          spans == [(5.0 - P0, 8.0 + P0, 1.0),
+                    (8.6 - P0, 9.6 + P0, video.SOFT_KEEP)], str(spans))
     wav = video.extract_audio(payload, os.path.join(tmp, "page.html"), tmp, "minus")
     loud_in = rms(wav, 5.5, 7.5, 660.0)
     loud_out = rms(wav, 1.5, 2.5, 660.0)
+    loud_soft = rms(wav, 8.7, 9.5, 660.0)
     check("the voice is heard on the marked stretch and nowhere else",
           loud_in > loud_out * 4, f"inside {loud_in:.4f}, outside {loud_out:.4f}")
+    check("and the unison stretch carries it quietly — a guide, not a soloist",
+          loud_out * 4 < loud_soft < loud_in * 0.6,
+          f"soft {loud_soft:.4f} vs full {loud_in:.4f}")
 
 
 def make_two_tone(path, freq, dur=10.0, sr=22050):

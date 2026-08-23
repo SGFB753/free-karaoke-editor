@@ -298,6 +298,7 @@ const STR = {
     undo: "Undo", tapMode: "Tap along", savePage: "⬇ Save page with edits",
     resetAll: "Reset everything", noLyrics: "No lyrics",
     sungByOriginal: "original sings",
+    sungTogether: "sing along with the original",
     langHint: "Interface language", langSwitched: "Interface language: Русский",
     voiceHint: "0% — instrumental only, 100% — original",
     offsetHint: "Shift the lyrics against the music",
@@ -339,6 +340,7 @@ const STR = {
     savePage: "⬇ Сохранить страницу с правками",
     resetAll: "Сбросить всё", noLyrics: "Текст не задан",
     sungByOriginal: "поёт оригинал",
+    sungTogether: "в унисон с оригиналом",
     langHint: "Язык надписей", langSwitched: "Язык надписей: English",
     voiceHint: "0 % — чистая минусовка, 100 % — оригинал",
     offsetHint: "Сдвиг текста относительно музыки",
@@ -520,7 +522,7 @@ function build(){
     if (ln.keep){
       const kp = document.createElement("i");
       kp.className = "kp";
-      kp.textContent = T.sungByOriginal;
+      kp.textContent = ln.keepSoft ? T.sungTogether : T.sungByOriginal;
       el.appendChild(kp);
     }
     scroll.appendChild(el);
@@ -590,8 +592,8 @@ function tick(){
   refreshTarget();
 
   // We entered a stretch with the original voice, or left it.
-  const kp = stems && !tapping && inKeep(t);
-  if (kp !== keepOn){ keepOn = kp; applyVocal(); document.body.classList.toggle("keeping", kp); }
+  const kp = stems && !tapping ? inKeep(t) : 0;
+  if (kp !== keepOn){ keepOn = kp; applyVocal(); document.body.classList.toggle("keeping", kp > 0); }
 
   // Words are lit in every sounding line, not only in the leading one.
   if (!tapping) act.forEach(k => {
@@ -876,24 +878,45 @@ initWebAudio().catch(() => {
 // Stretches where the recorded voice is kept on purpose: backing vocals,
 // speech, a moment that matters to the story. They are not yours to sing — the
 // original plays there whatever the “Voice” slider says.
-let keepOn = false;
+let keepOn = 0;                 // how loud the original stays right now
 function ramp(param, v){
   if (param.setTargetAtTime) param.setTargetAtTime(v, ctx.currentTime, 0.03);
   else param.value = v;
 }
 function inKeep(t){
-  for (let i = 0; i < lines.length; i++)
-    if (lines[i].keep && lines[i].start - 0.12 <= t && t < lines[i].end + 0.12) return true;
+  // Returns how loud the original stays here: 1 on a line that is not yours
+  // to sing, 0.35 on one to be sung along with — a guide, not a soloist —
+  // and 0 everywhere else. The breath between two kept lines counts as kept
+  // too, when nobody's own line stands in it: the ends of lines are the
+  // model's guesses, and muting the guess chewed a held word in half.
+  let best = 0, humanAt = false, prevEnd = -1, prevLvl = 0, bridge = 0;
+  for (let i = 0; i < lines.length; i++){
+    const ln = lines[i];
+    if (ln.keep){
+      const lvl = ln.keepSoft ? 0.35 : 1;
+      if (ln.start - 0.25 <= t && t < ln.end + 0.25) best = Math.max(best, lvl);
+      if (ln.end <= t && t - ln.end <= 2.0){ prevEnd = ln.end; prevLvl = lvl; }
+      if (t < ln.start && ln.start - t <= 2.0 && prevEnd >= 0
+          && ln.start - prevEnd <= 2.0)
+        bridge = Math.max(bridge, Math.max(prevLvl, lvl));
+    } else if (ln.words && ln.words.length && !ln.backing
+               && ln.start <= t && t < ln.end)
+      humanAt = true;                   // the singer's own line: no bridging
+  }
+  if (!humanAt) best = Math.max(best, bridge);
+  if (best >= 1) return 1;
   // A stretch with no words in it: a vocalise, a scream, a hummed intro. There
   // is nothing to sing there, so the original stays — otherwise the song has a
   // hole in it exactly where it is loudest.
   const spans = D.keepSpans || [];
   for (let i = 0; i < spans.length; i++)
-    if (spans[i][0] - 0.12 <= t && t < spans[i][1] + 0.12) return true;
-  return false;
+    if (spans[i][0] - 0.12 <= t && t < spans[i][1] + 0.12) return 1;
+  return best;
 }
 function applyVocal(){
-  const lvl = keepOn ? 1 : vocalLevel;
+  // A kept stretch guarantees at least its own level; a listener who set the
+  // voice slider higher keeps what they asked for.
+  const lvl = keepOn ? Math.max(keepOn, vocalLevel) : vocalLevel;
   if (engine === "wa" && gains){
     gains[0].gain.value = 1;
     // Smoothly: a jump in level at a line boundary is heard as a click.

@@ -308,10 +308,33 @@ def main():
         {"start": 9.0, "end": 9.0, "keep": True},   # пустая — не кусок
     ]}}
     spans = _vid.keep_spans(pay)
+    P0 = _vid.KEEP_PAD
     check("adjacent marked lines are glued into one stretch",
-          spans == [(3.0, 7.0), (20.0, 22.0)], str(spans))
+          spans == [(3.0 - P0, 7.0 + P0, 1.0), (20.0 - P0, 22.0 + P0, 1.0)],
+          str(spans))
     check("a line with no length is not a stretch",
-          all(b > a for a, b in spans), str(spans))
+          all(b > a for a, b, _ in spans), str(spans))
+    # …and stretches at different loudness are not glued: a full-voice line
+    # and a sing-along one next to it keep their own levels.
+    mixed = _vid.keep_spans({"data": {"lines": [
+        {"start": 3.0, "end": 5.0, "keep": True},
+        {"start": 5.1, "end": 7.0, "keep": True, "keepSoft": True}]}})
+    check("a quiet keep is not glued to a loud one",
+          [lv for _, _, lv in mixed] == [1.0, _vid.SOFT_KEEP], str(mixed))
+    # The breath between two kept lines is kept with them — the ends of lines
+    # are the model's guesses, and muting the guess chewed a held word in
+    # half. Unless the singer's own line stands in the breath: that mute is
+    # the whole point.
+    breath = _vid.keep_spans({"data": {"lines": [
+        {"start": 10.0, "end": 12.0, "keep": True, "words": [1]},
+        {"start": 12.8, "end": 15.0, "keep": True, "words": [1]}]}})
+    check("a breath between kept lines is kept with them",
+          len(breath) == 1 and breath[0][0] < 10 and breath[0][1] > 15, breath)
+    busy = _vid.keep_spans({"data": {"lines": [
+        {"start": 10.0, "end": 12.0, "keep": True, "words": [1]},
+        {"start": 12.1, "end": 12.7, "words": [1]},
+        {"start": 12.8, "end": 15.0, "keep": True, "words": [1]}]}})
+    check("but not across the singer's own line", len(busy) == 2, busy)
     check("without marks there are no stretches", _vid.keep_spans({"data": {"lines": [{"start": 0, "end": 2}]}}) == [])
 
     print("\nSettings: a colour is not a comment")
@@ -1333,6 +1356,37 @@ def main():
                  "energy", embed=False)
     check("a page without one carries nothing",
           BLD.read_payload(plain_c).get("cover") == "")
+
+    print("\nThe original's own lines live inside the marks")
+    # An intro sung by the artist: its lines are marked “♪ Original” AND the
+    # intro is a “no words here” stretch. The mark passes used to expel those
+    # lines — and the kept voice went with them, so the intro fell silent.
+    kl = L.parse("интро говорит оригинал\nа это поёт человек\n")
+    kl.lines[0].start, kl.lines[0].end, kl.lines[0].keep = 1.0, 5.0, True
+    for i, w in enumerate(kl.lines[0].words):
+        w.start, w.end = 1.0 + i, 1.9 + i
+    kl.lines[1].start, kl.lines[1].end = 8.0, 12.0
+    for i, w in enumerate(kl.lines[1].words):
+        w.start, w.end = 8.0 + i, 8.9 + i
+    A.enforce_marks(kl, [(0.0, 6.0)], 24.0)
+    A.clip_to_marks(kl, [(0.0, 6.0)])
+    check("a kept line stays in the marked intro",
+          kl.lines[0].start == 1.0 and kl.lines[0].end == 5.0,
+          (kl.lines[0].start, kl.lines[0].end))
+    check("while an ordinary line is still kept out",
+          kl.lines[1].start >= 6.0, kl.lines[1].start)
+
+    # And a re-timing must not hand the original's lines back to the singer:
+    # the flag survives, like a lock — the fresh times stay the model's.
+    old_lines = [{"text": "a", "keep": True, "keepSoft": True, "start": 1.0},
+                 {"text": "b", "start": 8.0}]
+    fresh_lines = [{"text": "a", "start": 1.2}, {"text": "b", "start": 8.1}]
+    PRJ.keep_locked(old_lines, fresh_lines)
+    check("the keep marks survive a re-timing",
+          fresh_lines[0].get("keep") is True and fresh_lines[0].get("keepSoft") is True
+          and fresh_lines[0]["start"] == 1.2, fresh_lines[0])
+    check("and lines never marked stay unmarked",
+          not fresh_lines[1].get("keep"), fresh_lines[1])
 
     print("\nThe timing speaks UltraStar and .ass")
     # Months of timing work should not be locked into one player: the same

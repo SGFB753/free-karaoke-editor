@@ -407,16 +407,26 @@ def keep_locked(old: List[Dict], fresh: List[Dict], log=_noop) -> int:
     line seven, and silently keeping its old time would be a lie.
     """
     locked = [i for i, ln in enumerate(old or []) if ln.get("lock")]
-    if not locked:
+    kept = [i for i, ln in enumerate(old or []) if ln.get("keep")]
+    if not locked and not kept:
         return 0
     if len(old) != len(fresh):
-        log(tr(f"  the locks on {len(locked)} lines were dropped: the text now has "
-               f"{len(fresh)} lines instead of {len(old)}, so they are not the same lines",
-               f"  замки с {len(locked)} строк сняты: в тексте теперь {len(fresh)} строк "
-               f"вместо {len(old)}, это уже не те же самые строки"))
+        if locked:
+            log(tr(f"  the locks on {len(locked)} lines were dropped: the text now has "
+                   f"{len(fresh)} lines instead of {len(old)}, so they are not the same lines",
+                   f"  замки с {len(locked)} строк сняты: в тексте теперь {len(fresh)} строк "
+                   f"вместо {len(old)}, это уже не те же самые строки"))
         return 0
     for i in locked:
         fresh[i] = dict(old[i])
+    # “♪ Original” marks survive too — a re-timing must not quietly hand the
+    # original's lines back to the singer. The flag carries over; the fresh
+    # times stay, since the model just laid them anew.
+    for i in kept:
+        if i not in locked:
+            fresh[i]["keep"] = True
+            if old[i].get("keepSoft"):
+                fresh[i]["keepSoft"] = True
     log(tr(f"  lines left as they were, locked: {len(locked)}",
            f"  строк оставлено как были, они заперты: {len(locked)}"))
     return len(locked)

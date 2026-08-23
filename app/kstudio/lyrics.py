@@ -153,6 +153,7 @@ class Line:
     backing: bool = False              # whole line in brackets — backing vocals
     voice: int = 1                     # 1 or 2: the second voice gets its own colour
     keep: bool = False                 # keep the original voice on this stretch
+    keep_soft: bool = False            # …but quietly, to be sung along with
     lock: bool = False                 # put right by hand: re-timing leaves it alone
     # split off the tail of the line above: a duet with it, not a line after it.
     # Not saved with the song — re-parsing the text derives it again.
@@ -179,6 +180,7 @@ class Line:
             "backing": self.backing,
             "voice": self.voice,
             "keep": self.keep,
+            "keepSoft": self.keep_soft,
             "lock": self.lock,
             "start": round(self.start or 0.0, 3),
             "end": round(self.end or 0.0, 3),

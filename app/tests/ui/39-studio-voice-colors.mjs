@@ -95,8 +95,13 @@ ok('a mark appeared in the text',
    doc.querySelectorAll('#scroll .ln')[1].textContent.slice(-30));
 await sleep(900);
 ok('the mark was written to disk', (await proj()).lines[1].keep === true);
+// The button walks a circle now: full voice → quiet, to sing along → off.
 click("btnKeep"); await sleep(900);
-ok('and it can be taken off', !(await proj()).lines[1].keep);
+const soft = (await proj()).lines[1];
+ok('a second press holds the original back to a guide',
+   soft.keep === true && soft.keepSoft === true, JSON.stringify(soft.keep) + '/' + JSON.stringify(soft.keepSoft));
+click("btnKeep"); await sleep(900);
+ok('and a third takes it off', !(await proj()).lines[1].keep);
 ok('the mark left the text',
    !/поёт оригинал/.test(doc.querySelectorAll('#scroll .ln')[1].textContent));
 

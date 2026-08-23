@@ -279,6 +279,96 @@ def main():
     check("and the one after that is present but fainter",
           0 < next2b < nextb, f"{next2b} vs {nextb}")
 
+    print("\nA long line wraps instead of shrinking")
+    # The line about the shown video shrank to letters read only from the
+    # front row. It wraps onto a second row now — split between words — and
+    # the sweep lights row after row; everything below yields.
+    long_text = ("a line so long that it can never be laid out in one row "
+                 "of a frame this size without shrinking away")
+    lws = long_text.split()
+    wrap_song = {"colors": ["#00ff00", "#ff00ff"],
+                 "theme": {"bg": "#000000", "text": "#ffffff"},
+                 "data": {"title": "T", "duration": 16.0, "lines": [
+        {"text": long_text, "start": 2.0, "end": 10.0, "voice": 1,
+         "words": [{"w": w, "t": 2.0 + i * 8.0 / len(lws), "d": 8.0 / len(lws),
+                    "s": 1} for i, w in enumerate(lws)]},
+        {"text": "short next", "start": 12.0, "end": 14.0, "voice": 1,
+         "words": [{"w": "short next", "t": 12.0, "d": 2.0, "s": 2}]}]}}
+    wav7 = tone(os.path.join(tmp, "g.wav"), 220.0, 16.0)
+    class AW:
+        width, height, fps, crf = 640, 360, 5, 30
+        preset, font = "ultrafast", None
+        intro = False
+        start, seconds, audio, timings = 0.0, 12.0, "minus", None
+        output = os.path.join(tmp, "wrap.mp4")
+    video.render(wrap_song, wav7, AW.output, AW())
+    shotw = os.path.join(tmp, "wrap.png")
+    subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "6.0", "-i", AW.output,
+                    "-frames:v", "1", shotw], check=True)
+    imw = Image.open(shotw).convert("RGB")
+    Ww, Hw = imw.size
+    def rows_with_ink(y0, y1, lit=False):
+        got = set()
+        for y in range(int(Hw * y0), int(Hw * y1)):
+            for x in range(0, Ww, 2):
+                r, g, b = imw.getpixel((x, y))
+                if (g > 120 and r < 90 and b < 90) if lit else (r + g + b > 90):
+                    got.add(y)
+                    break
+        return sorted(got)
+    seat = rows_with_ink(0.30, 0.60)
+    check("the long line is drawn", len(seat) > 6, len(seat))
+    breaks = sum(1 for a, b in zip(seat, seat[1:]) if b - a > 3)
+    check("in two rows, with clear air between them", breaks >= 1,
+          f"{len(seat)} ink rows, {breaks} gaps")
+    # halfway through the line the first row is already lit
+    lit_rows = rows_with_ink(0.30, 0.60, lit=True)
+    check("and the sweep has lit the upper row by mid-line",
+          lit_rows and lit_rows[0] == seat[0], f"lit from {lit_rows[:1]}, seat from {seat[:1]}")
+    # nothing runs off the right edge any more
+    edge = sum(1 for y in range(int(Hw*0.3), int(Hw*0.6))
+               if sum(imw.getpixel((Ww - 4, y))) > 90)
+    check("nothing runs off the edge of the frame", edge == 0, edge)
+
+    print("\nAn overlapping line leaves when it is done, not when the next begins")
+    # Line 39 dragged its last word past the start of line 40 — and vanished
+    # mid-word the moment 40 began. The earlier line now holds the main seat
+    # to its own end; the next one waits below, where it already stood.
+    overlap_song = {"colors": ["#00ff00", "#ff00ff"],
+                    "theme": {"bg": "#000000", "text": "#ffffff"},
+                    "data": {"title": "T", "duration": 16.0, "lines": [
+        {"text": "a very long first line that drags on", "start": 2.0, "end": 8.0,
+         "voice": 1, "words": [
+             {"w": "a", "t": 2.0, "d": 0.5, "s": 1},
+             {"w": "very", "t": 2.5, "d": 0.5, "s": 1},
+             {"w": "long first line that", "t": 3.0, "d": 2.0, "s": 5},
+             {"w": "drags on", "t": 5.0, "d": 3.0, "s": 2}]},
+        {"text": "tiny", "start": 7.0, "end": 10.0, "voice": 1,
+         "words": [{"w": "tiny", "t": 7.0, "d": 3.0, "s": 1}]}]}}
+    wav6 = tone(os.path.join(tmp, "f.wav"), 220.0, 16.0)
+    class AO:
+        width, height, fps, crf = 640, 360, 5, 30
+        preset, font = "ultrafast", None
+        intro = False
+        start, seconds, audio, timings = 0.0, 12.0, "minus", None
+        output = os.path.join(tmp, "overlap.mp4")
+    video.render(overlap_song, wav6, AO.output, AO())
+
+    def main_ink(at):
+        shot = os.path.join(tmp, f"ov-{at}.png")
+        subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", str(at),
+                        "-i", AO.output, "-frames:v", "1", shot], check=True)
+        imv = Image.open(shot).convert("RGB")
+        Wv, Hv = imv.size
+        return sum(1 for y in range(int(Hv * 0.38), int(Hv * 0.50))
+                   for x in range(0, Wv, 2) if sum(imv.getpixel((x, y))) > 90)
+    inside = main_ink(7.5)        # both sound: the long one must still hold
+    after = main_ink(9.0)         # the long one ended: the short one is up
+    check("during the overlap the long line still holds the main seat",
+          inside > after * 2, f"overlap {inside}, after {after}")
+    check("and the next line takes it once the earlier is done",
+          after > 20, after)
+
     print("\nThe frame speaks the language of the song")
     # The countdown stands among the lyrics, not among the program's menus:
     # “END” over a Russian song is somebody else's caption pasted on.

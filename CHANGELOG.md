@@ -7,6 +7,48 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.40.0
+
+**The original can stay quietly — to be sung along with.** “♪ Original” walks
+a circle now: one press leaves the line to the original at full voice, a
+second holds it back to a guide — thirty-five percent, the same level as the
+“instrumental + quiet vocal” mode — for the lines meant to be sung in unison
+with the artist, and a third gives the line back to you. The page, the editor
+and the MP4 all honour the level; the line's tag says which of the two it is.
+
+**An overlapping line leaves when it is done.** A line whose last word dragged
+past the start of the next one vanished from the video mid-word the moment
+the next began. It now holds the main seat to its own end — the next line
+waits below, in the queue, where it already stood.
+
+**A long line wraps instead of shrinking.** A line too wide for the frame
+used to shrink until it fit — down to letters read only from the front row.
+It wraps onto a second row now, split between words and balanced, and the
+sweep lights row after row; everything below yields to the taller line. The
+font gives way only when even two rows cannot hold it.
+
+**The cover is yours to change.** A song from a file on disk had nowhere to
+get a cover, and one from a link had no way to swap it. “⛰ Cover” in the
+editor takes any picture — or the clip itself: a frame is cut from a third of
+the way in, past the black lead-in. One more press takes it away.
+
+**And the original's own lines live inside the marks.** An intro sung by the
+artist — its lines marked “♪ Original”, the stretch marked as holding no
+words — used to be expelled from the stretch by the mark passes, and the kept
+voice went with it: the intro fell silent. A kept line now stands wherever
+the original sings, the marks notwithstanding, and the “♪” marks survive a
+re-timing the way locks do.
+
+**A held word is no longer chewed in half.** The ends of kept lines are the
+model's guesses, and the voice they guard is real: between two “♪ Original”
+lines the mute used to fall exactly where a note was held across the breath —
+the sound dropped and came back mid-word. Kept stretches now carry a little
+slack at the edges, and the breath between two kept lines stays kept — unless
+your own line stands in it, which is exactly where the mute belongs. The
+page, the editor and the MP4 follow the same rule.
+
+---
+
 ## 4.39.0
 
 **Slowed listening is gone.** It stretched the sound and kept the pitch — but

@@ -183,6 +183,9 @@ are offered as “no words here” marks with one press. And “⇩ Pack” in t
 editor puts the whole song into one `.karaoke.zip`, which “Open a packed
 song” restores on any other computer.
 
+The cover can also be set or changed later — “⛰ Cover” in the editor takes
+any picture, or cuts a frame out of a clip you point it at.
+
 The clip's cover comes along with the sound. A checkbox appears next to the
 found lyrics — leave it on, and the cover lies behind the words on the page
 and in the video, blurred and dimmed so the text stays the brightest thing in
@@ -436,7 +439,10 @@ line is wholly in round brackets):
 **`♪ Original`** marks a line you are not meant to sing — backing vocals,
 speech, a bit that matters to the story. The original voice comes back exactly
 there, whatever the Voice slider says, and fades out again at the end of the
-stretch. In the MP4 the same stretch is mixed with the vocal.
+stretch. In the MP4 the same stretch is mixed with the vocal. Pressed again,
+the same button holds the original back to a quiet guide — for lines meant to
+be sung **along with** the artist, in unison; a third press gives the line
+back to you.
 
 Colours are the four swatches on the timeline: the first pair is the
 highlight (main voice, second voice), the second is the page look (background

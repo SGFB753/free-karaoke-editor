@@ -225,34 +225,63 @@ def pips_lit(gap: float, left: float) -> int:
 
 
 # ---------------------------------------------------------------- audio
-def keep_spans(payload: dict) -> list:
-    """Stretches where the original voice is deliberately kept.
+# The quiet keep: the original voice held back to a guide, to be sung along
+# with — the same level the “instrumental + quiet vocal” mode uses.
+SOFT_KEEP = 0.35
+# The edges of a kept line are the model's guesses, and the voice they guard
+# is real: a little slack on each side keeps a held note from being clipped.
+KEEP_PAD = 0.25
+# Two kept lines with a breath between them: the original plainly sings on
+# through it, and muting the breath chewed a word in half. Glued — unless the
+# person's own line stands in the gap, which is exactly where muting belongs.
+KEEP_GLUE = 2.0
 
-    Two sources say so: “♪ Original” on a line, and the stretches marked as
-    holding no words — a vocalise has nothing to sing over, and muting it
-    would put a hole in the video where the song is loudest.
+
+def keep_spans(payload: dict) -> list:
+    """Stretches where the original voice is deliberately kept, with how loud.
+
+    Two sources say so: “♪ Original” on a line — at full voice, or held back
+    to a guide when the line is to be sung along with — and the stretches
+    marked as holding no words, where a vocalise has nothing to sing over and
+    muting it would put a hole in the video. Returns (start, end, level).
     """
     data = payload.get("data") or {}
+    sung = [(float(ln.get("start") or 0), float(ln.get("end") or 0))
+            for ln in data.get("lines") or []
+            if not ln.get("keep") and ln.get("words")]
+
+    def somebody_sings(a, b):
+        return any(min(e, b) - max(s, a) > 0.05 for s, e in sung)
+
     out = []
     for ln in data.get("lines") or []:
         if ln.get("keep"):
-            out.append((float(ln.get("start") or 0), float(ln.get("end") or 0)))
+            a = float(ln.get("start") or 0)
+            b = float(ln.get("end") or 0)
+            if b <= a:
+                continue              # no length — nothing to keep, pad or not
+            out.append((max(0.0, a - KEEP_PAD), b + KEEP_PAD,
+                        SOFT_KEEP if ln.get("keepSoft") else 1.0))
     for pair in data.get("keepSpans") or []:
         try:
             a, b = float(pair[0]), float(pair[1])
         except (TypeError, ValueError, IndexError):
             continue
-        out.append((a, b))
+        out.append((a, b, 1.0))
     out.sort()
     merged = []
-    for a, b in out:
+    for a, b, lv in out:
         if b <= a:
             continue
-        if merged and a - merged[-1][1] < 0.35:      # adjacent lines make one stretch
+        # adjacent stretches at the same loudness make one stretch — across a
+        # short breath too, as long as nobody else sings in it
+        if merged and lv == merged[-1][2] \
+                and a - merged[-1][1] <= KEEP_GLUE \
+                and not somebody_sings(merged[-1][1], a):
             merged[-1][1] = max(merged[-1][1], b)
         else:
-            merged.append([a, b])
-    return [(a, b) for a, b in merged]
+            merged.append([a, b, lv])
+    return [(a, b, lv) for a, b, lv in merged]
 
 
 def extract_audio(payload: dict, html_path: str, tmp: str, mode: str) -> str:
@@ -281,21 +310,33 @@ def extract_audio(payload: dict, html_path: str, tmp: str, mode: str) -> str:
     if mode == "minus":
         spans = keep_spans(payload)
         if spans and instr and voc:
-            # On marked lines the voice must stay: backing vocals, speech, a bit
-            # that matters to the story. Everywhere else the vocal is muted.
-            # volume's `enable` works along the timeline: where the filter is off,
-            # the audio passes through untouched.
-            # The commas inside the expression are escaped for ffmpeg, not Python.
-            cond = "+".join("between(t\\,%.3f\\,%.3f)" % (a, b) for a, b in spans)
-            total = sum(b - a for a, b in spans)
+            # On marked lines the voice must stay: at full where it is not
+            # yours to sing, held back to a guide where you sing along with it.
+            # Everywhere else the vocal is muted. volume's `enable` works along
+            # the timeline: where the filter is off, audio passes untouched.
+            # The commas inside the expressions are escaped for ffmpeg.
+            cond = "+".join("between(t\\,%.3f\\,%.3f)" % (a, b)
+                            for a, b, _ in spans)
+            soft = [(a, b) for a, b, lv in spans if lv < 1.0]
+            chain = ""
+            if soft:
+                soft_cond = "+".join("between(t\\,%.3f\\,%.3f)" % (a, b)
+                                     for a, b in soft)
+                chain = f"volume={SOFT_KEEP}:enable='{soft_cond}',"
+            total = sum(b - a for a, b, _ in spans)
+            quiet_n = len(soft)
             print(tr(f"Video audio: instrumental, the original voice kept on "
-                     f"{len(spans)} stretches ({total:.1f} s)",
+                     f"{len(spans)} stretches ({total:.1f} s"
+                     + (f", {quiet_n} of them quiet, to sing along" if quiet_n else "")
+                     + ")",
                      f"Звук ролика: минусовка, оригинальный голос оставлен "
-                     f"на {len(spans)} кусках ({total:.1f} с)"))
+                     f"на {len(spans)} кусках ({total:.1f} с"
+                     + (f", из них {quiet_n} потише — петь вместе" if quiet_n else "")
+                     + ")"))
             p = subprocess.run(
                 [AU.ffmpeg(), "-y", "-v", "error", "-i", instr, "-i", voc,
                  "-filter_complex",
-                 f"[1:a]volume=0:enable='not({cond})'[v];"
+                 f"[1:a]{chain}volume=0:enable='not({cond})'[v];"
                  f"[0:a][v]amix=inputs=2:normalize=0[a]",
                  "-map", "[a]", "-c:a", "pcm_s16le", out],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -335,30 +376,65 @@ def extract_audio(payload: dict, html_path: str, tmp: str, mode: str) -> str:
 
 # ---------------------------------------------------------------- layout
 class LineArt:
-    """Prepared images of a line: dim and lit, plus the word positions."""
+    """Prepared images of a line: dim and lit, plus the word positions.
+
+    A line too long for the frame used to shrink until it fit — down to
+    letters read only from the front row. The main line now wraps instead:
+    two rows at most, split between words, never inside one; the font gives
+    way only when even two rows cannot hold it."""
 
     def __init__(self, line, font_for, width, margin, main=True, align="center"):
         from PIL import Image, ImageDraw
         words = [w["w"] for w in line["words"]] or [line["text"]]
         text = " ".join(words)
-        self.font = font_for(text, width - 2 * margin, main)
-        asc, desc = self.font.getmetrics()
-        self.h = asc + desc + 8
+        max_w = width - 2 * margin
 
-        total = self.font.getlength(text)
-        # the backing sits to the right, tucked under its lead like a reply
-        x0 = (width - margin - total) if align == "right" else (width - total) / 2
-        x0 = max(x0, margin)
-        self.word_x, self.word_w = [], []
-        prefix = ""
-        for i, wd in enumerate(words):
-            self.word_x.append(x0 + self.font.getlength(prefix))
-            prefix += wd + (" " if i < len(words) - 1 else "")
-            self.word_w.append(x0 + self.font.getlength(prefix) - self.word_x[-1])
+        rows = [words]
+        self.font = font_for(text, max_w, main)
+        if main and align == "center" and len(words) > 1 \
+                and font_for(text, 10 ** 9, main).size > self.font.size:
+            # It shrank to fit. Balance the words over two rows instead: the
+            # break lands where the halves come out most even.
+            probe = font_for(text, 10 ** 9, main)
+            best, best_diff = 1, None
+            for k in range(1, len(words)):
+                a = probe.getlength(" ".join(words[:k]))
+                b = probe.getlength(" ".join(words[k:]))
+                if best_diff is None or abs(a - b) < best_diff:
+                    best, best_diff = k, abs(a - b)
+            rows = [words[:best], words[best:]]
+            longest = max((" ".join(r) for r in rows),
+                          key=lambda rt: probe.getlength(rt))
+            self.font = font_for(longest, max_w, main)
+
+        asc, desc = self.font.getmetrics()
+        self.row_h = asc + desc + 8
+        self.h = self.row_h * len(rows)
+
+        self.word_x, self.word_w, self.word_row = [], [], []
+        for r, row in enumerate(rows):
+            row_text = " ".join(row)
+            total = self.font.getlength(row_text)
+            # the backing sits to the right, tucked under its lead like a reply
+            x0 = (width - margin - total) if align == "right" else (width - total) / 2
+            x0 = max(x0, margin)
+            prefix = ""
+            for i, wd in enumerate(row):
+                self.word_x.append(x0 + self.font.getlength(prefix))
+                prefix += wd + (" " if i < len(row) - 1 else "")
+                self.word_w.append(x0 + self.font.getlength(prefix) - self.word_x[-1])
+                self.word_row.append(r)
 
         def draw(color):
             img = Image.new("RGBA", (width, self.h), (0, 0, 0, 0))
-            ImageDraw.Draw(img).text((x0, 4), text, font=self.font, fill=color + (255,))
+            d = ImageDraw.Draw(img)
+            for r, row in enumerate(rows):
+                row_text = " ".join(row)
+                total = self.font.getlength(row_text)
+                x0 = (width - margin - total) if align == "right" \
+                    else (width - total) / 2
+                d.text((max(x0, margin), 4 + r * self.row_h), row_text,
+                       font=self.font, fill=color + (255,))
             return img
 
         self.dim = draw(COL_DIM if main else COL_SIDE)
@@ -370,19 +446,36 @@ class LineArt:
         # (drawn dim ahead of their time) never need a hot layer
         self.hot = draw(hot) if (main or align == "right") else None
 
-    def fill_x(self, line, t) -> float:
-        """How far the line is filled in at moment t."""
+    def _fill_at(self, line, t):
+        """(row, x) of the sweep at moment t."""
         ws = line["words"]
         if not ws or t < ws[0]["t"]:
-            return 0.0
+            return 0, 0.0
         for i, w in enumerate(ws):
+            if i >= len(self.word_x):
+                break
             end = w["t"] + max(w["d"], 1e-6)
             if t < w["t"]:
-                return self.word_x[i]
+                return self.word_row[i], self.word_x[i]
             if t < end:
                 p = (t - w["t"]) / (end - w["t"])
-                return self.word_x[i] + p * self.word_w[i]
-        return self.word_x[-1] + self.word_w[-1]
+                return self.word_row[i], self.word_x[i] + p * self.word_w[i]
+        return self.word_row[-1], self.word_x[-1] + self.word_w[-1]
+
+    def fill_x(self, line, t) -> float:
+        """How far the line is filled in at moment t (on its current row)."""
+        return self._fill_at(line, t)[1]
+
+    def hot_boxes(self, line, t):
+        """Crop boxes of the lit layer: whole rows already sung, then the
+        current row up to the sweep."""
+        row, x = self._fill_at(line, t)
+        out = []
+        for r in range(row):
+            out.append((0, r * self.row_h, self.dim.width, (r + 1) * self.row_h))
+        if x > 0:
+            out.append((0, row * self.row_h, int(x), (row + 1) * self.row_h))
+        return out
 
 
 # The background is the same picture for every frame of a clip — and for
@@ -467,7 +560,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
     def font_for(text, max_w, main):
         size = base_main if main else base_side
-        key = (text, size)
+        # the width belongs in the key: the same text is measured both against
+        # the frame and against nothing at all, to decide whether to wrap
+        key = (text, size, max_w)
         if key in cache_font:
             return cache_font[key]
         f = ImageFont.truetype(font_path, size)
@@ -627,6 +722,16 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
         idx = bisect.bisect_right(starts, t) - 1
 
+        # A line that runs past the start of the next one keeps its seat
+        # until it is finished: sung words must not vanish mid-word just
+        # because the line after them has begun. The next line waits below,
+        # in the queue, where it already stands.
+        while idx > 0 and t < lines[idx - 1]["end"] \
+                and not lines[idx - 1].get("backing") \
+                and (lines[idx].get("voice") == 2) \
+                == (lines[idx - 1].get("voice") == 2):
+            idx -= 1
+
         # The second voice can sound together with the main one. It is drawn
         # on its own row below — otherwise the two texts would overlap.
         duo = -1
@@ -653,10 +758,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             pic = get(idx, main=False, duo_side=True)
             y_b = y_main + int(H * 0.036)
             frame.paste(pic.dim, (0, y_b), pic.dim)
-            fxb = int(pic.fill_x(lines[idx], t))
-            if fxb > 0:
-                boxb = (0, 0, min(fxb, W), pic.h)
-                frame.paste(pic.hot.crop(boxb), (0, y_b), pic.hot.crop(boxb))
+            for bx in pic.hot_boxes(lines[idx], t):
+                piece = pic.hot.crop(bx)
+                frame.paste(piece, (bx[0], y_b + bx[1]), piece)
             duo_bottom = y_b + pic.h
         elif not over and idx >= 0:
             # The lead stays exactly where a solo line sits; the backing is
@@ -670,14 +774,15 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 pic = get(j, main=not is_back, duo_side=is_back)
                 if not is_back:
                     y_j = y_main - pic.h // 2
+                    # a wrapped line is taller: everything below must yield
+                    duo_bottom = max(duo_bottom, y_j + pic.h)
                 else:
                     y_j = y_j + get(pair[0]).h + int(H * 0.002)
                     duo_bottom = y_j + pic.h
                 frame.paste(pic.dim, (0, y_j), pic.dim)
-                fx = int(pic.fill_x(lines[j], t))
-                if fx > 0:
-                    box = (0, 0, min(fx, W), pic.h)
-                    frame.paste(pic.hot.crop(box), (0, y_j), pic.hot.crop(box))
+                for bx in pic.hot_boxes(lines[j], t):
+                    piece = pic.hot.crop(bx)
+                    frame.paste(piece, (bx[0], y_j + bx[1]), piece)
                 if k == 0 and lines[j].get("section"):
                     d.text((margin, y_j - int(H * 0.055)),
                            lines[j]["section"].upper(), font=small, fill=COL_SECT)
@@ -966,7 +1071,7 @@ def video_report(payload, args, song: float, want: float) -> str:
     lines = D.get("lines") or []
     v2 = sum(1 for l in lines if l.get("voice") == 2)
     kept = keep_spans(payload)
-    kept_s = sum(b - a for a, b in kept)
+    kept_s = sum(b - a for a, b, _ in kept)
     colors = payload.get("colors") or []
     theme = payload.get("theme") or {}
     duo = 0

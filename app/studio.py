@@ -624,6 +624,34 @@ class Handler(BaseHTTPRequestHandler):
                                     artist=body.get("artist"))
                 return self._json({"ok": True, "problems": P.problems(data)})
 
+            m = re.match(r"^/api/project/([^/]+)/cover$", path)
+            if m:
+                folder = project_dir(m.group(1))
+                data = P.load(folder)
+                if body.get("remove"):
+                    # back to the woven gradient — the cover file goes too
+                    try:
+                        os.remove(os.path.join(folder, "cover.jpg"))
+                    except OSError:
+                        pass
+                    data["cover"] = None
+                    data["coverBg"] = False
+                    P.save(folder, data)
+                    return self._json({"ok": True, "cover": False})
+                src = (body.get("path") or "").strip()
+                if not os.path.isfile(src):
+                    return self._err(400, tr("no such file", "нет такого файла"))
+                try:
+                    set_cover(folder, src)
+                except Exception as e:
+                    return self._err(400, tr(f"could not read a picture out of it: {e}",
+                                             f"не вышло достать картинку: {e}"))
+                data = P.load(folder)
+                data["cover"] = "cover.jpg"
+                data["coverBg"] = True
+                P.save(folder, data)
+                return self._json({"ok": True, "cover": True})
+
             m = re.match(r"^/api/project/([^/]+)/pack$", path)
             if m:
                 folder = project_dir(m.group(1))
@@ -705,7 +733,10 @@ TEXT_EXT = {".txt", ".lrc"}
 
 def browse(path: str, kind: str) -> dict:
     """A simple folder browser — the browser gives us no file dialogs."""
-    exts = {"audio": AUDIO_EXT, "pack": (".zip",)}.get(kind, TEXT_EXT)
+    exts = {"audio": AUDIO_EXT, "pack": (".zip",),
+            # a cover can be cut out of the clip itself, so videos count too
+            "image": (".jpg", ".jpeg", ".png", ".webp", ".bmp",
+                      ".mp4", ".mkv", ".webm", ".mov")}.get(kind, TEXT_EXT)
     if not path:
         path = os.path.expanduser("~")
     path = os.path.abspath(path)
@@ -1453,6 +1484,33 @@ def _video_module():
     return _VIDEO_MODULE
 
 
+def set_cover(folder: str, src: str) -> None:
+    """A picture — or a frame out of a clip — becomes the song's cover.
+
+    A song from a link brings its cover along; one from a file on disk had
+    nowhere to get one. Any image will do, and so will the clip itself: a
+    frame from a third of the way in, past the black lead-in every video
+    starts with.
+    """
+    from PIL import Image
+    dst = os.path.join(folder, "cover.jpg")
+    ext = os.path.splitext(src)[1].lower()
+    if ext in (".jpg", ".jpeg", ".png", ".webp", ".bmp"):
+        img = Image.open(src).convert("RGB")
+        img.thumbnail((1280, 1280))
+        img.save(dst, "JPEG", quality=88)
+        return
+    # a video: take a frame from a third of the way in
+    import subprocess as sp
+    at = max(AU.duration(src) * 0.3, 1.0)
+    p = sp.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", f"{at:.1f}", "-i", src,
+                "-frames:v", "1", "-vf", "scale='min(1280,iw)':-2", dst],
+               stdout=sp.PIPE, stderr=sp.PIPE)
+    if p.returncode != 0 or not os.path.isfile(dst):
+        raise ValueError(p.stderr.decode(errors="replace")[-120:]
+                         or tr("not a picture and not a clip", "не картинка и не клип"))
+
+
 def still_frame(folder: str, at: float, opening: bool = False) -> bytes:
     """One frame of the clip as it will be, drawn now and shown at once.
 
@@ -1515,7 +1573,8 @@ def _lyrics_from(data: dict):
             words.append(wd)
         ln = Line(text=l.get("text", ""), words=words, section=l.get("section"),
                   backing=bool(l.get("backing")), voice=int(l.get("voice") or 1),
-                  keep=bool(l.get("keep")))
+                  keep=bool(l.get("keep")),
+                  keep_soft=bool(l.get("keepSoft")))
         ln.start, ln.end = float(l.get("start", 0)), float(l.get("end", 0))
         lyr.lines.append(ln)
     return lyr

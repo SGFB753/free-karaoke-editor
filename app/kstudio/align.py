@@ -1130,6 +1130,12 @@ def clip_to_marks(lyrics: Lyrics, skip: List[tuple], log: Log = _noop) -> int:
     for ln in lyrics.lines:
         if ln.start is None or ln.end is None or not ln.words:
             continue
+        if ln.keep:
+            # A line left to the original LIVES where the person does not
+            # sing: the mark says “nothing for you here”, and this line is
+            # not theirs. Trimmed out of the hole, its kept voice went with
+            # it — and the intro fell silent.
+            continue
         a, b = ln.start, ln.end
         for lo, hi in skip:
             if b <= lo or a >= hi:
@@ -1177,6 +1183,8 @@ def enforce_marks(lyrics: Lyrics, skip, duration: float, log: Log = _noop) -> in
     def hit(ln):
         if ln.start is None or ln.end is None or not ln.words:
             return None
+        if ln.keep:
+            return None       # the original's own line may stand in the hole
         for a, b in marks:
             if min(ln.end, b) - max(ln.start, a) > 0.05:
                 return (a, b)

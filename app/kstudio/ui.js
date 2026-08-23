@@ -42,8 +42,9 @@ const STR = {
     voiceHint: "Second voice for the selected line: another singer or another way " +
       "of singing. Painted in the second colour",
     keep: "♪ Original",
-    keepHint: "Keep the original voice on this line: backing vocals, speech, a bit " +
-      "that matters to the story. You are not meant to sing it",
+    keepHint: "Keep the original voice on this line: backing vocals, speech, a bit "
+      + "that matters to the story. Pressed again, the original goes quiet — "
+      + "a guide to sing along with. A third press gives the line back to you",
     colorsHint: "What the singing is lit with: first colour is the main voice, " +
       "second is the second voice",
     voices: "voices", voice1: "Main voice", voice2: "Second voice",
@@ -72,8 +73,9 @@ const STR = {
       "“and all after it” — into every later line with the same text.",
     linesPicked: n => `${n} lines picked`,
     voiceManyOn: (v, n) => `Voice ${v} for ${n} lines`,
-    keepManyMsg: (on, n) => on ? `${n} lines are left to the original`
-                               : `${n} lines are sung by you again`,
+    keepManyMsg: (to, n) => !to.keep ? `${n} lines are sung by you again`
+      : to.keepSoft ? `${n} lines: the original stays quiet, sing along`
+                    : `${n} lines are left to the original`,
     delAskMany: n => `Delete ${n} lines from the lyrics?`,
     linesDeleted: n => `${n} lines deleted`,
     pasteLine: "⧉ Paste line",
@@ -300,9 +302,14 @@ const STR = {
     voice2On: "This line is sung by the second voice",
     voice1On: "This line is sung by the main voice",
     keepYes: "♪ Original: yes",
-    keepOnMsg: "The original voice stays on this line",
+    keepSoftYes: "♪ Original: quiet",
+    keepOnMsg: "The original voice stays on this line. Press again for a "
+      + "quiet original — to sing along with",
+    keepSoftMsg: "The original stays quiet here — a guide to sing along "
+      + "with. Press again to give the line back to you",
     keepOffMsg: "You sing this line again",
     sungByOriginal: "original sings",
+    sungTogether: "sing along with the original",
     saving: "saving…",
     nameHint: "The song's name — click to fix it. It stands in the corner of "
       + "the video, on its opening card and on the finished page, and it is "
@@ -324,6 +331,14 @@ const STR = {
     unpackHint: "Take a packed song — a .karaoke.zip — and put it back among "
       + "the songs, exactly as it was.",
     unpacked: "The song is here, as it was",
+    coverBtn: "⛰ Cover",
+    coverPickHint: "Put a picture behind the lyrics — blurred and darkened — "
+      + "on the finished page and in the MP4. Any image works, and so does "
+      + "the clip itself: a frame is cut out of a picked video.",
+    coverOffHint: "Take the cover away — back to the plain background.",
+    coverSet: "The cover is on: it stands behind the lyrics, blurred",
+    coverGone: "The cover is off — the plain background is back",
+    pickCover: "A picture for the cover — or a clip to cut one from",
     showFrame: "▣ Frame",
     showOpening: "Opening",
     stillHint: "Show what the video will look like at this moment — without "
@@ -414,8 +429,9 @@ const STR = {
     voiceHint: "Второй голос для выбранной строки: другой певец или другая манера " +
       "пения. Красится вторым цветом",
     keep: "♪ Оригинал",
-    keepHint: "Оставить на этой строке оригинальный голос: подпевка, речь, важный " +
-      "для сюжета кусок. Петь его не нужно",
+    keepHint: "Оставить на этой строке оригинальный голос: подпевка, речь, важный "
+      + "для истории кусок. Второе нажатие делает оригинал тише — подсказкой, "
+      + "чтобы петь в унисон. Третье возвращает строку вам",
     colorsHint: "Чем подсвечивается пение: первый цвет — основной голос, второй — " +
       "второй голос",
     voices: "голоса", voice1: "Основной голос", voice2: "Второй голос",
@@ -441,8 +457,9 @@ const STR = {
       "С галочкой «и все следующие» — во все последующие строки с тем же текстом.",
     linesPicked: n => `выделено строк: ${n}`,
     voiceManyOn: (v, n) => `Голос ${v} у ${n} строк`,
-    keepManyMsg: (on, n) => on ? `Оригинал оставлен на ${n} строках`
-                               : `${n} строк снова поёте вы`,
+    keepManyMsg: (to, n) => !to.keep ? `${n} строк снова поёте вы`
+      : to.keepSoft ? `${n} строк: оригинал потише — пойте вместе с ним`
+                    : `Оригинал оставлен на ${n} строках`,
     delAskMany: n => `Удалить ${n} строк из текста песни?`,
     linesDeleted: n => `Удалено строк: ${n}`,
     pasteLine: "⧉ Вставить строку",
@@ -668,9 +685,14 @@ const STR = {
     voice2On: "Строка поётся вторым голосом",
     voice1On: "Строка поётся основным голосом",
     keepYes: "♪ Оригинал: да",
-    keepOnMsg: "На этой строке останется оригинальный голос",
+    keepSoftYes: "♪ Оригинал: тихо",
+    keepOnMsg: "На этой строке останется оригинальный голос. Нажмите ещё "
+      + "раз — оригинал потише, чтобы петь в унисон",
+    keepSoftMsg: "Оригинал здесь звучит потише — как подсказка, петь вместе "
+      + "с ним. Ещё нажатие вернёт строку вам",
     keepOffMsg: "Строку снова поёт человек",
     sungByOriginal: "поёт оригинал",
+    sungTogether: "в унисон с оригиналом",
     saving: "сохраняю…",
     nameHint: "Название песни — нажмите, чтобы поправить. Оно стоит в углу "
       + "ролика, на его заставке и на готовой странице, и по нему называются "
@@ -692,6 +714,14 @@ const STR = {
     unpackHint: "Взять упакованную песню — .karaoke.zip — и вернуть её к "
       + "остальным ровно такой, какой она была.",
     unpacked: "Песня на месте, как была",
+    coverBtn: "⛰ Обложка",
+    coverPickHint: "Подложить картинку под текст — размытую и затемнённую — "
+      + "на готовой странице и в MP4. Подойдёт любая картинка или сам клип: "
+      + "из выбранного видео вырежется кадр.",
+    coverOffHint: "Убрать обложку — вернуть обычный фон.",
+    coverSet: "Обложка стоит: она за текстом, размытая",
+    coverGone: "Обложка убрана — обычный фон вернулся",
+    pickCover: "Картинка для обложки — или клип, из которого её вырезать",
     showFrame: "▣ Кадр",
     showOpening: "Заставка",
     stillHint: "Показать, как будет выглядеть видео в этот момент, — не "
@@ -1084,7 +1114,8 @@ async function openBrowser(kind){
   $("browser").classList.remove("hide");
   $("brTitle").textContent = kind === "track" ? T.pickTrack
     : kind === "lyrics2" ? T.pickLyrics
-    : kind === "pack" ? T.openPack : T.pickFile;
+    : kind === "pack" ? T.openPack
+    : kind === "cover" ? T.pickCover : T.pickFile;
   await showDir(startDir(kind));
 }
 // Looking the words up worked only while building; picking “another text”
@@ -1125,6 +1156,7 @@ async function foundRows(box){
 async function showDir(path){
   // “track” means audio, “lyrics2” means text, “pack” is a packed song
   const kind = pickTarget === "pack" ? "pack"
+    : pickTarget === "cover" ? "image"
     : (pickTarget === "lyrics" || pickTarget === "lyrics2") ? "text" : "audio";
   const d = await api("/api/browse?kind="+kind+"&path="+encodeURIComponent(path||""));
   $("brPath").value = d.path;
@@ -1138,6 +1170,7 @@ async function showDir(path){
   d.files.forEach(x => body.appendChild(row("🎵", x.name, () => {
     $("browser").classList.add("hide");
     if (pickTarget === "pack"){ unpackSong(x.path); return; }
+    if (pickTarget === "cover"){ takeCover(x.path); return; }
     if (pickTarget === "track"){ replaceTrack(x.path); return; }
     if (pickTarget === "lyrics2"){ realign(x.path); return; }
     if (pickTarget !== "lyrics"){
@@ -1539,19 +1572,37 @@ function seek(t){ waOffset = clamp(t,0,dur); curLine=-2;
   if (playing) playFrom(waOffset); else stopSrcs(); }
 // On marked lines the voice always plays: that is audible here, not only in
 // the finished karaoke.
-let keepOn = false;
+let keepOn = 0;                 // how loud the original stays right now
 function inKeep(t){
-  for (let i=0;i<lines.length;i++)
-    if (lines[i].keep && lines[i].start - 0.12 <= t && t < lines[i].end + 0.12) return true;
+  // How loud the original stays here: 1 where it sings alone, 0.35 where it
+  // is a guide to sing along with, 0 everywhere else. A breath between two
+  // kept lines is kept too, unless the singer's own line stands in it —
+  // muting the model's guess of a line end chewed a held word in half.
+  let best = 0, humanAt = false, prevEnd = -1, prevLvl = 0, bridge = 0;
+  for (let i = 0; i < lines.length; i++){
+    const ln = lines[i];
+    if (ln.keep){
+      const lvl = ln.keepSoft ? 0.35 : 1;
+      if (ln.start - 0.25 <= t && t < ln.end + 0.25) best = Math.max(best, lvl);
+      if (ln.end <= t && t - ln.end <= 2.0){ prevEnd = ln.end; prevLvl = lvl; }
+      if (t < ln.start && ln.start - t <= 2.0 && prevEnd >= 0
+          && ln.start - prevEnd <= 2.0)
+        bridge = Math.max(bridge, Math.max(prevLvl, lvl));
+    } else if (ln.words && ln.words.length && !ln.backing
+               && ln.start <= t && t < ln.end)
+      humanAt = true;                   // the singer's own line: no bridging
+  }
+  if (!humanAt) best = Math.max(best, bridge);
+  if (best >= 1) return 1;
   // A marked stretch has no words to sing, so the original voice stays there —
   // and the editor must sound like the finished page, not unlike it.
   if ($("chkKeepMarks") && $("chkKeepMarks").checked)
     for (let i = 0; i < marks.length; i++)
-      if (marks[i][0] - 0.12 <= t && t < marks[i][1] + 0.12) return true;
-  return false;
+      if (marks[i][0] - 0.12 <= t && t < marks[i][1] + 0.12) return 1;
+  return best;
 }
 function applyVoice(){
-  const lvl = keepOn ? 1 : voiceLevel;
+  const lvl = keepOn ? Math.max(keepOn, voiceLevel) : voiceLevel;
   if (gains){ gains[0].gain.value = 1;
     if (hasStems){
       const g = gains[1].gain;
@@ -1586,6 +1637,7 @@ async function openProject(id){
   fillNoText(data);
   $("hint").textContent = T.hotkeys;
   showMade("");
+  refreshCover();
   colors = (Array.isArray(data.colors) && data.colors.length === 2)
     ? data.colors.slice() : ["#4de1ff", "#ff8ad1"];
   theme = (Array.isArray(data.theme) && data.theme.length === 2)
@@ -1969,24 +2021,33 @@ $("btnVoice").addEventListener("click", toggleVoice);
 // that matters to the story. Such a line is marked, and in the finished karaoke
 // the original is heard there again.
 function refreshKeep(){
-  const on = sel >= 0 && !!lines[sel].keep;
+  const ln = sel >= 0 ? lines[sel] : null;
+  const on = !!(ln && ln.keep);
   $("btnKeep").classList.toggle("on", on);
-  $("btnKeep").textContent = on ? T.keepYes : T.keep;
+  $("btnKeep").textContent = !on ? T.keep
+    : (ln.keepSoft ? T.keepSoftYes : T.keepYes);
 }
 function toggleKeep(){
+  // Three states in a circle: not kept → the original at full voice (not
+  // yours to sing) → the original held back to a guide (sing along with it)
+  // → not kept. One button, because the choice is one choice.
   const idx = targets();
   if (!idx.length) return toast(T.pickLineFirst);
   snap("");
-  const to = !lines[idx[0]].keep;
+  const head = lines[idx[0]];
+  const to = !head.keep ? {keep: true, keepSoft: false}
+    : !head.keepSoft ? {keep: true, keepSoft: true}
+    : {keep: false, keepSoft: false};
   idx.forEach(i => {
-    lines[i].keep = to;
-    lineEls[i].el.classList.toggle("keep", to);
+    lines[i].keep = to.keep;
+    lines[i].keepSoft = to.keepSoft;
+    lineEls[i].el.classList.toggle("keep", to.keep);
     markKeep(i);
-    if (blockEls[i]) blockEls[i].classList.toggle("keep", to);
+    if (blockEls[i]) blockEls[i].classList.toggle("keep", to.keep);
   });
   refreshKeep(); touched();
   toast(idx.length > 1 ? T.keepManyMsg(to, idx.length)
-                       : (to ? T.keepOnMsg : T.keepOffMsg));
+    : to.keepSoft ? T.keepSoftMsg : (to.keep ? T.keepOnMsg : T.keepOffMsg));
 }
 // A tag right in the text: one glance says this line is not yours to sing.
 function markKeep(i){
@@ -1996,7 +2057,8 @@ function markKeep(i){
   if (old) old.remove();
   if (!lines[i].keep) return;
   const kp = document.createElement("i");
-  kp.className = "kp"; kp.textContent = T.sungByOriginal;
+  kp.className = "kp";
+  kp.textContent = lines[i].keepSoft ? T.sungTogether : T.sungByOriginal;
   el.appendChild(kp);
 }
 $("btnKeep").addEventListener("click", toggleKeep);
@@ -3236,7 +3298,7 @@ function tick(){
       if (t > b || t < a-0.1) seek(a);
     }
     showWait(t, idxAt(t));
-    const kp = hasStems && playing && inKeep(t);
+    const kp = hasStems && playing ? inKeep(t) : 0;
     if (kp !== keepOn){ keepOn = kp; applyVoice(); }
     let idx=-1;
     for (let i=0;i<lines.length;i++){ if (lines[i].start <= t) idx=i; else break; }
@@ -3467,6 +3529,28 @@ $("btnPack").addEventListener("click", async () => {
   }catch(e){ toast(e.message); }
 });
 $("btnUnpack").addEventListener("click", () => openBrowser("pack"));
+
+// The cover, changeable after the build: a song from a file had nowhere to
+// get one, and a song from a link had no way to swap it.
+function refreshCover(){
+  $("btnCoverOff").classList.toggle("hide", !(data && data.cover && data.coverBg));
+}
+$("btnCover").addEventListener("click", () => openBrowser("cover"));
+$("btnCoverOff").addEventListener("click", async () => {
+  try{
+    await api(`/api/project/${encodeURIComponent(pid)}/cover`, {remove: true});
+    data.cover = null; data.coverBg = false;
+    refreshCover(); toast(T.coverGone);
+  }catch(e){ toast(e.message); }
+});
+async function takeCover(path){
+  try{
+    const r = await api(`/api/project/${encodeURIComponent(pid)}/cover`, {path});
+    data.cover = "cover.jpg"; data.coverBg = true;
+    refreshCover(); toast(T.coverSet);
+    if (!$("stillBox").classList.contains("hide")) showStill(stillT, false);
+  }catch(e){ toast(e.message); }
+}
 
 $("btnStill").addEventListener("click", () => showStill(mediaTime(), false));
 $("stillOpening").addEventListener("click", () => showStill(0, true));
