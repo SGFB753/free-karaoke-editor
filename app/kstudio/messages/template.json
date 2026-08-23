@@ -267,6 +267,15 @@
   "coverHint": "",
   "nameHint": "",
   "keepSoftYes": "",
+  "expTitle": "",
+  "expSize": "",
+  "expFps": "",
+  "expQ": "",
+  "expQBest": "",
+  "expQNorm": "",
+  "expQLight": "",
+  "expIntroLbl": "",
+  "expGo": "",
   "coverBtn": "",
   "coverPickHint": "",
   "coverOffHint": "",
@@ -308,5 +317,6 @@
   "quietNothingNew": "",
   "namePlaceTitle": "",
   "namePlaceArtist": "",
+  "lineDove": "",
   "nameFixed": ""
 }

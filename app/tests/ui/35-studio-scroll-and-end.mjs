@@ -86,7 +86,25 @@ const nothing = await cur();
 ok('the highlight is gone — nothing is left hanging', nothing < 0,
    nothing >= 0 ? `line ${nothing+1} is lit` : '');
 
+console.log('\n--- the minimap: the whole song in one strip ---');
+{
+  ok('the strip is there', !!(await p.$('#mmap')));
+  const clock = async () => {
+    const txt = await p.$eval('#tCur', e => e.textContent.trim());
+    const m = txt.match(/^(\d+):(\d+(?:\.\d+)?)/);
+    return m ? +m[1] * 60 + parseFloat(m[2]) : NaN;
+  };
+  const before = await clock();
+  const box = await (await p.$('#mmap')).boundingBox();
+  await p.mouse.click(box.x + box.width * 0.5, box.y + box.height / 2);
+  await new Promise(r => setTimeout(r, 300));
+  const after = await clock();
+  ok('a press on it moves the song', Math.abs(after - before) > 1,
+     before.toFixed(1) + ' → ' + after.toFixed(1));
+}
+
 ok('no JS errors', errs.length===0, errs.slice(0,2).join(' | '));
 await b.close();
+
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
 process.exit(fail?1:0);

@@ -331,6 +331,15 @@ const STR = {
     unpackHint: "Take a packed song — a .karaoke.zip — and put it back among "
       + "the songs, exactly as it was.",
     unpacked: "The song is here, as it was",
+    expTitle: "The video file",
+    expSize: "Size",
+    expFps: "Frames per second",
+    expQ: "Quality",
+    expQBest: "better and heavier",
+    expQNorm: "the usual",
+    expQLight: "lighter file",
+    expIntroLbl: "the opening: the name and a count of three",
+    expGo: "Render",
     coverBtn: "⛰ Cover",
     coverPickHint: "Put a picture behind the lyrics — blurred and darkened — "
       + "on the finished page and in the MP4. Any image works, and so does "
@@ -358,6 +367,7 @@ const STR = {
     namePlaceTitle: "song",
     namePlaceArtist: "artist",
     nameFixed: "The song is called that from now on",
+    lineDove: n => `Line ${n} — the one underneath`,
     savedOk: "saved",
     saveBad: "not saved",
     saveErr: m => "Not saved: " + m + ". Your edits are safe, I will try again.",
@@ -719,6 +729,15 @@ const STR = {
     unpackHint: "Взять упакованную песню — .karaoke.zip — и вернуть её к "
       + "остальным ровно такой, какой она была.",
     unpacked: "Песня на месте, как была",
+    expTitle: "Файл видео",
+    expSize: "Размер",
+    expFps: "Кадров в секунду",
+    expQ: "Качество",
+    expQBest: "лучше и тяжелее",
+    expQNorm: "обычное",
+    expQLight: "полегче файл",
+    expIntroLbl: "заставка: название и счёт до трёх",
+    expGo: "Рендерить",
     coverBtn: "⛰ Обложка",
     coverPickHint: "Подложить картинку под текст — размытую и затемнённую — "
       + "на готовой странице и в MP4. Подойдёт любая картинка или сам клип: "
@@ -746,6 +765,7 @@ const STR = {
     namePlaceTitle: "песня",
     namePlaceArtist: "артист",
     nameFixed: "Теперь песня называется так",
+    lineDove: n => `Строка ${n} — та, что под верхней`,
     savedOk: "сохранено",
     saveBad: "не сохранилось",
     saveErr: m => "Не сохранилось: " + m + ". Правки в окне целы, попробую снова.",
@@ -2434,10 +2454,66 @@ function tOf(x){ return viewStart() + x / pps(); }
 // repaints on the mark or once the view itself has moved a pixel.
 let waveDirty = true, waveSig = "";
 function drawWave(){ waveDirty = true; }
+// The whole song in one strip: the marks, the kept lines, the quiet
+// stretches, and the window that is on screen right now. Click or drag to
+// jump — on a long song the wheel is a hike, and this is a step.
+function paintMap(){
+  // Decoration must never take the editor down with it: a canvas without
+  // some method (a test stand's stub, an odd browser) skips the strip.
+  try{ paintMapInner(); }catch(e){}
+}
+function paintMapInner(){
+  const c = $("mmap");
+  if (!c || !dur) return;
+  const w = c.clientWidth, h = c.clientHeight;
+  if (!w) return;
+  const pw = Math.round(w * devicePixelRatio), ph = Math.round(h * devicePixelRatio);
+  if (c.width !== pw || c.height !== ph){ c.width = pw; c.height = ph; }
+  const g = c.getContext("2d");
+  if (g.setTransform) g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  else g.scale(devicePixelRatio, devicePixelRatio);
+  g.clearRect(0, 0, w, h);
+  const X = t => t / dur * w;
+  // quiet stretches: a shade dimmer than the strip itself
+  g.fillStyle = "rgba(0,0,0,.35)";
+  (quiet || []).forEach(q => g.fillRect(X(q.start), 0, X(q.end) - X(q.start), h));
+  // “no words here” marks, in the warning colour
+  g.fillStyle = "rgba(255,204,77,.28)";
+  marks.forEach(([a, b]) => g.fillRect(X(a), 0, X(b) - X(a), h));
+  // the lines: thin ticks along the base; kept ones taller and in their hue
+  lines.forEach(ln => {
+    const x = X(ln.start), wd = Math.max(1, X(ln.end) - x);
+    if (ln.keep){
+      g.fillStyle = ln.keepSoft ? "rgba(126,224,138,.5)" : "rgba(126,224,138,.8)";
+      g.fillRect(x, 2, wd, h - 4);
+    } else {
+      g.fillStyle = ln.voice === 2 ? colors[1] : colors[0];
+      g.globalAlpha = 0.55;
+      g.fillRect(x, h - 6, wd, 4);
+      g.globalAlpha = 1;
+    }
+  });
+  // the window now on screen
+  const v0 = viewStart(), v1 = v0 + zoom;
+  g.strokeStyle = "rgba(255,255,255,.65)";
+  g.lineWidth = 1;
+  g.strokeRect(X(v0) + 0.5, 0.5, Math.max(2, X(v1) - X(v0)) - 1, h - 1);
+  // the playhead
+  g.fillStyle = colors[0];
+  g.fillRect(X(mediaTime()) - 0.5, 0, 1.5, h);
+}
+
 function paintWave(){
   const c=$("wave"), w=$("tlwrap").clientWidth, h=$("tlwrap").clientHeight;
-  c.width = w*devicePixelRatio; c.height = h*devicePixelRatio;
-  const g=c.getContext("2d"); g.scale(devicePixelRatio, devicePixelRatio);
+  // Reallocating the canvas buffer on every repaint fed the garbage
+  // collector for nothing: the size only changes when the window does.
+  const pw = Math.round(w*devicePixelRatio), ph = Math.round(h*devicePixelRatio);
+  if (c.width !== pw || c.height !== ph){ c.width = pw; c.height = ph; }
+  const g=c.getContext("2d");
+  // setTransform resets the scale absolutely; the test stands' canvas stub
+  // knows only scale, where nothing accumulates anyway
+  if (g.setTransform) g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  else g.scale(devicePixelRatio, devicePixelRatio);
   g.clearRect(0,0,w,h);
 
   // Stretches without singing — intro, interlude, solo. They are shaded: no
@@ -2708,7 +2784,7 @@ function drawBlocks(){                       // once a frame — one container s
 }
 
 /* ---------- dragging the blocks ---------- */
-let drag=null, wdrag=null;
+let drag=null, wdrag=null, diveAt=null;
 $("blocks").addEventListener("dblclick", e => {
   const blk = e.target.closest(".blk"); if (!blk) return;
   editText(+blk.dataset.i);          // edit the text where the line is seen
@@ -2724,6 +2800,14 @@ function hitLimit(){
 $("blocks").addEventListener("pointerdown", e => {
   const blk = e.target.closest(".blk"); if (!blk) return;
   const i = +blk.dataset.i;
+  // Overlapping blocks stack, and the top one used to swallow every press:
+  // the line underneath could not be reached at all. The press keeps its old
+  // meaning — select and maybe drag — and a SECOND press on the same spot,
+  // released without moving, dives to the line underneath (see pointerup).
+  diveAt = (!e.shiftKey && !e.ctrlKey && !e.metaKey && i === sel)
+    ? {x: e.clientX, t: viewStart() + (e.clientX -
+         $("tlwrap").getBoundingClientRect().left) / pps()}
+    : null;
   selectLine(i, false, e.shiftKey ? "range" : (e.ctrlKey || e.metaKey) ? "add" : "");
   if (marked.size > 1) return;               // a batch is selected, not dragged
   snap("");                       // a snapshot before the edit, while data is whole
@@ -2803,13 +2887,30 @@ window.addEventListener("pointermove", e => {
     ? T.lineEndAt(drag.i+1, fmtMs(ln.end))
     : T.lineAt(drag.i+1, fmtMs(ln.start));
 });
-window.addEventListener("pointerup", () => {
+window.addEventListener("pointerup", e => {
   if (wdrag){
     wdrag = null;
     wordEls.forEach(e => e.classList.remove("on"));
     $("tlwrap").classList.remove("drag"); curLine=-2; touched();
     return;
   }
+  // A still second click on an already-selected block dives to the line
+  // beneath it: overlapping lines can all be reached now, not only the top.
+  if (diveAt && Math.abs(e.clientX - diveAt.x) < 3){
+    const pile = [];
+    for (let k = 0; k < lines.length; k++)
+      if (lines[k].start <= diveAt.t && diveAt.t <= lines[k].end) pile.push(k);
+    if (pile.length > 1){
+      const at = pile.indexOf(sel);
+      const next = pile[(at >= 0 ? at + 1 : 0) % pile.length];
+      diveAt = null;
+      if (drag){ drag = null; $("tlwrap").classList.remove("drag"); past.pop(); refreshUndo(); }
+      selectLine(next, false);
+      toast(T.lineDove(next + 1));
+      return;
+    }
+  }
+  diveAt = null;
   if (!drag) return;
   drag = null; $("tlwrap").classList.remove("drag"); curLine=-2; touched();
 });
@@ -3367,6 +3468,7 @@ function tick(){
     if (waveDirty || (!drag && !wdrag && sig !== waveSig)){
       waveDirty = false; waveSig = sig;
       paintWave();
+      paintMap();
     }
     if (!drag && !wdrag) drawBlocks();
   }
@@ -3475,6 +3577,22 @@ function langOf(){
   // the song, not to the window: read it off the text again.
   return "auto";
 }
+// The minimap answers to the mouse: a press jumps, a drag scrubs.
+(() => {
+  const c = $("mmap");
+  if (!c) return;
+  let down = false;
+  const at = e => {
+    const r = c.getBoundingClientRect();
+    return clamp((e.clientX - r.left) / r.width, 0, 1) * dur;
+  };
+  c.addEventListener("pointerdown", e => { down = true;
+    if (c.setPointerCapture) try{ c.setPointerCapture(e.pointerId); }catch(err){}
+    seek(at(e)); });
+  c.addEventListener("pointermove", e => { if (down) seek(at(e)); });
+  c.addEventListener("pointerup", () => { down = false; });
+})();
+
 $("edTitle").addEventListener("click", editName);
 $("edTitle").addEventListener("keydown", e => {
   if (e.key === "Enter" || e.key === " "){ e.preventDefault(); editName(); }
@@ -3645,9 +3763,34 @@ $("btnExportHtml").addEventListener("click", async () => {
     screen("scrEdit"); showMade(r.path); toast(T.jobReady);
   });
 });
-$("btnExportMp4").addEventListener("click", async () => {
+// The MP4 dialog: size, frames, quality and the opening — remembered
+// between songs, because taste does not change per song.
+$("btnExportMp4").addEventListener("click", () => {
+  try{
+    const saved = JSON.parse(localStorage.getItem("mp4opts") || "{}");
+    if (saved.size) $("expSize").value = saved.size;
+    if (saved.fps) $("expFps").value = saved.fps;
+    if (saved.q) $("expQ").value = saved.q;
+    if (saved.intro != null) $("expIntro").checked = !!saved.intro;
+  }catch(e){}
+  $("expDlg").classList.remove("hide");
+});
+$("btnExpCancel").addEventListener("click", () => $("expDlg").classList.add("hide"));
+$("expDlg").addEventListener("click", e => {
+  if (e.target === $("expDlg")) $("expDlg").classList.add("hide");
+});
+$("btnExpGo").addEventListener("click", async () => {
+  $("expDlg").classList.add("hide");
+  const [w, h] = $("expSize").value.split("x").map(Number);
+  const opts = {kind: "mp4", width: w, height: h,
+                fps: +$("expFps").value, crf: +$("expQ").value,
+                intro: $("expIntro").checked};
+  try{
+    localStorage.setItem("mp4opts", JSON.stringify({size: $("expSize").value,
+      fps: $("expFps").value, q: $("expQ").value, intro: $("expIntro").checked}));
+  }catch(e){}
   await flush();
-  const j = await api(`/api/project/${encodeURIComponent(pid)}/export`, {kind:"mp4"});
+  const j = await api(`/api/project/${encodeURIComponent(pid)}/export`, opts);
   watchJob(j.job, T.jobVideo, r => {
     screen("scrEdit"); showMade(r.path); toast(T.videoReady);
     // The video takes a while to draw, and then it has to be found. Open the

@@ -198,11 +198,14 @@ const clip = path2.join(ctmp, 'clip.mp4');
 execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi',
   '-i', 'color=c=red:s=64x36:d=3', '-pix_fmt', 'yuv420p', clip]);
 const cSet = await post(`/api/project/${encodeURIComponent(pid)}/cover`, {path: clip});
-ok('a frame is cut out of the clip', cSet.ok === true && cSet.cover === true,
-   JSON.stringify(cSet));
+ok('frames are cut out of the clip — a slideshow', cSet.ok === true
+   && cSet.cover === true && cSet.frames >= 2, JSON.stringify(cSet));
 let pd = await get('/api/project/' + encodeURIComponent(pid));
 ok('and the song stands on it now', pd.cover === 'cover.jpg' && pd.coverBg === true,
    `${pd.cover} / ${pd.coverBg}`);
+ok('with the set written down for the video',
+   Array.isArray(pd.coverSet) && pd.coverSet.length >= 2,
+   JSON.stringify(pd.coverSet || null));
 const stillC = Buffer.from(await (await fetch(
   `${API}/api/project/${encodeURIComponent(pid)}/still?at=1`)).arrayBuffer());
 ok('the preview frame changed with the backdrop',
@@ -224,8 +227,8 @@ const cOff = await post(`/api/project/${encodeURIComponent(pid)}/cover`, {remove
 ok('and it can be taken away', cOff.ok === true && cOff.cover === false,
    JSON.stringify(cOff));
 pd = await get('/api/project/' + encodeURIComponent(pid));
-ok('leaving the plain background', !pd.cover && !pd.coverBg,
-   `${pd.cover} / ${pd.coverBg}`);
+ok('leaving the plain background', !pd.cover && !pd.coverBg && !pd.coverSet,
+   `${pd.cover} / ${pd.coverBg} / ${pd.coverSet}`);
 fs2.rmSync(ctmp, {recursive: true, force: true});
 
 console.log('\n--- and the song travels in one file ---');

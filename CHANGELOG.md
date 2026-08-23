@@ -7,6 +7,30 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.41.0
+
+**Lines breathe instead of blinking.** Every line now takes its seat in the
+frame with a quarter-second fade, and the song's last picture breathes out
+instead of switching off. A single preview frame stays steady — fades belong
+to the moving film.
+
+**The clip becomes a slow slideshow.** A cover cut from a clip now takes six
+frames spread across it, and the video turns them behind the lyrics with a
+slow crossfade, timed by the song's own length. A plain picture stays a
+single cover; the page keeps one cover either way.
+
+**The whole song in one strip.** Above the timeline stands a minimap: the
+marks, the kept lines, the quiet stretches, the window now on screen and the
+playhead. A click jumps, a drag scrubs — on an eight-minute song the wheel
+was a hike, and this is a step.
+
+**The video file is a choice now.** MP4 export opens a small dialog — size,
+frames per second, quality, and whether the opening runs — remembered
+between songs. And overlapping lines on the timeline are all reachable: a
+still second click on the top block dives to the line underneath.
+
+---
+
 ## 4.40.2
 
 **The pair holds until both are done.** The overlap rule watched only the

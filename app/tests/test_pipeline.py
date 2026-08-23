@@ -1480,6 +1480,37 @@ def main():
           and "(evil)/tag" in tricky_ass,
           [l for l in tricky_ass.splitlines() if "evil" in l])
 
+    print("\nA clip becomes a slideshow of covers")
+    # Six frames spread across the clip: the video plays them as a slow
+    # slideshow; a plain picture stays a single cover.
+    import subprocess as _sp
+    from kstudio import audio as _AU
+    import studio as _ST
+    clip_src = os.path.join(tmp, "cover-clip.mp4")
+    _sp.run([_AU.ffmpeg(), "-y", "-v", "error", "-f", "lavfi",
+             "-i", "testsrc2=s=160x90:d=20", "-pix_fmt", "yuv420p", clip_src],
+            check=True)
+    names = _ST.set_cover(with_cover, clip_src)
+    check("a clip yields a set of covers", len(names) == _ST.COVER_SET_N, names)
+    check("all of them landed on disk",
+          all(os.path.isfile(os.path.join(with_cover, n)) for n in names))
+    single = _ST.set_cover(with_cover, cover_src)
+    check("a plain picture stays a single cover", single == ["cover.jpg"], single)
+    check("and the set's spare frames are cleaned away",
+          not [n for n in os.listdir(with_cover)
+               if n.startswith("cover-") and n.endswith(".jpg")])
+    # the payload carries the set for the video
+    names = _ST.set_cover(with_cover, clip_src)
+    covers_page = os.path.join(tmp, "covers.html")
+    BLD.build_html(covers_page, lyr_c, 26.0, {"mix": (song_for_build, "audio/wav")},
+                 "energy", embed=False, cover_path=cover_src,
+                 cover_paths=[os.path.join(with_cover, n) for n in names])
+    pay_cv = BLD.read_payload(covers_page)
+    check("the covers ride into the payload as pictures",
+          len(pay_cv.get("covers") or []) == _ST.COVER_SET_N
+          and all(u.startswith("data:image") for u in pay_cv["covers"]),
+          len(pay_cv.get("covers") or []))
+
     print("\nA song travels in one file")
     # A project folder stands on its own but does not travel — not to another
     # computer, not into a backup. Packed and unpacked it is the same song.

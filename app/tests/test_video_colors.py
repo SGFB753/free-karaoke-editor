@@ -607,6 +607,63 @@ def main():
     check("the pill disappears once singing starts", len([c for c in top3 if sum(c) > 90]) < len(lit) / 3,
           f"was {len(lit)}, now {len([c for c in top3 if sum(c) > 90])}")
 
+    print("\nA line takes its seat in a breath, and the slideshow turns")
+    # The queue line right after its arrival is mid-fade — dimmer than the
+    # same line half a second later. And with a set of covers the background
+    # under an early second differs from the one under a late second.
+    fade_song = {"colors": ["#00ff00", "#ff00ff"],
+                 "theme": {"bg": "#000000", "text": "#ffffff"},
+                 "data": {"title": "T", "duration": 20.0, "lines": [
+        {"text": "current", "start": 5.0, "end": 8.0, "voice": 1,
+         "words": [{"w": "current", "t": 5.0, "d": 3.0, "s": 1}]},
+        {"text": "coming next", "start": 12.0, "end": 14.0, "voice": 1,
+         "words": [{"w": "coming next", "t": 12.0, "d": 2.0, "s": 1}]}]}}
+    wavf = tone(os.path.join(tmp, "j.wav"), 220.0, 20.0)
+    class AF:
+        width, height, fps, crf = 640, 360, 10, 30
+        preset, font = "ultrafast", None
+        intro = False
+        start, seconds, audio, timings = 4.8, 3.0, "minus", None
+        output = os.path.join(tmp, "fade.mp4")
+    video.render(fade_song, wavf, AF.output, AF())
+
+    def next_ink(at):
+        shot = os.path.join(tmp, f"fade-{at}.png")
+        subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", str(at),
+                        "-i", AF.output, "-frames:v", "1", shot], check=True)
+        imf = Image.open(shot).convert("RGB")
+        Wf, Hf = imf.size
+        return sum(sum(imf.getpixel((x, y))) for y in
+                   range(int(Hf * 0.55), int(Hf * 0.66))
+                   for x in range(0, Wf, 2) if sum(imf.getpixel((x, y))) > 40)
+    early, later = next_ink(0.3), next_ink(1.5)
+    check("a fresh queue line is still fading in",
+          early < later * 0.85, f"{early} vs {later}")
+
+    # the slideshow: two covers, two different grounds
+    import base64 as _b64
+    import io as _io
+    def uri_of(rgb):
+        b = _io.BytesIO()
+        Image.new("RGB", (32, 18), rgb).save(b, "JPEG")
+        return "data:image/jpeg;base64," + _b64.b64encode(b.getvalue()).decode()
+    slide_song = dict(fade_song)
+    slide_song = json.loads(json.dumps(fade_song))
+    slide_song["covers"] = [uri_of((200, 30, 30)), uri_of((30, 30, 200))]
+    AF.output = os.path.join(tmp, "slide.mp4")
+    AF.start, AF.seconds = 0.0, 20.0
+    AF.fps = 4
+    video.render(slide_song, wavf, AF.output, AF())
+    def ground(at):
+        shot = os.path.join(tmp, f"slide-{at}.png")
+        subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", str(at),
+                        "-i", AF.output, "-frames:v", "1", shot], check=True)
+        imf = Image.open(shot).convert("RGB")
+        return imf.getpixel((imf.width // 2, int(imf.height * 0.9)))
+    g1, g2 = ground(2.0), ground(18.0)
+    check("the ground turns with the song: red first, blue later",
+          g1[0] > g1[2] and g2[2] > g2[0], f"{g1} → {g2}")
+
     print("\nThe song's name is readable and clear of the countdown")
     # The name grew from caption size to its own font — and the pill moved
     # down. Neither may lean on the other: not one pixel row is shared.

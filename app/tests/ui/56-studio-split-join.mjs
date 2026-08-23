@@ -268,6 +268,48 @@ ok('and the untouched words kept their times',
      Math.abs(w.t - afterDots.words[k + 1].t) < 0.002),
    `${afterFix.words[lastK].t.toFixed(2)} vs ${afterDots.words[lastK].t.toFixed(2)}`);
 
+console.log('\n--- overlapping blocks: the one underneath can be reached ---');
+// The top block used to swallow every press. A still second click on it now
+// dives to the line below.
+{
+  const st0 = await proj();
+  const dl = JSON.parse(JSON.stringify(st0.lines));
+  // строки 0 и 1 кладём внахлёст
+  dl[0].start = 2.0; dl[0].end = 8.0;
+  dl[0].words.forEach((w, i) => { w.t = 2.0 + i * 0.8; w.d = 0.7; });
+  dl[1].start = 5.0; dl[1].end = 11.0;
+  dl[1].words.forEach((w, i) => { w.t = 5.0 + i * 0.8; w.d = 0.7; });
+  await fetch(`${API}/api/project/${encodeURIComponent(PID)}/timings`, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({lines: dl})});
+  await p.reload({waitUntil: 'networkidle0'});
+  await sleep(600);
+  await p.evaluate(id => {
+    const card = [...document.querySelectorAll('.card')].find(c => c.dataset.id === id);
+    (card || document.querySelector('.card')).click();
+  }, PID);
+  await p.waitForSelector('#scrEdit:not(.hide)', {timeout: 20000});
+  await sleep(900);
+  // точка внутри пересечения: середина между границами двух блоков
+  const spot = await p.evaluate(() => {
+    const a = document.querySelector('#blocks .blk[data-i="0"]').getBoundingClientRect();
+    const b = document.querySelector('#blocks .blk[data-i="1"]').getBoundingClientRect();
+    return {x: (Math.max(a.left, b.left) + Math.min(a.right, b.right)) / 2,
+            y: (a.top + a.bottom) / 2};
+  });
+  const selNow = () => p.evaluate(() =>
+    [...document.querySelectorAll('#scroll .ln')].findIndex(e => e.classList.contains('sel')));
+  await p.mouse.click(spot.x, spot.y);
+  await sleep(250);
+  const first = await selNow();
+  ok('one click picks the top of the pile', first >= 0, first);
+  await p.mouse.click(spot.x, spot.y);
+  await sleep(250);
+  const second = await selNow();
+  ok('a still second click dives to the line underneath',
+     second >= 0 && second !== first, `${first} → ${second}`);
+}
+
 console.log('\n--- the control bar holds its edges ---');
 // Slowed listening is gone: it stretched the sound while the stage kept its
 // own pace, and the scrub cursor does the job honestly. What remains must

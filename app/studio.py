@@ -630,13 +630,17 @@ class Handler(BaseHTTPRequestHandler):
                 folder = project_dir(m.group(1))
                 data = P.load(folder)
                 if body.get("remove"):
-                    # back to the woven gradient — the cover file goes too
-                    try:
-                        os.remove(os.path.join(folder, "cover.jpg"))
-                    except OSError:
-                        pass
+                    # back to the woven gradient — the cover files go too
+                    for name in ["cover.jpg"] + [n for n in os.listdir(folder)
+                                                 if n.startswith("cover-")
+                                                 and n.endswith(".jpg")]:
+                        try:
+                            os.remove(os.path.join(folder, name))
+                        except OSError:
+                            pass
                     data["cover"] = None
                     data["coverBg"] = False
+                    data["coverSet"] = None
                     P.save(folder, data)
                     return self._json({"ok": True, "cover": False})
                 src = (body.get("path") or body.get("url") or "").strip()
@@ -653,7 +657,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not os.path.isfile(src):
                     return self._err(400, tr("no such file", "нет такого файла"))
                 try:
-                    set_cover(folder, src)
+                    names = set_cover(folder, src)
                 except Exception as e:
                     return self._err(400, tr(f"could not read a picture out of it: {e}",
                                              f"не вышло достать картинку: {e}"))
@@ -666,8 +670,12 @@ class Handler(BaseHTTPRequestHandler):
                 data = P.load(folder)
                 data["cover"] = "cover.jpg"
                 data["coverBg"] = True
+                # a clip gives several frames: the video plays them as a slow
+                # slideshow; a single picture stays a single picture
+                data["coverSet"] = names if len(names) > 1 else None
                 P.save(folder, data)
-                return self._json({"ok": True, "cover": True})
+                return self._json({"ok": True, "cover": True,
+                                   "frames": len(names)})
 
             m = re.match(r"^/api/project/([^/]+)/pack$", path)
             if m:
@@ -1395,7 +1403,10 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
                      keep_spans=P.keep_spans(data),
                      cover_path=(os.path.join(folder, data["cover"])
                                  if data.get("coverBg") and data.get("cover") else None),
-                     cover_dark=data.get("coverDark"))
+                     cover_dark=data.get("coverDark"),
+                     cover_paths=([os.path.join(folder, n)
+                                   for n in data.get("coverSet") or []]
+                                  if data.get("coverBg") else None))
         log(tr(f"Done: {out}", f"Готово: {out}"))
         return {"kind": "html", "path": out}
 
@@ -1450,7 +1461,10 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
                      keep_spans=P.keep_spans(data),
                      cover_path=(os.path.join(folder, data["cover"])
                                  if data.get("coverBg") and data.get("cover") else None),
-                     cover_dark=data.get("coverDark"))
+                     cover_dark=data.get("coverDark"),
+                     cover_paths=([os.path.join(folder, n)
+                                   for n in data.get("coverSet") or []]
+                                  if data.get("coverBg") else None))
         out = os.path.join(out_dir, base + ".mp4")
 
         class Args:
@@ -1536,16 +1550,25 @@ def fetch_cover_url(url: str) -> str:
     return tmp
 
 
-def set_cover(folder: str, src: str) -> None:
-    """A picture — or a frame out of a clip — becomes the song's cover.
+COVER_SET_N = 6
+
+
+def set_cover(folder: str, src: str) -> list:
+    """A picture — or frames out of a clip — become the song's cover.
 
     A song from a link brings its cover along; one from a file on disk had
-    nowhere to get one. Any image will do, and so will the clip itself: a
-    frame from a third of the way in, past the black lead-in every video
-    starts with.
+    nowhere to get one. Any image will do. The clip itself does better: six
+    frames spread across it become a slow slideshow behind the lyrics, past
+    the black lead-in every video starts with. Returns the file names.
     """
     from PIL import Image
     dst = os.path.join(folder, "cover.jpg")
+    for old in os.listdir(folder):
+        if old.startswith("cover-") and old.endswith(".jpg"):
+            try:
+                os.remove(os.path.join(folder, old))
+            except OSError:
+                pass
     # The bytes decide, not the name: a picture fetched from a link may carry
     # any extension or none. Whatever Pillow cannot read is tried as a clip.
     try:
@@ -1553,18 +1576,27 @@ def set_cover(folder: str, src: str) -> None:
         img = img.convert("RGB")
         img.thumbnail((1280, 1280))
         img.save(dst, "JPEG", quality=88)
-        return
+        return ["cover.jpg"]
     except Exception:
         pass
-    # a video: take a frame from a third of the way in
+    # a clip: frames spread from a tenth to nine tenths of its length
     import subprocess as sp
-    at = max(AU.duration(src) * 0.3, 1.0)
-    p = sp.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", f"{at:.1f}", "-i", src,
-                "-frames:v", "1", "-vf", "scale='min(1280,iw)':-2", dst],
-               stdout=sp.PIPE, stderr=sp.PIPE)
-    if p.returncode != 0 or not os.path.isfile(dst):
-        raise ValueError(p.stderr.decode(errors="replace")[-120:]
-                         or tr("not a picture and not a clip", "не картинка и не клип"))
+    length = AU.duration(src)
+    out = []
+    for i in range(COVER_SET_N):
+        at = max(length * (0.1 + 0.8 * i / max(COVER_SET_N - 1, 1)), 1.0)
+        name = "cover.jpg" if i == 0 else f"cover-{i + 1}.jpg"
+        p = sp.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", f"{at:.1f}", "-i", src,
+                    "-frames:v", "1", "-vf", "scale='min(1280,iw)':-2",
+                    os.path.join(folder, name)],
+                   stdout=sp.PIPE, stderr=sp.PIPE)
+        if p.returncode == 0 and os.path.isfile(os.path.join(folder, name)):
+            out.append(name)
+        elif i == 0:
+            raise ValueError(p.stderr.decode(errors="replace")[-120:]
+                             or tr("not a picture and not a clip",
+                                   "не картинка и не клип"))
+    return out
 
 
 def still_frame(folder: str, at: float, opening: bool = False) -> bytes:
@@ -1595,7 +1627,10 @@ def still_frame(folder: str, at: float, opening: bool = False) -> bytes:
                      keep_spans=P.keep_spans(data),
                      cover_path=(os.path.join(folder, data["cover"])
                                  if data.get("coverBg") and data.get("cover") else None),
-                     cover_dark=data.get("coverDark"))
+                     cover_dark=data.get("coverDark"),
+                     cover_paths=([os.path.join(folder, n)
+                                   for n in data.get("coverSet") or []]
+                                  if data.get("coverBg") else None))
         payload = B.read_payload(page)
 
         class Args:

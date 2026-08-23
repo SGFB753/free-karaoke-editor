@@ -101,6 +101,17 @@
   .found .one .t{flex:1; min-width:0}
   /* The doorway to the other formats: one narrow button, a menu underneath. */
   .moreexp{position:relative}
+  /* the export dialog: four choices and a button */
+  .expbox{background:var(--bg2); border:1px solid var(--line); border-radius:12px;
+    padding:18px 22px; display:flex; flex-direction:column; gap:12px; min-width:20rem}
+  .expbox h3{font-size:0.9375rem}
+  .expbox .row{display:flex; align-items:center; gap:10px}
+  .expbox .row label{flex:1; color:var(--muted); font-size:0.8125rem}
+  .expbox .row.btns{justify-content:flex-end; margin-top:6px}
+  /* the minimap: the whole song, one thin strip above the timeline */
+  .mmap{padding:6px 14px 0}
+  .mmap canvas{display:block; width:100%; height:18px; border-radius:5px;
+    background:var(--panel); cursor:pointer}
   /* The “?” that says a label has more to tell under the cursor. */
   label .q, .howto .q{display:inline-block; font-style:normal; font-size:0.7rem;
     width:1rem; height:1rem; line-height:1rem; text-align:center;
@@ -629,6 +640,10 @@
   </div>
 
   <div class="timeline">
+    <!-- The whole song in one strip: marks, kept lines, quiet stretches, the
+         window now on screen. On an eight-minute song the wheel is a hike;
+         one click here is a step. -->
+    <div class="mmap"><canvas id="mmap"></canvas></div>
     <div class="tlhead">
       <span data-t="timeline">Timeline</span>
       <button id="btnZoomOut">−</button><button id="btnZoomIn">＋</button>
@@ -727,6 +742,37 @@
 </div>
 
 <!-- ============ file browser ============ -->
+<!-- ============ MP4 export: quality is a choice, not a constant ============ -->
+<div class="modal hide" id="expDlg">
+  <div class="expbox">
+    <h3 data-t="expTitle">The video file</h3>
+    <div class="row"><label data-t="expSize">Size</label>
+      <select id="expSize">
+        <option value="1920x1080" selected>1080p</option>
+        <option value="1280x720">720p</option>
+        <option value="3840x2160">4K</option>
+      </select></div>
+    <div class="row"><label data-t="expFps">Frames</label>
+      <select id="expFps">
+        <option value="30" selected>30</option>
+        <option value="60">60</option>
+        <option value="24">24</option>
+      </select></div>
+    <div class="row"><label data-t="expQ">Quality</label>
+      <select id="expQ">
+        <option value="18" data-t="expQBest">better and heavier</option>
+        <option value="20" selected data-t="expQNorm">the usual</option>
+        <option value="24" data-t="expQLight">lighter file</option>
+      </select></div>
+    <label class="knob"><input type="checkbox" id="expIntro" checked>
+      <span data-t="expIntroLbl">the opening: the name and a count of three</span></label>
+    <div class="row btns">
+      <button class="pri" id="btnExpGo" data-t="expGo">Render</button>
+      <button id="btnExpCancel" data-t="cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal hide" id="browser">
   <div class="browser">
     <div class="top">

@@ -51,6 +51,9 @@ PIP_MIN_GAP = 2.5
 # How long the last line stays after the song has been sung. Long enough to
 # let go of the note, short enough not to look like a frozen picture.
 END_HOLD = 5.0
+# A line takes its seat in a breath, not a jump-cut: how long the fade-in
+# runs when a line first appears in any seat of the frame.
+FADE_IN = 0.25
 # The opening: the song's name, then a count of three. A karaoke that starts
 # on the first frame catches everybody mid-breath — nobody is at the
 # microphone yet, and the first line is gone before it is read.
@@ -594,8 +597,15 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             f = ImageFont.truetype(font_path, size)
         return f
 
-    bg = make_background(W, H, payload.get("cover") or "",
-                         int(payload.get("coverDark") or 66))
+    # One background — or a slow slideshow of them, when the cover came as
+    # frames cut from the clip. Each carries the song's name; the switch is a
+    # slow crossfade, timed by the song's own length.
+    cover_uris = [u for u in (payload.get("covers") or []) if u]
+    if not cover_uris:
+        cover_uris = [payload.get("cover") or ""]
+    cover_dark = int(payload.get("coverDark") or 66)
+    bgs = [make_background(W, H, u, cover_dark) for u in cover_uris]
+    bg = bgs[0]
     small = ImageFont.truetype(font_path, int(H * 0.020))
     # The song's name deserves better than the caption size — and its own
     # font, so growing it does not swell every section heading with it.
@@ -635,16 +645,42 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     y_next = int(H * 0.60)
     y_next2 = int(H * 0.72)
 
+    # Which line each seat held last, and since when — so a newcomer can fade
+    # in. The film walks time forward frame by frame, which makes this honest;
+    # a single still frame skips the fade and stands steady.
+    seat_since: dict = {}
+    fading = getattr(args, "still", None) is None
+
+    def seat_alpha(seat, key, t):
+        if not fading:
+            return 1.0
+        held = seat_since.get(seat)
+        if held is None or held[0] != key:
+            seat_since[seat] = (key, t)
+            return 0.0 if FADE_IN > 0 else 1.0
+        return min(1.0, (t - held[1]) / FADE_IN)
+
+    def paste_faded(frame, img, pos, alpha):
+        if alpha >= 1.0:
+            frame.paste(img, pos, img)
+            return
+        mask = img.getchannel("A").point(lambda v: int(v * alpha))
+        frame.paste(img, pos, mask)
+
+    tq = [0.0]                 # the clock draw_queue reads, set by its caller
+
     def draw_queue(frame, n1, duo=-1):
         """The line coming next, and the one after it fainter still — the
         singer reads forward, never back. The count-in shows the same queue,
         so nothing jumps when the music finally starts."""
         nx = get(n1, False)
-        frame.paste(nx.dim, (0, y_next - nx.h // 2), nx.dim)
+        paste_faded(frame, nx.dim, (0, y_next - nx.h // 2),
+                    seat_alpha("next", n1, tq[0]))
         n2i = next_sung(lines, n1)
         if n2i < len(lines) and n2i != duo:
             n2 = get(n2i, False)
-            frame.paste(n2.faint, (0, y_next2 - n2.h // 2), n2.faint)
+            paste_faded(frame, n2.faint, (0, y_next2 - n2.h // 2),
+                        seat_alpha("next2", n2i, tq[0]))
 
     t_start = args.start
     if t_start >= duration:
@@ -686,8 +722,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         shown = title
         while len(shown) > 8 and name_font.getlength(shown) > W - 2 * margin:
             shown = shown[:-2].rstrip() + "\u2026"
-        ImageDraw.Draw(bg).text((margin, int(H * 0.028)), shown, font=name_font,
-                                fill=(132, 140, 168))
+        for one in bgs:
+            ImageDraw.Draw(one).text((margin, int(H * 0.028)), shown,
+                                     font=name_font, fill=(132, 140, 168))
 
     def furniture(d, prog):
         """The bar along the bottom: on every frame, the opening included."""
@@ -704,6 +741,21 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     art_font = (fitted(card_artist, int(H * 0.042), W - 2 * margin)
                 if card_artist and lead else None)
     num_font = ImageFont.truetype(font_path, int(H * 0.060)) if lead else None
+
+    XFADE = 1.2
+
+    def bg_for(t):
+        """The background under second `t` of the song: one picture, or the
+        slideshow frame due at that moment, mid-crossfade when it is one."""
+        if len(bgs) < 2:
+            return bg.copy()
+        step = duration / len(bgs)
+        i = min(len(bgs) - 1, max(0, int(t / step)))
+        into = t - i * step
+        if i + 1 < len(bgs) and into > step - XFADE:
+            k = (into - (step - XFADE)) / XFADE
+            return Image.blend(bgs[i], bgs[i + 1], min(max(k, 0.0), 1.0))
+        return bgs[i].copy()
 
     def intro_frame(tt):
         """A frame of the opening, `tt` seconds into it."""
@@ -726,13 +778,14 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                    font=num_font, fill=COL_HOT, anchor="mm")
             first = next_sung(lines, -1)
             if first < len(lines):
+                tq[0] = tt - lead      # before zero: the fade matures by zero
                 draw_queue(frame, first)
         furniture(d, 0.0)
         return frame
 
     def song_frame(t):
         """A frame of the song itself, at second `t` of the recording."""
-        frame = bg.copy()
+        frame = bg_for(t)
         d = ImageDraw.Draw(frame)
 
         idx = bisect.bisect_right(starts, t) - 1
@@ -772,7 +825,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         # The song has been sung: after a few seconds the seat empties. A
         # last line hanging lit to the end of the recording reads as a
         # frozen picture, not as an ending.
-        over = t > song_end + END_HOLD
+        over_k = max(0.0, min(1.0, (t - song_end - END_HOLD) / 0.4))
+        over = over_k >= 1.0
+        scene_alpha = 1.0 - over_k
         singing = idx >= 0 and (t < lines[idx]["end"]
                                 or (runover >= 0
                                     and t < lines[runover]["end"]))
@@ -786,10 +841,11 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             # lead line as always.
             pic = get(idx, main=False, duo_side=True)
             y_b = y_main + int(H * 0.036)
-            frame.paste(pic.dim, (0, y_b), pic.dim)
+            a_b = seat_alpha("side", idx, t) * scene_alpha
+            paste_faded(frame, pic.dim, (0, y_b), a_b)
             for bx in pic.hot_boxes(lines[idx], t):
                 piece = pic.hot.crop(bx)
-                frame.paste(piece, (bx[0], y_b + bx[1]), piece)
+                paste_faded(frame, piece, (bx[0], y_b + bx[1]), a_b)
             duo_bottom = y_b + pic.h
         elif not over and idx >= 0:
             # The lead stays exactly where a solo line sits; the backing is
@@ -808,10 +864,11 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 else:
                     y_j = y_j + get(pair[0]).h + int(H * 0.002)
                     duo_bottom = y_j + pic.h
-                frame.paste(pic.dim, (0, y_j), pic.dim)
+                a_j = seat_alpha("side" if is_back else "main", j, t) * scene_alpha
+                paste_faded(frame, pic.dim, (0, y_j), a_j)
                 for bx in pic.hot_boxes(lines[j], t):
                     piece = pic.hot.crop(bx)
-                    frame.paste(piece, (bx[0], y_j + bx[1]), piece)
+                    paste_faded(frame, piece, (bx[0], y_j + bx[1]), a_j)
                 if k == 0 and lines[j].get("section"):
                     d.text((margin, y_j - int(H * 0.055)),
                            lines[j]["section"].upper(), font=small, fill=COL_SECT)
@@ -838,6 +895,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
         n1 = next_sung(lines, idx)
         if not over and n1 < len(lines) and n1 != duo:
+            tq[0] = t
             draw_queue(frame, n1, duo)
 
             gap = lines[n1]["start"] - (lines[idx]["end"] if idx >= 0 else 0)

@@ -123,7 +123,8 @@ def build_html(out_path: str, lyrics: Lyrics, duration: float,
                artist: Optional[str] = None, ui_lang: str = "auto",
                colors=None, theme=None, keep_spans=None,
                cover_path: Optional[str] = None,
-               cover_dark: Optional[int] = None) -> str:
+               cover_dark: Optional[int] = None,
+               cover_paths: Optional[list] = None) -> str:
     """tracks: {\'mix\'|\'instrumental\'|\'vocals\': (path, mime)} → path to the HTML."""
     with open(TEMPLATE, "r", encoding="utf-8") as f:
         tpl = f.read()
@@ -161,6 +162,10 @@ def build_html(out_path: str, lyrics: Lyrics, duration: float,
         # how much of the cover is darkened away, percent: the words must stay
         # the brightest thing in the frame, and covers differ
         "coverDark": max(0, min(95, int(cover_dark if cover_dark is not None else 66))),
+        # frames cut from the clip: the video plays them as a slow slideshow
+        # behind the lyrics; the page keeps its single cover
+        "covers": [_data_uri(cp, "image/jpeg") for cp in (cover_paths or [])
+                   if cp and os.path.isfile(cp)],
         "engineLabel": ENGINE_LABEL.get(engine, engine),
         "audio": audio,
         "data": {
