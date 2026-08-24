@@ -1377,6 +1377,40 @@ def main():
     check("the saved darkness is clamped, not trusted",
           rec_d.get("coverDark") == 95, rec_d.get("coverDark"))
 
+    print("\nTorn words are re-laid; held notes are left alone")
+    # A fast, dense vocal: the model places the LINE well and mangles the
+    # words inside — one hogs seconds, the rest get slivers, some run out of
+    # order. Fixing that by hand line after line is the program's job now.
+    def _mkline(text, times):
+        _l = L.parse(text)
+        _ln = _l.lines[0]
+        _ln.start, _ln.end = times[0][0], times[-1][1]
+        for _w, (_a, _b) in zip(_ln.words, times):
+            _w.start, _w.end = _a, _b
+        return _l
+    starved = _mkline("all the pigs are lined",
+                      [(2.0, 2.02), (2.02, 2.04), (2.04, 2.06),
+                       (2.06, 2.08), (2.08, 8.0)])
+    check("a starved line is re-laid by syllables",
+          A.repair_ragged(starved) == 1
+          and all((w.end - w.start) > 0.5 for w in starved.lines[0].words),
+          [round(w.end - w.start, 2) for w in starved.lines[0].words])
+    check("its edges do not move",
+          starved.lines[0].words[0].start == 2.0
+          and abs(starved.lines[0].words[-1].end - 8.0) < 0.01)
+    zero = _mkline("a chilling cold", [(1.0, 1.0), (1.0, 2.0), (2.0, 3.0)])
+    check("a word with no time at all counts as torn", A.repair_ragged(zero) == 1)
+    disorder = _mkline("out of order here", [(5.0, 5.4), (4.0, 4.4),
+                                             (5.8, 6.2), (6.2, 6.6)])
+    check("words out of order count as torn", A.repair_ragged(disorder) == 1)
+    held = _mkline("меня не малафили", [(2.0, 2.5), (2.5, 3.0), (3.0, 12.0)])
+    check("a held note is NOT torn: the long word stays long",
+          A.repair_ragged(held) == 0
+          and held.lines[0].words[-1].end - held.lines[0].words[-1].start > 8)
+    sane = _mkline("perfectly ordinary words here", [(1.0, 1.5), (1.5, 2.1),
+                                                     (2.1, 2.6), (2.6, 3.2)])
+    check("a sane line is not touched", A.repair_ragged(sane) == 0)
+
     print("\nThe original's own lines live inside the marks")
     # An intro sung by the artist: its lines are marked “♪ Original” AND the
     # intro is a “no words here” stretch. The mark passes used to expel those

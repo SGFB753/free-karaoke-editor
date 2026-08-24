@@ -7,6 +7,21 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.41.1
+
+**Torn words are re-laid by the program, not by you.** On a fast, dense vocal
+— the first half of a NIN song, say — the model often places the line well
+and mangles the words inside it: one word swallows seconds, the rest get
+slivers no one could sing, a couple land out of order. That used to be an
+evening of “≡ Even words”, line after line. A repair pass now catches the
+torn lines right after alignment and re-lays their words by syllables inside
+the line's own span. The edges stay; a held note is recognised for what it is
+and left alone; a sane line is not touched. For an already-built song the
+same medicine is one press away: select the rough half by dragging across it
+and hit “≡ Even words” — it has always worked on many lines at once.
+
+---
+
 ## 4.41.0
 
 **Lines breathe instead of blinking.** Every line now takes its seat in the

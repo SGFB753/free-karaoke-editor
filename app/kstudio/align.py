@@ -555,6 +555,7 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
         # out: the marks are the person's own words, and they win.
         enforce_marks(lyrics, skip, duration, log=log)
     repair_order(lyrics, log=log)
+    repair_ragged(lyrics, log=log)
     _fill_lines(lyrics, duration)      # after repairs the bounds may exceed the track
 
     # What could not be spread stays a pile, and a pile is not a timing: those
@@ -1295,6 +1296,50 @@ def place_backing(lyrics: Lyrics, duration: float, log: Log = _noop) -> int:
     return placed
 
 
+def repair_ragged(lyrics: Lyrics, log: Log = _noop) -> int:
+    """Re-lay the words of a line whose insides the model tore up.
+
+    On a fast, dense vocal the model often places the LINE well and mangles
+    the words in it: one word swallows two seconds, three others get nothing,
+    a couple land out of order. Fixing that by hand, line after line, is the
+    work a person gave this program to do. Where the insides are plainly
+    torn — a word with no time at all, a word out of order, or one hogging
+    the line — the words are re-laid by syllables inside the line's own span.
+    The edges do not move; a line whose words look sane is not touched.
+    """
+    fixed = 0
+    for ln in lyrics.lines:
+        ws = ln.words
+        if len(ws) < 2 or ln.start is None or ln.end is None:
+            continue
+        if any(w.start is None or w.end is None for w in ws):
+            continue
+        span = ln.end - ln.start
+        if span <= 0.2:
+            continue
+        durs = sorted(max((w.end or 0) - (w.start or 0), 0.0) for w in ws)
+        med = durs[len(durs) // 2]
+        torn = (
+            # a word left with no time of its own
+            any((w.end - w.start) < 0.03 for w in ws)
+            # words out of order
+            or any(a.start > b.start + 0.01 for a, b in zip(ws, ws[1:]))
+            # one word hogging the line while the others are starved to
+            # slivers no one could sing. A held note is NOT this: there the
+            # long word is long and its neighbours still breathe.
+            or (med < 0.15 and durs[-1] > max(5 * med, 0.4 * span)
+                and durs[-1] > 1.5)
+        )
+        if not torn:
+            continue
+        _spread(ws, ln.start, ln.end)
+        fixed += 1
+    if fixed:
+        log(tr(f"  lines whose words the model tore up, re-laid by syllables: {fixed}",
+               f"  строк с рваными словами переложено по слогам: {fixed}"))
+    return fixed
+
+
 def repair_order(lyrics: Lyrics, log: Log = _noop) -> int:
     """Pull overlapping lines apart: a line must not end past the start of the
     next one, or the highlight jumps around."""
@@ -1456,6 +1501,7 @@ def align_anchored(lyrics: Lyrics, audio_path: str, duration: float,
     lyrics.has_manual_times = False
     _fill_lines(lyrics, duration)
     repair_order(lyrics, log=log)
+    repair_ragged(lyrics, log=log)
     return lyrics
 
 
