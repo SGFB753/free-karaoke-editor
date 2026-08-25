@@ -3672,22 +3672,37 @@ function refreshCover(){
   const on = !!(data && data.cover && data.coverBg);
   $("btnCoverOff").classList.toggle("hide", !on);
   $("grpCoverDark").classList.toggle("hide", !on);
-  const dark = (data && data.coverDark != null) ? data.coverDark : 66;
-  $("rCoverDark").value = dark;
-  $("vCoverDark").textContent = dark + "%";
+  showDark((data && data.coverDark != null) ? data.coverDark : 66);
 }
 // Darker reads better, lighter shows more of the picture — a matter of the
-// cover at hand, so it is a knob, not a constant. The open frame follows.
-$("rCoverDark").addEventListener("input", () => {
-  const dark = +$("rCoverDark").value;
-  $("vCoverDark").textContent = dark + "%";
+// cover at hand, so it is a knob, not a constant. Two ways in: the slider for
+// the eye, the field for a number you already know; an exact percent could
+// not be felt for on a narrow slider at all.
+function showDark(v){
+  const dark = Math.round(clamp(+v || 0, 0, 95));
+  $("rCoverDark").value = dark;
+  if (document.activeElement !== $("nCoverDark")) $("nCoverDark").value = dark;
+  return dark;
+}
+function setDark(v){
+  const dark = showDark(v);
+  if (!data || data.coverDark === dark) return;
   data.coverDark = dark;
   touched();
+  // The open frame follows, once the hand has settled.
   clearTimeout(stillTimer);
   stillTimer = setTimeout(() => {
     if (!$("stillBox").classList.contains("hide")) showStill(stillT, false);
   }, 400);
+}
+$("rCoverDark").addEventListener("input", () => setDark($("rCoverDark").value));
+$("nCoverDark").addEventListener("input", () => setDark($("nCoverDark").value));
+$("nCoverDark").addEventListener("keydown", e => {
+  e.stopPropagation();                  // digits are digits, not hotkeys
+  if (e.key === "Enter"){ e.preventDefault(); $("nCoverDark").blur(); }
 });
+// Leaving the field with nonsense in it shows what actually stands.
+$("nCoverDark").addEventListener("blur", () => showDark(data && data.coverDark));
 $("btnCover").addEventListener("click", () => openBrowser("cover"));
 $("btnCoverOff").addEventListener("click", async () => {
   try{

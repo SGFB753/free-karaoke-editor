@@ -649,6 +649,13 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     # in. The film walks time forward frame by frame, which makes this honest;
     # a single still frame skips the fade and stands steady.
     seat_since: dict = {}
+    # A line must not blink out and blink in when the queue moves up: the seat
+    # it leaves keeps it for a breath, fading, while the newcomer rises over
+    # it. Without this both ends started from nothing and the frame went
+    # briefly empty at every line change.
+    seat_prev: dict = {}       # seat -> (line, y, side?) as of the last frame
+    ghosts: dict = {}          # seat -> (line, y, side?, when it left)
+    seat_now: dict = {}
     fading = getattr(args, "still", None) is None
 
     def seat_alpha(seat, key, t):
@@ -659,6 +666,39 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             seat_since[seat] = (key, t)
             return 0.0 if FADE_IN > 0 else 1.0
         return min(1.0, (t - held[1]) / FADE_IN)
+
+    def hold_seat(seat, i, y, side=False):
+        """Remember who sits where, so a change can be seen and faded."""
+        seat_now[seat] = (i, y, side)
+
+    def draw_ghosts(frame, t, scene):
+        """The lines that left in the last breath, still fading where they sat.
+
+        A ghost wears the layer of the seat it left: a sung line leaves lit,
+        a queue line leaves dim — painting a queue line as sung would light
+        words nobody had reached yet.
+        """
+        for seat in list(ghosts):
+            i, y, side, gone = ghosts[seat]
+            k = 1.0 - (t - gone) / FADE_IN
+            if k <= 0:
+                del ghosts[seat]
+                continue
+            pic = get(i, main=(seat == "main"), duo_side=side)
+            if seat == "next2":
+                paste_faded(frame, pic.faint, (0, y), k * scene)
+                continue
+            paste_faded(frame, pic.dim, (0, y), k * scene)
+            if seat in ("main", "side") and pic.hot is not None:
+                # frozen the way it looked as it left the singing: lit
+                for bx in pic.hot_boxes(lines[i], lines[i]["end"]):
+                    paste_faded(frame, pic.hot.crop(bx), (bx[0], y + bx[1]), k * scene)
+
+    def retire_seats(t):
+        """Carry this frame's seating into the next one's memory."""
+        seat_prev.clear()
+        seat_prev.update(seat_now)
+        seat_now.clear()
 
     def paste_faded(frame, img, pos, alpha):
         if alpha >= 1.0:
@@ -674,11 +714,13 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         singer reads forward, never back. The count-in shows the same queue,
         so nothing jumps when the music finally starts."""
         nx = get(n1, False)
+        hold_seat("next", n1, y_next - nx.h // 2)
         paste_faded(frame, nx.dim, (0, y_next - nx.h // 2),
                     seat_alpha("next", n1, tq[0]))
         n2i = next_sung(lines, n1)
         if n2i < len(lines) and n2i != duo:
             n2 = get(n2i, False)
+            hold_seat("next2", n2i, y_next2 - n2.h // 2)
             paste_faded(frame, n2.faint, (0, y_next2 - n2.h // 2),
                         seat_alpha("next2", n2i, tq[0]))
 
@@ -828,6 +870,32 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         over_k = max(0.0, min(1.0, (t - song_end - END_HOLD) / 0.4))
         over = over_k >= 1.0
         scene_alpha = 1.0 - over_k
+
+        # Who will sit where this frame — decided before a single pixel is
+        # laid down, so a seat changing hands can hand its old occupant to
+        # the ghosts in the SAME frame. Deciding it afterwards left exactly
+        # one blank frame at every line change: the flash.
+        if fading:
+            occ = {}
+            if not over and idx >= 0:
+                if lines[idx].get("backing") and duo < 0:
+                    occ["side"] = idx
+                else:
+                    pair0 = [idx] if duo < 0 else sorted(
+                        [idx, duo], key=lambda j: lines[j].get("voice") == 2)
+                    occ["main"] = pair0[0]
+                    if len(pair0) > 1:
+                        occ["side"] = pair0[1]
+                q1 = next_sung(lines, idx)
+                if q1 < len(lines) and q1 != duo:
+                    occ["next"] = q1
+                    q2 = next_sung(lines, q1)
+                    if q2 < len(lines) and q2 != duo:
+                        occ["next2"] = q2
+            for seat, prev in seat_prev.items():
+                if occ.get(seat) != prev[0]:
+                    ghosts[seat] = (prev[0], prev[1], prev[2], t)
+            draw_ghosts(frame, t, scene_alpha)
         singing = idx >= 0 and (t < lines[idx]["end"]
                                 or (runover >= 0
                                     and t < lines[runover]["end"]))
@@ -841,6 +909,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             # lead line as always.
             pic = get(idx, main=False, duo_side=True)
             y_b = y_main + int(H * 0.036)
+            hold_seat("side", idx, y_b, True)
             a_b = seat_alpha("side", idx, t) * scene_alpha
             paste_faded(frame, pic.dim, (0, y_b), a_b)
             for bx in pic.hot_boxes(lines[idx], t):
@@ -864,6 +933,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 else:
                     y_j = y_j + get(pair[0]).h + int(H * 0.002)
                     duo_bottom = y_j + pic.h
+                hold_seat("side" if is_back else "main", j, y_j, is_back)
                 a_j = seat_alpha("side" if is_back else "main", j, t) * scene_alpha
                 paste_faded(frame, pic.dim, (0, y_j), a_j)
                 for bx in pic.hot_boxes(lines[j], t):
@@ -946,6 +1016,8 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 d.rectangle([bx, by, bx + int(bw * done_k), by + bh], fill=COL_HOT)
 
         furniture(d, min(max(t / duration, 0), 1))
+        if fading:
+            retire_seats(t)
         return frame
 
     # One frame to look at, instead of a clip to wait for: the studio shows

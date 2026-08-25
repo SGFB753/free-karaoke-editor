@@ -636,9 +636,21 @@ def main():
         return sum(sum(imf.getpixel((x, y))) for y in
                    range(int(Hf * 0.55), int(Hf * 0.66))
                    for x in range(0, Wf, 2) if sum(imf.getpixel((x, y))) > 40)
-    early, later = next_ink(0.3), next_ink(1.5)
-    check("a fresh queue line is still fading in",
-          early < later * 0.85, f"{early} vs {later}")
+    # The point of the fades is that a line change never blanks the frame:
+    # before them both ends started from nothing and the picture flashed.
+    def whole_ink(at):
+        shot = os.path.join(tmp, f"whole-{at}.png")
+        subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", str(at),
+                        "-i", AF.output, "-frames:v", "1", shot], check=True)
+        imw2 = Image.open(shot).convert("RGB")
+        Ww2, Hw2 = imw2.size
+        return sum(1 for y in range(int(Hw2 * 0.30), int(Hw2 * 0.80))
+                   for x in range(0, Ww2, 2) if sum(imw2.getpixel((x, y))) > 90)
+    through = [whole_ink(round(0.2 + i * 0.1, 1)) for i in range(8)]
+    check("the frame never goes blank while the lines change over",
+          min(through) > 0, through)
+    check("and the crossfade is visible: two lines share the turn",
+          max(through) > min(through) * 1.4, through)
 
     # the slideshow: two covers, two different grounds
     import base64 as _b64

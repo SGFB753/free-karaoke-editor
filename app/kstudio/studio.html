@@ -267,6 +267,12 @@
   .darkknob{display:flex; align-items:center; gap:6px; font-size:0.7812rem;
     color:var(--muted); padding-left:9px; border-left:1px solid var(--line);
     flex:none; white-space:nowrap}
+  /* Wide enough to aim with, and a field to type the number outright: on a
+     narrow slider an exact percent could not be felt for at all. */
+  .darkknob input[type=range]{width:9rem}
+  .darkknob input[type=number]{width:3.4rem; font:inherit; color:var(--text);
+    background:var(--bg); border:1px solid var(--line); border-radius:.3rem;
+    padding:.1rem .3rem; text-align:right}
   .pick{display:flex; align-items:center; gap:6px; font-size:0.7812rem; color:var(--muted);
     padding-left:9px; border-left:1px solid var(--line);
     /* Never squeezed: under pressure the label used to shrink into the
@@ -699,8 +705,9 @@
       <button id="btnCoverOff" class="hide" data-tt="coverOffHint" title="Back to the plain background">⛰✕</button>
       <span class="darkknob hide" id="grpCoverDark" data-tt="coverDarkHint"
             title="How dark the cover backdrop is: darker reads better, lighter shows more of the picture">
-        <b>🌗</b><input type="range" id="rCoverDark" min="0" max="95" value="66"
-        style="width:64px"><b id="vCoverDark">66%</b></span>
+        <b>🌗</b><input type="range" id="rCoverDark" min="0" max="95" step="1"
+        value="66"><input type="number" id="nCoverDark" min="0" max="95"
+        step="1" value="66"><b>%</b></span>
       <button id="btnLoop" data-tt="loopHint" data-t="loop"
               title="Play the selected line over and over">↻ Loop</button>
       <button id="btnSnap" data-tt="snapHint" data-t="snapAll"

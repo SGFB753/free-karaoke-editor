@@ -216,6 +216,28 @@ const byUrl = await post(`/api/project/${encodeURIComponent(pid)}/cover`,
   {url: `${API}/api/project/${encodeURIComponent(pid)}/still?at=2`});
 ok('a cover arrives by link', byUrl.ok === true && byUrl.cover === true,
    JSON.stringify(byUrl));
+// Two ways to set the darkness: the slider for the eye, the field for a
+// number you already know. Both must agree, and both must reach the disk.
+{
+  await p.evaluate(() => {
+    document.getElementById('grpCoverDark').classList.remove('hide');
+  });
+  await p.click('#nCoverDark', {clickCount: 3});
+  await p.type('#nCoverDark', '83');
+  await sleep(1200);
+  const shown = await p.$eval('#rCoverDark', e => +e.value);
+  ok('a typed percent moves the slider with it', shown === 83, shown);
+  const saved = await get('/api/project/' + encodeURIComponent(pid));
+  ok('and a typed percent reaches the disk', saved.coverDark === 83,
+     saved.coverDark);
+  // nonsense in the field must not stick
+  await p.click('#nCoverDark', {clickCount: 3});
+  await p.type('#nCoverDark', '999');
+  await sleep(1200);
+  const clamped = await p.$eval('#rCoverDark', e => +e.value);
+  ok('an impossible percent is clamped, not obeyed', clamped === 95, clamped);
+}
+
 // The darkness knob is saved with the ordinary edits and clamped.
 const pdNow = await get('/api/project/' + encodeURIComponent(pid));
 await post(`/api/project/${encodeURIComponent(pid)}/timings`,

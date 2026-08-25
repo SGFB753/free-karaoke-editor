@@ -7,6 +7,24 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.41.2
+
+**A line change is a crossfade, not a flash.** The fades of the last release
+had both ends start from nothing: the outgoing line vanished at once, the
+incoming one rose from zero, and for a fraction of a second the frame stood
+empty. A seat now keeps whoever left it for a breath, fading, while the
+newcomer rises over them — and the seating for a frame is decided before a
+single pixel is laid, so the handover happens within that frame rather than
+one behind it. A ghost wears the layer of the seat it left, too: a queue line
+leaves dim, because painting it as sung lit words nobody had reached.
+
+**The darkness percent can simply be typed.** The knob grew from a stub to
+nine rems, and a field beside it takes the number outright — an exact percent
+could not be felt for on a slider that narrow. The two agree in both
+directions, and nonsense in the field is clamped rather than obeyed.
+
+---
+
 ## 4.41.1
 
 **Torn words are re-laid by the program, not by you.** On a fast, dense vocal
