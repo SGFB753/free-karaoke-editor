@@ -51,9 +51,6 @@ PIP_MIN_GAP = 2.5
 # How long the last line stays after the song has been sung. Long enough to
 # let go of the note, short enough not to look like a frozen picture.
 END_HOLD = 5.0
-# A line takes its seat in a breath, not a jump-cut: how long the fade-in
-# runs when a line first appears in any seat of the frame.
-FADE_IN = 0.25
 # The opening: the song's name, then a count of three. A karaoke that starts
 # on the first frame catches everybody mid-breath — nobody is at the
 # microphone yet, and the first line is gone before it is read.
@@ -648,57 +645,13 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     # Which line each seat held last, and since when — so a newcomer can fade
     # in. The film walks time forward frame by frame, which makes this honest;
     # a single still frame skips the fade and stands steady.
-    seat_since: dict = {}
-    # A line must not blink out and blink in when the queue moves up: the seat
-    # it leaves keeps it for a breath, fading, while the newcomer rises over
-    # it. Without this both ends started from nothing and the frame went
-    # briefly empty at every line change.
-    seat_prev: dict = {}       # seat -> (line, y, side?) as of the last frame
-    ghosts: dict = {}          # seat -> (line, y, side?, when it left)
-    seat_now: dict = {}
+    # The lines do not swap places, they ride: when the singing moves on, the
+    # whole column slides up by one step and the line at the top leaves the
+    # frame as it goes. Standing still they sit exactly where they always sat.
+    slide = [None, None, 0.0]  # who holds the main seat, who held it, since when
+    STEP = y_next - y_main     # one line of the column
+    SLIDE = 0.32               # how long the ride takes
     fading = getattr(args, "still", None) is None
-
-    def seat_alpha(seat, key, t):
-        if not fading:
-            return 1.0
-        held = seat_since.get(seat)
-        if held is None or held[0] != key:
-            seat_since[seat] = (key, t)
-            return 0.0 if FADE_IN > 0 else 1.0
-        return min(1.0, (t - held[1]) / FADE_IN)
-
-    def hold_seat(seat, i, y, side=False):
-        """Remember who sits where, so a change can be seen and faded."""
-        seat_now[seat] = (i, y, side)
-
-    def draw_ghosts(frame, t, scene):
-        """The lines that left in the last breath, still fading where they sat.
-
-        A ghost wears the layer of the seat it left: a sung line leaves lit,
-        a queue line leaves dim — painting a queue line as sung would light
-        words nobody had reached yet.
-        """
-        for seat in list(ghosts):
-            i, y, side, gone = ghosts[seat]
-            k = 1.0 - (t - gone) / FADE_IN
-            if k <= 0:
-                del ghosts[seat]
-                continue
-            pic = get(i, main=(seat == "main"), duo_side=side)
-            if seat == "next2":
-                paste_faded(frame, pic.faint, (0, y), k * scene)
-                continue
-            paste_faded(frame, pic.dim, (0, y), k * scene)
-            if seat in ("main", "side") and pic.hot is not None:
-                # frozen the way it looked as it left the singing: lit
-                for bx in pic.hot_boxes(lines[i], lines[i]["end"]):
-                    paste_faded(frame, pic.hot.crop(bx), (bx[0], y + bx[1]), k * scene)
-
-    def retire_seats(t):
-        """Carry this frame's seating into the next one's memory."""
-        seat_prev.clear()
-        seat_prev.update(seat_now)
-        seat_now.clear()
 
     def paste_faded(frame, img, pos, alpha):
         if alpha >= 1.0:
@@ -707,22 +660,16 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         mask = img.getchannel("A").point(lambda v: int(v * alpha))
         frame.paste(img, pos, mask)
 
-    tq = [0.0]                 # the clock draw_queue reads, set by its caller
-
-    def draw_queue(frame, n1, duo=-1):
+    def draw_queue(frame, n1, duo=-1, off=0, alpha=1.0):
         """The line coming next, and the one after it fainter still — the
         singer reads forward, never back. The count-in shows the same queue,
         so nothing jumps when the music finally starts."""
         nx = get(n1, False)
-        hold_seat("next", n1, y_next - nx.h // 2)
-        paste_faded(frame, nx.dim, (0, y_next - nx.h // 2),
-                    seat_alpha("next", n1, tq[0]))
+        paste_faded(frame, nx.dim, (0, y_next - nx.h // 2 + off), alpha)
         n2i = next_sung(lines, n1)
         if n2i < len(lines) and n2i != duo:
             n2 = get(n2i, False)
-            hold_seat("next2", n2i, y_next2 - n2.h // 2)
-            paste_faded(frame, n2.faint, (0, y_next2 - n2.h // 2),
-                        seat_alpha("next2", n2i, tq[0]))
+            paste_faded(frame, n2.faint, (0, y_next2 - n2.h // 2 + off), alpha)
 
     t_start = args.start
     if t_start >= duration:
@@ -820,7 +767,6 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                    font=num_font, fill=COL_HOT, anchor="mm")
             first = next_sung(lines, -1)
             if first < len(lines):
-                tq[0] = tt - lead      # before zero: the fade matures by zero
                 draw_queue(frame, first)
         furniture(d, 0.0)
         return frame
@@ -892,10 +838,29 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                     q2 = next_sung(lines, q1)
                     if q2 < len(lines) and q2 != duo:
                         occ["next2"] = q2
-            for seat, prev in seat_prev.items():
-                if occ.get(seat) != prev[0]:
-                    ghosts[seat] = (prev[0], prev[1], prev[2], t)
-            draw_ghosts(frame, t, scene_alpha)
+            # The column rides: when the main seat changes hands, everything
+            # slides up one step over SLIDE seconds and the line leaving the
+            # top goes with it, fading as it rises out of the frame.
+            if occ.get("main") != slide[0]:
+                slide[1] = slide[0]
+                slide[0] = occ.get("main")
+                slide[2] = t
+            ride = (min(1.0, (t - slide[2]) / SLIDE)
+                    if slide[0] is not None else 1.0)
+            ride = 1.0 - (1.0 - ride) ** 3            # eased: quick, then settling
+            off = int(round((1.0 - ride) * STEP))
+            # the line that left the main seat, riding up and out
+            if slide[1] is not None and ride < 1.0 and not over:
+                gpic = get(slide[1], main=True)
+                gy = y_main - gpic.h // 2 - int(round(ride * STEP))
+                galpha = (1.0 - ride) * scene_alpha
+                paste_faded(frame, gpic.dim, (0, gy), galpha)
+                if gpic.hot is not None:
+                    for bx in gpic.hot_boxes(lines[slide[1]], lines[slide[1]]["end"]):
+                        paste_faded(frame, gpic.hot.crop(bx),
+                                    (bx[0], gy + bx[1]), galpha)
+        else:
+            off = 0
         singing = idx >= 0 and (t < lines[idx]["end"]
                                 or (runover >= 0
                                     and t < lines[runover]["end"]))
@@ -908,9 +873,8 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             # main seat stays empty, and the queue below points at the next
             # lead line as always.
             pic = get(idx, main=False, duo_side=True)
-            y_b = y_main + int(H * 0.036)
-            hold_seat("side", idx, y_b, True)
-            a_b = seat_alpha("side", idx, t) * scene_alpha
+            y_b = y_main + int(H * 0.036) + off
+            a_b = scene_alpha
             paste_faded(frame, pic.dim, (0, y_b), a_b)
             for bx in pic.hot_boxes(lines[idx], t):
                 piece = pic.hot.crop(bx)
@@ -927,14 +891,13 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 is_back = k == 1
                 pic = get(j, main=not is_back, duo_side=is_back)
                 if not is_back:
-                    y_j = y_main - pic.h // 2
+                    y_j = y_main - pic.h // 2 + off
                     # a wrapped line is taller: everything below must yield
                     duo_bottom = max(duo_bottom, y_j + pic.h)
                 else:
                     y_j = y_j + get(pair[0]).h + int(H * 0.002)
                     duo_bottom = y_j + pic.h
-                hold_seat("side" if is_back else "main", j, y_j, is_back)
-                a_j = seat_alpha("side" if is_back else "main", j, t) * scene_alpha
+                a_j = scene_alpha
                 paste_faded(frame, pic.dim, (0, y_j), a_j)
                 for bx in pic.hot_boxes(lines[j], t):
                     piece = pic.hot.crop(bx)
@@ -965,14 +928,13 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
         n1 = next_sung(lines, idx)
         if not over and n1 < len(lines) and n1 != duo:
-            tq[0] = t
-            draw_queue(frame, n1, duo)
+            draw_queue(frame, n1, duo, off, scene_alpha)
 
             gap = lines[n1]["start"] - (lines[idx]["end"] if idx >= 0 else 0)
             left = lines[n1]["start"] - t
             if not singing and gap > PIP_MIN_GAP:
-                dots(max((y_main + y_next) // 2, duo_bottom + int(H * 0.018)),
-                     pips_lit(gap, left))
+                dots(max((y_main + y_next) // 2 + off,
+                         duo_bottom + int(H * 0.018)), pips_lit(gap, left))
 
         # While nobody sings the screen is empty and it is unclear whether
         # the song is running. At the top — a countdown to the next line, as
@@ -1016,8 +978,6 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 d.rectangle([bx, by, bx + int(bw * done_k), by + bh], fill=COL_HOT)
 
         furniture(d, min(max(t / duration, 0), 1))
-        if fading:
-            retire_seats(t)
         return frame
 
     # One frame to look at, instead of a clip to wait for: the studio shows

@@ -649,8 +649,26 @@ def main():
     through = [whole_ink(round(0.2 + i * 0.1, 1)) for i in range(8)]
     check("the frame never goes blank while the lines change over",
           min(through) > 0, through)
-    check("and the crossfade is visible: two lines share the turn",
-          max(through) > min(through) * 1.4, through)
+    # The column rides: through a line change the text is found at heights it
+    # never rests at, and the line leaving the top is gone by the end of it.
+    def top_row(at):
+        shot = os.path.join(tmp, f"ride-{at}.png")
+        subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", str(at),
+                        "-i", AF.output, "-frames:v", "1", shot], check=True)
+        imr = Image.open(shot).convert("RGB")
+        Wr, Hr = imr.size
+        for y in range(int(Hr * 0.10), int(Hr * 0.98)):
+            if any(sum(imr.getpixel((x, y))) > 110 for x in range(0, Wr, 3)):
+                return y
+        return -1
+    rest = top_row(1.4)                    # long settled
+    riding = [top_row(round(0.2 + i * 0.05, 2)) for i in range(4)]
+    check("mid-change the column stands where it never rests",
+          any(r >= 0 and abs(r - rest) > 4 for r in riding),
+          f"settled {rest}, riding {riding}")
+    check("and it comes to rest at its own place",
+          all(abs(top_row(at) - rest) <= 1 for at in (1.4, 1.8)),
+          f"{rest} / {top_row(1.8)}")
 
     # the slideshow: two covers, two different grounds
     import base64 as _b64

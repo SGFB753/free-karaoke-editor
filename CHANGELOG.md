@@ -7,6 +7,18 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.41.3
+
+**The lyrics scroll now, they do not change places.** Fading a line out where
+it stood and another in where it stood was still a change of pictures, not a
+movement: the text simply swapped. The whole column rides instead — when the
+singing moves on, every line slides up one step in a third of a second, the
+newcomer arrives from below where it had been waiting, and the line at the
+top rides out of the frame, fading as it goes. Standing still, everything
+sits exactly where it always sat.
+
+---
+
 ## 4.41.2
 
 **A line change is a crossfade, not a flash.** The fades of the last release
