@@ -253,6 +253,10 @@ Second line
   the neighbouring word.
 * `[00:12.34] line` — a ready LRC timing. If the file has them, alignment is
   skipped.
+* `ma=la=fi=li` — a syllable break. The pieces are timed one by one, so a held
+  note lights up syllable by syllable, and the mark itself is never shown: on
+  screen, on the page and in the video the word is whole. A soft hyphen works
+  the same way; an ordinary hyphen is a letter and stays where it is.
 
 ### Who sings, and how many times
 

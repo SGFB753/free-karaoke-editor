@@ -1662,6 +1662,7 @@ def _lyrics_from(data: dict):
             wd = Word(w["w"], syllables=w.get("s") or 1)
             wd.start = float(w["t"])
             wd.end = wd.start + float(w["d"])
+            wd.glue = bool(w.get("g"))       # a syllable stays a syllable
             words.append(wd)
         ln = Line(text=l.get("text", ""), words=words, section=l.get("section"),
                   backing=bool(l.get("backing")), voice=int(l.get("voice") or 1),

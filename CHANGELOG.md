@@ -7,6 +7,30 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.42.0
+
+**A word can be broken into syllables that nobody sees.** Write “ма=ла=фи=ли”
+in the lyrics and the pieces are timed one by one — a held note lights up
+syllable by syllable — while the word stays whole everywhere it is read: in
+the editor, on the page, in the video, in the UltraStar file and in the
+subtitles. A soft hyphen does the same; an ordinary hyphen is a letter and is
+left alone. The frame never breaks a line inside a word either.
+
+**The colours are chosen in the window now.** The system's colour panel is
+the system's window: it stood over the song and no press on the page could
+dismiss it. The swatches open a popover of the program's own — ready colours
+and a field for a code — which closes on a press anywhere outside, on another
+swatch, or on Escape. The system wheel is still one press away for those who
+want it.
+
+**A line named in passing is cut at a word.** The countdown's “until …” chopped
+the next line at thirty-four letters wherever they fell — “before w” told the
+singer nothing and read as a fault. The cut falls at the last space that fits
+now, with an ellipsis to admit there is more; a word with no space in it at
+all still gets the ellipsis. The editor's own hints follow the same rule.
+
+---
+
 ## 4.41.3
 
 **The lyrics scroll now, they do not change places.** Fading a line out where

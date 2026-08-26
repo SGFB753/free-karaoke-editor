@@ -196,6 +196,23 @@ def frame_lang(payload: dict) -> str:
     return want if want in ("ru", "en") else program_lang()
 
 
+def short_line(text: str, most: int = 34) -> str:
+    """A line named in passing, cut short without cutting a word in half.
+
+    “…before w” told the singer nothing and looked like a fault. The cut now
+    falls at the last space that fits, and an ellipsis says plainly that
+    there is more.
+    """
+    text = " ".join(str(text or "").split())
+    if len(text) <= most:
+        return text
+    cut = text[:most]
+    space = cut.rfind(" ")
+    if space >= most // 2:            # a word boundary near enough to use
+        cut = cut[:space]
+    return cut.rstrip(" ,.;:—-") + "\u2026"
+
+
 def pill_text(said: str, idx: int, nxt, left: float) -> str:
     """The line inside the countdown pill, in the song's own language."""
     def t_(en, ru):
@@ -204,7 +221,7 @@ def pill_text(said: str, idx: int, nxt, left: float) -> str:
             (t_("INTERLUDE", "ПРОИГРЫШ") if nxt else t_("END", "КОНЕЦ")))
     num = (mmss(left) if left >= 60
            else f"{int(math.ceil(left))} " + t_("s", "с"))
-    tail = (t_("until “", "до «") + nxt["text"][:34] + t_("”", "»")
+    tail = (t_("until “", "до «") + short_line(nxt["text"]) + t_("”", "»")
             if nxt else t_("until the end", "до конца записи"))
     return f"{head}   {num}   {tail}"
 
@@ -392,11 +409,23 @@ class LineArt:
 
     def __init__(self, line, font_for, width, margin, main=True, align="center"):
         from PIL import Image, ImageDraw
-        words = [w["w"] for w in line["words"]] or [line["text"]]
-        text = " ".join(words)
+        raw = line["words"] or []
+        words = [w["w"] for w in raw] or [line["text"]]
+        # a syllable carries no space before it: “ма ла фи ли” is one word
+        glue = [bool(w.get("g")) for w in raw] or [False]
+        def joined(items, flags):
+            out = ""
+            for k, piece in enumerate(items):
+                out += ("" if k == 0 or flags[k] else " ") + piece
+            return out
+        text = joined(words, glue)
         max_w = width - 2 * margin
 
-        rows = [words]
+        # rows hold indices, so a syllable keeps its place in the word
+        rows = [list(range(len(words)))]
+        row_text_of = lambda idxs: joined([words[i] for i in idxs],
+                                          [glue[i] if i != idxs[0] else False
+                                           for i in idxs])
         self.font = font_for(text, max_w, main)
         # The main seat wraps, and so does the side one: a long answer in a
         # duet used to run off the edge of the frame — its base font sat
@@ -404,34 +433,42 @@ class LineArt:
         if len(words) > 1 and align in ("center", "right") \
                 and font_for(text, 10 ** 9, main).size > self.font.size:
             # It shrank to fit. Balance the words over two rows instead: the
-            # break lands where the halves come out most even.
+            # break lands where the halves come out most even — and never
+            # inside a word, so its syllables stay together.
             probe = font_for(text, 10 ** 9, main)
             best, best_diff = 1, None
             for k in range(1, len(words)):
-                a = probe.getlength(" ".join(words[:k]))
-                b = probe.getlength(" ".join(words[k:]))
+                if glue[k]:
+                    continue                 # not between syllables
+                a = probe.getlength(row_text_of(list(range(k))))
+                b = probe.getlength(row_text_of(list(range(k, len(words)))))
                 if best_diff is None or abs(a - b) < best_diff:
                     best, best_diff = k, abs(a - b)
-            rows = [words[:best], words[best:]]
-            longest = max((" ".join(r) for r in rows),
-                          key=lambda rt: probe.getlength(rt))
-            self.font = font_for(longest, max_w, main)
+            if best_diff is not None:
+                rows = [list(range(best)), list(range(best, len(words)))]
+                longest = max((row_text_of(r) for r in rows),
+                              key=lambda rt: probe.getlength(rt))
+                self.font = font_for(longest, max_w, main)
 
         asc, desc = self.font.getmetrics()
         self.row_h = asc + desc + 8
         self.h = self.row_h * len(rows)
 
-        self.word_x, self.word_w, self.word_row = [], [], []
-        for r, row in enumerate(rows):
-            row_text = " ".join(row)
-            total = self.font.getlength(row_text)
+        def row_x(idxs):
+            total = self.font.getlength(row_text_of(idxs))
             # the backing sits to the right, tucked under its lead like a reply
             x0 = (width - margin - total) if align == "right" else (width - total) / 2
-            x0 = max(x0, margin)
+            return max(x0, margin)
+
+        self.word_x, self.word_w, self.word_row = [], [], []
+        for r, row in enumerate(rows):
+            x0 = row_x(row)
             prefix = ""
-            for i, wd in enumerate(row):
+            for k, i in enumerate(row):
+                if k and not glue[i]:
+                    prefix += " "
                 self.word_x.append(x0 + self.font.getlength(prefix))
-                prefix += wd + (" " if i < len(row) - 1 else "")
+                prefix += words[i]
                 self.word_w.append(x0 + self.font.getlength(prefix) - self.word_x[-1])
                 self.word_row.append(r)
 
@@ -439,11 +476,7 @@ class LineArt:
             img = Image.new("RGBA", (width, self.h), (0, 0, 0, 0))
             d = ImageDraw.Draw(img)
             for r, row in enumerate(rows):
-                row_text = " ".join(row)
-                total = self.font.getlength(row_text)
-                x0 = (width - margin - total) if align == "right" \
-                    else (width - total) / 2
-                d.text((max(x0, margin), 4 + r * self.row_h), row_text,
+                d.text((row_x(row), 4 + r * self.row_h), row_text_of(row),
                        font=self.font, fill=color + (255,))
             return img
 

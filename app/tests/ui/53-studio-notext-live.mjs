@@ -73,7 +73,9 @@ if (built){
     await sleep(350);
     const boxes = await p.$$eval('.pick', els => els.map(el => {
       const label = el.querySelector('b').getBoundingClientRect();
-      const swatch = el.querySelector('input[type=color]').getBoundingClientRect();
+      // the swatches are the program's own buttons now: the system's colour
+      // panel could not be dismissed by a press on the page
+      const swatch = el.querySelector('.sw').getBoundingClientRect();
       return {label: [label.left, label.right], swatch: [swatch.left, swatch.right],
               w: label.width};
     }));

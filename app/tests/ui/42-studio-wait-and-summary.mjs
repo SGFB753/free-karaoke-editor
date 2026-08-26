@@ -172,9 +172,14 @@ ok('there are two pairs', picks.length === 2, String(picks.length));
 ok('each has its own label', picks.every(p => p.querySelector('b') &&
    p.querySelector('b').textContent.trim().length > 2),
    picks.map(p => p.querySelector('b') && p.querySelector('b').textContent).join(" | "));
-ok('the swatches are labelled individually',
-   ["col1","col2","colBg","colTx"].every(id => ($(id).title||"").length > 2),
-   ["col1","col2","colBg","colTx"].map(id => $(id).title).join(" | "));
+// The swatches are the program's own buttons now: the system's colour panel
+// stayed open however you pressed the page, so it was replaced.
+{
+  const sws = [...doc.querySelectorAll('.pick .sw')];
+  ok('the swatches are labelled individually',
+     sws.length === 4 && sws.every(b => (b.title || '').length > 2),
+     sws.map(b => b.title).join(' | '));
+}
 
 ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');

@@ -135,7 +135,7 @@ for (const [w, h] of SIZES){
 
   // the caption inside a swatch pair must not run into the swatches
   const pick = await p.$$eval('.pick', els => els.map(el => {
-    const b = el.querySelector('b'), i = el.querySelector('input[type=color]');
+    const b = el.querySelector('b'), i = el.querySelector('.sw');
     if (!b || !i) return 0;
     return b.getBoundingClientRect().right - i.getBoundingClientRect().left;
   }));

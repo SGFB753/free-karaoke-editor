@@ -340,6 +340,7 @@ const STR = {
     expQLight: "lighter file",
     expIntroLbl: "the opening: the name and a count of three",
     expGo: "Render",
+    swMore: "wheel…",
     coverBtn: "⛰ Cover",
     coverPickHint: "Put a picture behind the lyrics — blurred and darkened — "
       + "on the finished page and in the MP4. Any image works, and so does "
@@ -738,6 +739,7 @@ const STR = {
     expQLight: "полегче файл",
     expIntroLbl: "заставка: название и счёт до трёх",
     expGo: "Рендерить",
+    swMore: "круг…",
     coverBtn: "⛰ Обложка",
     coverPickHint: "Подложить картинку под текст — размытую и затемнённую — "
       + "на готовой странице и в MP4. Подойдёт любая картинка или сам клип: "
@@ -1728,7 +1730,10 @@ function buildLines(){
     el.className = "ln" + (ln.backing ? " back" : "") + (ln.voice === 2 ? " v2" : "")
       + (ln.keep ? " keep" : "");
     ln.words.forEach((w,j) => {
-      const txt = w.w + (j<ln.words.length-1 ? " " : "");
+      // a syllable reads on to the word before it — the mark that split it
+      // is a timing device, never a letter
+      const after = ln.words[j+1];
+      const txt = w.w + (after && !after.g ? " " : "");
       const sp=document.createElement("span"); sp.className="w";
       const hl=document.createElement("span"); hl.className="hl"; hl.textContent=txt;
       sp.appendChild(hl); sp.appendChild(document.createTextNode(txt));
@@ -1959,7 +1964,7 @@ function showWait(t, cur){
   box.classList.remove("hide");
   $("waitTtl").textContent = prev ? T.interlude : T.intro;
   $("waitNum").textContent = left(next.start - t);
-  $("waitTxt").textContent = T.till + next.text.slice(0, 32) + T.quote;
+  $("waitTxt").textContent = T.till + shortLine(next.text, 32) + T.quote;
   $("waitFill").style.width = (100 * clamp((t - from) / span, 0, 1)).toFixed(1) + "%";
   waitFrom = from;
 }
@@ -2014,7 +2019,78 @@ function applyColors(){
   const t = rgbOf(theme[1]), b = rgbOf(theme[0]);
   if (t && b) root.setProperty("--dim", hex(t.map((v,i) => v*0.55 + b[i]*0.45)));
   $("colBg").value = theme[0]; $("colTx").value = theme[1];
+  document.querySelectorAll(".sw").forEach(b => {
+    b.style.background = $(b.dataset.for).value;
+  });
 }
+
+/* ---------- choosing a colour ----------
+   The system's colour panel is the system's window: pressing anywhere on the
+   page leaves it standing, and it covers the very song it is meant to dress.
+   So the swatches open a popover of our own — a row of ready colours and a
+   field for a code — and the wheel stays one press away for those who want it. */
+const SWATCHES = [
+  "#4de1ff", "#7ee08a", "#ffcc4d", "#ff8ad1", "#ff7a7a", "#b98cff", "#9ad0ff", "#ffffff",
+  "#1fb6d6", "#3fa85a", "#d19b1f", "#d1568f", "#c14b4b", "#7d55c7", "#5a7fa8", "#c8ccd8",
+  "#0a0b14", "#141830", "#1d2436", "#2b2f45", "#3a3f58", "#5d6480", "#8b93b0", "#e8ebf5",
+];
+let swFor = null;
+function closeSw(){ $("swPop").classList.add("hide"); swFor = null; }
+function openSw(btn){
+  const id = btn.dataset.for;
+  swFor = id;
+  const pop = $("swPop"), grid = $("swGrid");
+  grid.replaceChildren();
+  SWATCHES.forEach(c => {
+    const b = document.createElement("button");
+    b.style.background = c;
+    b.title = c;
+    b.addEventListener("click", () => setSw(c));
+    grid.appendChild(b);
+  });
+  $("swHex").value = $(id).value;
+  pop.classList.remove("hide");
+  // under the swatch, and never off the edge of the window
+  const r = btn.getBoundingClientRect(), pr = pop.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pr.width - 8)) + "px";
+  pop.style.top = Math.max(8, r.top - pr.height - 8) + "px";
+}
+function setSw(value){
+  if (!swFor || !/^#[0-9a-f]{6}$/i.test(value)) return;
+  const inp = $(swFor);
+  inp.value = value;
+  inp.dispatchEvent(new Event("input", {bubbles: true}));
+  $("swHex").value = value;
+  document.querySelectorAll(".sw").forEach(b => {
+    b.style.background = $(b.dataset.for).value;
+  });
+}
+document.querySelectorAll(".sw").forEach(b => {
+  // the press must not reach the page, or the popover would close itself
+  // before the click that opens it ever landed
+  b.addEventListener("pointerdown", e => e.stopPropagation());
+  b.addEventListener("click", e => {
+    e.stopPropagation();
+    if (swFor === b.dataset.for) return closeSw();
+    openSw(b);
+  });
+});
+$("swHex").addEventListener("input", () => setSw($("swHex").value.trim()));
+$("swHex").addEventListener("keydown", e => {
+  e.stopPropagation();
+  if (e.key === "Enter" || e.key === "Escape") closeSw();
+});
+$("swPop").addEventListener("click", e => e.stopPropagation());
+$("swPop").addEventListener("pointerdown", e => e.stopPropagation());
+$("swMore").addEventListener("click", () => {
+  const id = swFor;
+  closeSw();
+  if (id) $(id).click();          // the system wheel, for those who want it
+});
+// A press anywhere outside — on the page, on another swatch, on the song —
+// puts the popover away.
+document.addEventListener("pointerdown", () => { if (swFor) closeSw(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeSw(); });
 function pickTheme(i, val){
   if (theme[i] === val) return;
   theme[i] = val;
@@ -2031,6 +2107,16 @@ function pickColor(i, val){
 }
 $("col1").addEventListener("input", e => pickColor(0, e.target.value));
 $("col2").addEventListener("input", e => pickColor(1, e.target.value));
+
+// A line named in passing is cut at a word, never inside one: “…before w”
+// says nothing and reads as a fault. The ellipsis admits there is more.
+function shortLine(text, most){
+  const s = String(text || "").split(/\s+/).filter(Boolean).join(" ");
+  if (s.length <= most) return s;
+  const cut = s.slice(0, most);
+  const sp = cut.lastIndexOf(" ");
+  return (sp >= most / 2 ? cut.slice(0, sp) : cut).replace(/[\s,.;:—-]+$/, "") + "…";
+}
 
 function voiceOf(ln){ return (ln && ln.voice === 2) ? 2 : 1; }
 function refreshVoice(){
@@ -2178,7 +2264,7 @@ function copyRhythm(){
   };
   refreshRhythm();
   toast(idx.length > 1 ? T.copiedLines(idx.length)
-                       : T.copiedLine(lines[idx[0]].text.slice(0, 30)));
+                       : T.copiedLine(shortLine(lines[idx[0]].text, 30)));
 }
 // Put a copy into a line: text, words and marks from the copy, place from the target.
 function putLine(ln, item, start){

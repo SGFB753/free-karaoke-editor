@@ -270,6 +270,23 @@
   /* Wide enough to aim with, and a field to type the number outright: on a
      narrow slider an exact percent could not be felt for at all. */
   .darkknob input[type=range]{width:9rem}
+  /* A swatch of our own, and the system input kept out of sight for the
+     wheel: the OS panel cannot be closed by a press on the page. */
+  .sw{width:1.35rem; height:1.35rem; padding:0; border-radius:.35rem;
+    border:1px solid var(--line); cursor:pointer}
+  .hidcol{position:absolute; width:0; height:0; opacity:0; pointer-events:none;
+    border:0; padding:0}
+  .swpop{position:fixed; z-index:80; background:var(--bg2);
+    border:1px solid var(--line); border-radius:.6rem; padding:.5rem;
+    box-shadow:0 .6rem 2rem rgba(0,0,0,.55); display:flex;
+    flex-direction:column; gap:.45rem}
+  .swpop .grid{display:grid; grid-template-columns:repeat(8, 1.25rem); gap:.25rem}
+  .swpop .grid button{width:1.25rem; height:1.25rem; padding:0; border-radius:.3rem;
+    border:1px solid rgba(255,255,255,.14); cursor:pointer}
+  .swpop .row{display:flex; gap:.35rem; align-items:center}
+  .swpop input{width:6rem; font:inherit; font-size:0.8125rem; color:var(--text);
+    background:var(--bg); border:1px solid var(--line); border-radius:.3rem;
+    padding:.15rem .35rem}
   .darkknob input[type=number]{width:3.4rem; font:inherit; color:var(--text);
     background:var(--bg); border:1px solid var(--line); border-radius:.3rem;
     padding:.1rem .3rem; text-align:right}
@@ -693,13 +710,17 @@
       <span class="pick" data-tt="colorsHint"
             title="What the singing is lit with: first colour is the main voice, second is the second voice">
         <b data-t="voices">voices</b>
-        <input type="color" id="col1" data-tt="voice1" title="Main voice" value="#4de1ff"><input
-               type="color" id="col2" data-tt="voice2" title="Second voice" value="#ff8ad1"></span>
+        <button class="sw" data-for="col1" data-tt="voice1" title="Main voice"></button>
+        <button class="sw" data-for="col2" data-tt="voice2" title="Second voice"></button>
+        <input type="color" id="col1" class="hidcol" value="#4de1ff"><input
+               type="color" id="col2" class="hidcol" value="#ff8ad1"></span>
       <span class="pick" data-tt="themeHint"
             title="Page look: background and text colour. If the text blends into the background, the program fixes it">
         <b data-t="bgText">background and text</b>
-        <input type="color" id="colBg" data-tt="bg" title="Background" value="#0a0b14"><input
-               type="color" id="colTx" data-tt="textColor" title="Text colour" value="#e8ebf5"></span>
+        <button class="sw" data-for="colBg" data-tt="bg" title="Background"></button>
+        <button class="sw" data-for="colTx" data-tt="textColor" title="Text colour"></button>
+        <input type="color" id="colBg" class="hidcol" value="#0a0b14"><input
+               type="color" id="colTx" class="hidcol" value="#e8ebf5"></span>
       <button id="btnCover" data-tt="coverPickHint" data-t="coverBtn"
               title="A picture — or a frame from the clip itself — behind the lyrics, blurred">⛰ Cover</button>
       <button id="btnCoverOff" class="hide" data-tt="coverOffHint" title="Back to the plain background">⛰✕</button>
@@ -777,6 +798,15 @@
       <button class="pri" id="btnExpGo" data-t="expGo">Render</button>
       <button id="btnExpCancel" data-t="cancel">Cancel</button>
     </div>
+  </div>
+</div>
+
+<!-- The colour popover: ours, so pressing anywhere outside closes it. -->
+<div class="swpop hide" id="swPop">
+  <div class="grid" id="swGrid"></div>
+  <div class="row">
+    <input type="text" id="swHex" spellcheck="false" maxlength="7">
+    <button id="swMore" data-t="swMore">wheel…</button>
   </div>
 </div>
 

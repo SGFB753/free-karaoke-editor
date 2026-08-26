@@ -315,6 +315,41 @@ def main():
     check("and a full-voice kept line carries no caption",
           corner_ink(9.5) == 0, corner_ink(9.5))
 
+    print("\nSyllables read as one word in the frame")
+    # “ма=ла=фи=ли” is four timed pieces and one word on screen: the frame
+    # must show no gaps between them, and never break a line inside a word.
+    syl_song = {"colors": ["#00ff00", "#ff00ff"],
+                "theme": {"bg": "#000000", "text": "#ffffff"},
+                "data": {"title": "T", "duration": 12.0, "lines": [
+        {"text": "малафили меня", "start": 2.0, "end": 6.0, "voice": 1,
+         "words": [{"w": "ма", "t": 2.0, "d": 1.0, "s": 1},
+                   {"w": "ла", "t": 3.0, "d": 1.0, "s": 1, "g": True},
+                   {"w": "фи", "t": 4.0, "d": 1.0, "s": 1, "g": True},
+                   {"w": "ли", "t": 5.0, "d": 0.5, "s": 1, "g": True},
+                   {"w": "меня", "t": 5.5, "d": 0.5, "s": 2}]}]}}
+    wavs = tone(os.path.join(tmp, "k.wav"), 220.0, 12.0)
+    class ASY:
+        width, height, fps, crf = 640, 360, 5, 30
+        preset, font = "ultrafast", None
+        intro = False
+        start, seconds, audio, timings = 2.5, 1.0, "minus", None
+        output = os.path.join(tmp, "syl.mp4")
+    video.render(syl_song, wavs, ASY.output, ASY())
+    shot_s = os.path.join(tmp, "syl.png")
+    subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "0.3",
+                    "-i", ASY.output, "-frames:v", "1", shot_s], check=True)
+    ims = Image.open(shot_s).convert("RGB")
+    Ws, Hs = ims.size
+    # the gaps between ink columns inside the main line: one word means one
+    # run of letters, with only a single wider gap before “меня”
+    cols = [x for x in range(Ws)
+            if any(sum(ims.getpixel((x, y))) > 90
+                   for y in range(int(Hs * 0.38), int(Hs * 0.52)))]
+    gaps = [b - a for a, b in zip(cols, cols[1:]) if b - a > 1]
+    wide = [g for g in gaps if g > Ws * 0.02]
+    check("the syllables stand as one word, with one space before the next",
+          len(wide) <= 1, f"gaps {sorted(gaps)[-4:]}, wide {wide}")
+
     print("\nA long line wraps instead of shrinking")
     # The line about the shown video shrank to letters read only from the
     # front row. It wraps onto a second row now — split between words — and
@@ -490,6 +525,21 @@ def main():
                             "data": {"lines": [{"text": "Группа крови"}]}}) == "ru")
     check("with no letters to judge by, that choice stands",
           video.frame_lang({"uiLang": "ru", "data": {"lines": [{"text": "..."}]}}) == "ru")
+    # A line named in the pill is cut at a word, never inside one.
+    check("a long line is cut at a word and says so",
+          video.short_line("We'll climb the mountains before we sleep")
+          == "We'll climb the mountains before\u2026",
+          video.short_line("We'll climb the mountains before we sleep"))
+    check("a short line is left whole",
+          video.short_line("Короткая строка") == "Короткая строка")
+    check("a single endless word still gets its ellipsis",
+          video.short_line("Одно" + "-длинное" * 6).endswith("\u2026"),
+          video.short_line("Одно" + "-длинное" * 6))
+    check("and the pill carries the cut line, not a broken word",
+          "before\u2026" in video.pill_text(
+              "en", 0, {"text": "We'll climb the mountains before we sleep"}, 5.0),
+          video.pill_text("en", 0,
+                          {"text": "We'll climb the mountains before we sleep"}, 5.0))
     ru_pill = video.pill_text("ru", -1, {"text": "Пожелай мне"}, 9.4)
     en_pill = video.pill_text("en", 5, None, 4.0)
     check("the intro pill is written the same way",

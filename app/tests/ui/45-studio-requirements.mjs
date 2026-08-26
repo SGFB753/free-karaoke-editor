@@ -81,7 +81,8 @@ const head = await p.evaluate(() => {
   const picks = [...document.querySelectorAll('.pick')];
   return {fits: h.scrollWidth <= h.clientWidth + 2,
           labels: picks.map(x => (x.querySelector('b')||{}).textContent || ''),
-          titled: [...document.querySelectorAll('.pick input')].every(i => i.title.length > 2)};
+          // the swatches are buttons of the program's own now
+          titled: [...document.querySelectorAll('.pick .sw')].every(i => i.title.length > 2)};
 });
 ok('the panel does not run off the edge', head.fits);
 ok('both colour pairs are labelled', head.labels.length === 2 && head.labels.every(t => t.length > 2),

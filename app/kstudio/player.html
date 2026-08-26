@@ -508,7 +508,9 @@ function build(){
     el.className = "ln" + (ln.backing ? " back" : "") + (ln.voice === 2 ? " v2" : "")
       + (ln.keep ? " keep" : "");
     ln.words.forEach((w, j) => {
-      const txt = w.w + (j < ln.words.length - 1 ? " " : "");
+      // a syllable reads on to the word before it: no space between them
+      const nxt = ln.words[j + 1];
+      const txt = w.w + (nxt && !nxt.g ? " " : (nxt ? "" : ""));
       const sp = document.createElement("span");
       sp.className = "w";
       const hl = document.createElement("span");   // the lit layer over the dim one

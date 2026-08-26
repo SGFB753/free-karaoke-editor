@@ -128,6 +128,8 @@ class Word:
     end: Optional[float] = None
     # how sure the model was of this word, when a model was involved at all
     prob: Optional[float] = None
+    # a syllable of the word before it: timed on its own, read as one word
+    glue: bool = False
 
     def __post_init__(self):
         if not self.syllables:
@@ -140,6 +142,8 @@ class Word:
                "s": self.syllables}
         if self.prob is not None:
             out["p"] = round(self.prob, 3)
+        if self.glue:
+            out["g"] = True
         return out
 
 
@@ -209,6 +213,13 @@ class Lyrics:
         return "\n".join(ln.text for ln in self.lines)
 
 
+# A syllable break written into the lyrics: “ма=ла=фи=ли”. The mark splits a
+# word into pieces that are timed one by one — a held note lights up syllable
+# by syllable — and it is never shown: on screen the word is whole again. The
+# soft hyphen is understood too, for text pasted from elsewhere.
+SYL_MARK = "=\u00ad"
+
+
 def _split_words(text: str) -> List[Word]:
     """Split a line into words without losing anything.
 
@@ -221,7 +232,15 @@ def _split_words(text: str) -> List[Word]:
     pending = ""
     for tok in text.split():
         if normalize_token(tok):
-            out.append(Word((pending + " " + tok).strip() if pending else tok))
+            # a word broken into syllables is several timed pieces that read
+            # as one word: the first stands on its own, the rest are glued
+            parts = [q for q in re.split("[" + SYL_MARK + "]", tok) if q]
+            first = (pending + " " + parts[0]).strip() if pending else parts[0]
+            out.append(Word(first))
+            for extra in parts[1:]:
+                w = Word(extra)
+                w.glue = True
+                out.append(w)
             pending = ""
         elif out:
             out[-1] = Word(out[-1].text + " " + tok)     # a mark after a word
@@ -322,6 +341,10 @@ def parse(raw: str) -> Lyrics:
         words = _split_words(line)
         if not words:
             continue
+        # the marks split the timing, never the reading: what is shown is the
+        # line without them
+        shown = re.sub("[" + SYL_MARK + "]", "", line)
+        trail_shown = re.sub("[" + SYL_MARK + "]", "", trail) if trail else trail
 
         saw_content = True
         if start is not None:
@@ -329,12 +352,12 @@ def parse(raw: str) -> Lyrics:
         # Backing vocals default to the second voice: usually someone else sings
         # them, and a colour of their own helps on screen.
         for k in range(times):
-            lyr.lines.append(Line(text=line, words=_split_words(line),
+            lyr.lines.append(Line(text=shown, words=_split_words(line),
                                   section=pending_section if k == 0 else None,
                                   start=start, backing=backing,
                                   voice=voice or (2 if backing else cur_voice)))
             if trail:
-                lyr.lines.append(Line(text=trail, words=_split_words(trail),
+                lyr.lines.append(Line(text=trail_shown, words=_split_words(trail),
                                       section=None, start=None, backing=True,
                                       voice=2, tail=True))
         pending_section = None

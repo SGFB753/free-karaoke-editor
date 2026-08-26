@@ -77,7 +77,10 @@ def ultrastar_text(data: Dict, audio_name: str) -> str:
                 length = max(1, int(round(max(w.get("d") or 0, US_TICK) / US_TICK)))
                 if j + 1 < len(words):
                     length = max(1, min(length, beat(words[j + 1]["t"]) - start))
-                text = w["w"] + (" " if j + 1 < len(words) else "")
+                nxt = words[j + 1] if j + 1 < len(words) else None
+                # a syllable of the same word carries no space before it —
+                # UltraStar reads them as one word, sung piece by piece
+                text = w["w"] + ("" if nxt is None or nxt.get("g") else " ")
                 rows.append(f"F {start} {length} 0 {text}")
         return rows
 
@@ -167,8 +170,9 @@ def ass_text(data: Dict) -> str:
         for j, w in enumerate(words):
             until = words[j + 1]["t"] if j + 1 < len(words) else end
             cs = max(1, int(round((until - w["t"]) * 100)))
+            nxt = words[j + 1] if j + 1 < len(words) else None
             parts.append("{\\k%d}%s" % (cs, _ass_word(w["w"])
-                                          + (" " if j + 1 < len(words) else "")))
+                         + ("" if nxt is None or nxt.get("g") else " ")))
         style = "Voice2" if (ln.get("voice") == 2 or ln.get("backing")) else "Voice1"
         rows.append((start, f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},"
                             f"{style},,0,0,0,,{''.join(parts)}"))
