@@ -131,9 +131,25 @@ def places() -> list:
     out = []
     try:
         out.append(sysconfig.get_path("scripts"))
-        out.append(sysconfig.get_path("scripts", f"{os.name}_user"))
     except (KeyError, ValueError):
         pass
+    # “posix_user” is the wrong question to ask a macOS framework build — the
+    # answer is ~/.local/bin, while pip actually writes to
+    # ~/Library/Python/3.x/bin, which belongs to a scheme of its own. Ask the
+    # Python which scheme it prefers where it can say, and name the macOS one
+    # outright where it cannot: get_preferred_scheme arrived in 3.10, and the
+    # Python a Mac hands a double-clicked window is often older than that.
+    schemes = []
+    try:
+        schemes.append(sysconfig.get_preferred_scheme("user"))
+    except (AttributeError, KeyError, ValueError):
+        pass
+    schemes += ["osx_framework_user", f"{os.name}_user"]
+    for scheme in schemes:
+        try:
+            out.append(sysconfig.get_path("scripts", scheme))
+        except (KeyError, ValueError):
+            continue
     try:
         out.append(os.path.join(site.getuserbase(), "bin"))
     except Exception:
@@ -221,14 +237,18 @@ def how_to_install() -> str:
         me = sys.executable or "python3"
         return tr(
             f"yt-dlp is not installed for this Python — it is what takes the "
-            f"sound out of a link. If you installed it already, it went to "
-            f"another Python: this window runs {me}. Install it here:\n"
+            f"sound out of a link. If you installed it already, it is not "
+            f"where this window looks: it runs {me}, and pip may have put the "
+            f"downloader beside a different Python, or in a folder this one "
+            f"never has on its PATH. Install it here:\n"
             f'  "{me}" -m pip install -U yt-dlp\n'
             f"Or write the path to your own copy in settings.ini as "
             f"“yt-dlp = /path/to/yt-dlp”.",
             f"Для этого Python не установлен yt-dlp — он и достаёт звук из "
-            f"ссылки. Если вы его уже ставили, он попал к другому Python: это "
-            f"окно работает на {me}. Поставить сюда:\n"
+            f"ссылки. Если вы его уже ставили, он лежит не там, где смотрит "
+            f"это окно: оно работает на {me}, а pip мог положить загрузчик "
+            f"рядом с другим Python — или в папку, которой у этого нет в "
+            f"PATH. Поставить сюда:\n"
             f'  "{me}" -m pip install -U yt-dlp\n'
             f"Либо впишите путь к своей копии в settings.ini: "
             f"«yt-dlp = /путь/к/yt-dlp».")

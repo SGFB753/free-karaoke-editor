@@ -2386,6 +2386,15 @@ def main():
     folders = FE.places()
     check("and no folder is searched twice",
           len(folders) == len(set(folders)), len(folders))
+    # A macOS framework build keeps its user scripts under a scheme of its
+    # own. Asking the posix one gives ~/.local/bin and misses
+    # ~/Library/Python/3.x/bin entirely — which is exactly where pip puts
+    # yt-dlp on a Mac.
+    import sysconfig as _sc
+    if "osx_framework_user" in _sc.get_scheme_names():
+        mac = _sc.get_path("scripts", "osx_framework_user")
+        check("the macOS scheme's own scripts folder is among them",
+              mac in folders, mac)
 
     print("\nThe words, looked up by the name of the song")
     import importlib.util

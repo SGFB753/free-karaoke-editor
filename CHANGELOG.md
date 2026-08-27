@@ -7,14 +7,25 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.44.2
+
+**macOS was asked the wrong question about its own folders.** The search knew
+perfectly well that `pip install` on a Mac writes into
+`~/Library/Python/3.x/bin` — it says so in its own comment — but it asked
+Python for the scripts folder of the `posix_user` scheme, and a macOS
+framework build answers that with `~/.local/bin`. The folder it meant to look
+in belongs to a scheme of its own, `osx_framework_user`, and was never asked
+about. The Python is asked which scheme it prefers now, where it is new enough
+to say, and the macOS one is named outright where it is not.
+
 ## 4.44.1
 
 **“yt-dlp is not installed” — said to somebody who had just installed it.**
-A machine holds several Pythons. A terminal reaches one; a double-clicked
-window runs a shell that reads a different profile and finds another. Pip
-leaves yt-dlp beside whichever Python it belongs to, and the window went
-looking beside its own. The old message answered this by advising the very
-command that had already been run.
+There are several ways for that to be true at once: a machine holds more than
+one Python, and pip leaves the downloader beside whichever it belongs to, in a
+folder that need not be on anybody's PATH. Whatever the reason in a given
+case, the old message answered it by advising the very command that had
+already been run.
 
 It now names the Python that went looking and gives the command that installs
 the downloader *there* — `"/that/python" -m pip install -U yt-dlp` — which
