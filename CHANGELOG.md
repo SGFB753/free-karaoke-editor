@@ -7,6 +7,30 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.44.0
+
+**A clip can stand behind the lyrics now, not just a picture.** Give the song
+a file or a link — the one it came from will do — and the video plays it
+behind the words, blurred into a slow field of colour. Because it is blurred
+past recognising, the smallest copy a site offers is worth exactly as much as
+the best one: a few megabytes instead of several hundred, and what the song
+keeps is a few hundred pixels at four frames a second, small enough to travel
+inside a packed song.
+
+**The darkening stopped being one number.** A still cover is darkened by
+whatever the singer chose; a clip will not hold still, and the number that
+suited a dark shot blows out on the next cut. The band where the words stand
+is measured on every field now, and the frame clamps down the instant a cut
+brings something bright under the text, letting go slowly afterwards — the way
+a limiter follows a sound. Easing both ways read as a frame slowly dimming
+after every cut; measured across a hard cut, the worst moment went from 75 of
+255 down to 55, and it settles in a fifth of a second instead of two.
+
+**Packing kept dropping it.** A song folder skips .mp4 files when it packs,
+because a rendered clip is made again in one press and weighs more than
+everything else together. A backdrop is not made again — it is the one the
+song was given. It travels now, and a check holds both halves of that.
+
 ## 4.43.0
 
 **Every letter carries a dark ring now.** The words used to be readable only

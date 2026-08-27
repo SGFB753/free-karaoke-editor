@@ -346,6 +346,17 @@ const STR = {
       + "on the finished page and in the MP4. Any image works, and so does "
       + "the clip itself: a frame is cut out of a picked video.",
     coverOffHint: "Take the cover away — back to the plain background.",
+    backdropBtn: "\ud83c\udf9e Clip behind",
+    backdropHint: "Put a clip behind the lyrics instead of a still. It is "
+      + "blurred into a slow field of colour, so the smallest copy a link "
+      + "offers is as good as the best one — and the words keep their ring "
+      + "over whatever moves under them.",
+    backdropOffHint: "Take the clip away — back to the still backdrop.",
+    pickBackdrop: "A clip to stand behind the lyrics",
+    backdropUrlPh: "a link to the clip — the song's own will do",
+    backdropWait: "Taking the clip\u2026 this can take a minute",
+    backdropSet: "The clip stands behind the lyrics now",
+    backdropGone: "The clip is gone — the still backdrop is back",
     coverUrlPh: "…or paste a link to a picture",
     coverUrlGo: "take it",
     coverUrlBad: "That is not a link: it should start with http",
@@ -745,6 +756,17 @@ const STR = {
       + "на готовой странице и в MP4. Подойдёт любая картинка или сам клип: "
       + "из выбранного видео вырежется кадр.",
     coverOffHint: "Убрать обложку — вернуть обычный фон.",
+    backdropBtn: "\ud83c\udf9e Клип сзади",
+    backdropHint: "Поставить за текстом клип вместо неподвижной картинки. Он "
+      + "размывается в медленное поле цвета, поэтому самая мелкая копия по "
+      + "ссылке ничем не хуже лучшей, а у слов остаётся обводка поверх всего, "
+      + "что под ними движется.",
+    backdropOffHint: "Убрать клип — вернуть неподвижный фон.",
+    pickBackdrop: "Клип, который встанет за текстом",
+    backdropUrlPh: "ссылка на клип — подойдёт та же, что у песни",
+    backdropWait: "Достаю клип\u2026 это может занять минуту",
+    backdropSet: "Клип встал за текстом",
+    backdropGone: "Клип убран — вернулся неподвижный фон",
     coverUrlPh: "…или вставьте ссылку на картинку",
     coverUrlGo: "взять",
     coverUrlBad: "Это не ссылка: она начинается с http",
@@ -1147,7 +1169,8 @@ async function openBrowser(kind){
   $("brTitle").textContent = kind === "track" ? T.pickTrack
     : kind === "lyrics2" ? T.pickLyrics
     : kind === "pack" ? T.openPack
-    : kind === "cover" ? T.pickCover : T.pickFile;
+    : kind === "cover" ? T.pickCover
+    : kind === "backdrop" ? T.pickBackdrop : T.pickFile;
   await showDir(startDir(kind));
 }
 // Looking the words up worked only while building; picking “another text”
@@ -1188,7 +1211,7 @@ async function foundRows(box){
 async function showDir(path){
   // “track” means audio, “lyrics2” means text, “pack” is a packed song
   const kind = pickTarget === "pack" ? "pack"
-    : pickTarget === "cover" ? "image"
+    : (pickTarget === "cover" || pickTarget === "backdrop") ? "image"
     : (pickTarget === "lyrics" || pickTarget === "lyrics2") ? "text" : "audio";
   const d = await api("/api/browse?kind="+kind+"&path="+encodeURIComponent(path||""));
   $("brPath").value = d.path;
@@ -1198,12 +1221,14 @@ async function showDir(path){
   body.innerHTML = "";
   if (pickTarget === "lyrics2") await foundRows(body);
   if (pickTarget === "cover") coverUrlRow(body);
+  if (pickTarget === "backdrop") backdropUrlRow(body);
   (d.drives||[]).forEach(dr => body.appendChild(row("💽", dr, () => showDir(dr))));
   d.dirs.forEach(x => body.appendChild(row("📁", x.name, () => showDir(x.path))));
   d.files.forEach(x => body.appendChild(row("🎵", x.name, () => {
     $("browser").classList.add("hide");
     if (pickTarget === "pack"){ unpackSong(x.path); return; }
     if (pickTarget === "cover"){ takeCover(x.path); return; }
+    if (pickTarget === "backdrop"){ takeBackdrop(x.path); return; }
     if (pickTarget === "track"){ replaceTrack(x.path); return; }
     if (pickTarget === "lyrics2"){ realign(x.path); return; }
     if (pickTarget !== "lyrics"){
@@ -1677,6 +1702,7 @@ async function openProject(id){
   $("hint").textContent = T.hotkeys;
   showMade("");
   refreshCover();
+  refreshBackdrop();
   colors = (Array.isArray(data.colors) && data.colors.length === 2)
     ? data.colors.slice() : ["#4de1ff", "#ff8ad1"];
   theme = (Array.isArray(data.theme) && data.theme.length === 2)
@@ -3832,6 +3858,56 @@ async function takeCover(path, url){
     if (!$("stillBox").classList.contains("hide")) showStill(stillT, false);
   }catch(e){ toast(e.message); }
 }
+
+// A clip standing behind the lyrics, instead of a still. It is kept small on
+// purpose — the render blurs it into a slow field of colour — so the link the
+// song itself came from is a fair place to get one.
+function refreshBackdrop(){
+  $("btnClipBgOff").classList.toggle("hide", !(data && data.backdrop));
+}
+async function takeBackdrop(path, url){
+  toast(T.backdropWait);
+  try{
+    await api(`/api/project/${encodeURIComponent(pid)}/backdrop`,
+      url ? {url} : {path});
+    data.backdrop = "backdrop.mp4";
+    refreshBackdrop(); toast(T.backdropSet);
+    if (!$("stillBox").classList.contains("hide")) showStill(stillT, false);
+  }catch(e){ toast(e.message); }
+}
+function backdropUrlRow(box){
+  const r = document.createElement("div");
+  r.className = "row urlrow";
+  r.innerHTML = '<span class="ic">🔗</span>' +
+    '<input class="nm" type="text">' +
+    '<button class="words"></button>';
+  const inp = r.querySelector("input");
+  inp.placeholder = T.backdropUrlPh;
+  const btn = r.querySelector("button");
+  btn.textContent = T.coverUrlGo;
+  const go = () => {
+    const url = inp.value.trim();
+    if (!/^https?:\/\//.test(url)) return toast(T.coverUrlBad);
+    $("browser").classList.add("hide");
+    takeBackdrop(null, url);
+  };
+  btn.addEventListener("click", go);
+  inp.addEventListener("keydown", e => {
+    e.stopPropagation();
+    if (e.key === "Enter") go();
+  });
+  inp.addEventListener("click", e => e.stopPropagation());
+  box.appendChild(r);
+}
+$("btnClipBg").addEventListener("click", () => openBrowser("backdrop"));
+$("btnClipBgOff").addEventListener("click", async () => {
+  try{
+    await api(`/api/project/${encodeURIComponent(pid)}/backdrop`, {off: true});
+    data.backdrop = null;
+    refreshBackdrop(); toast(T.backdropGone);
+    if (!$("stillBox").classList.contains("hide")) showStill(stillT, false);
+  }catch(e){ toast(e.message); }
+});
 
 $("btnStill").addEventListener("click", () => showStill(mediaTime(), false));
 $("stillOpening").addEventListener("click", () => showStill(0, true));

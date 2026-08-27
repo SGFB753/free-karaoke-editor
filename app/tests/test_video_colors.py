@@ -412,6 +412,70 @@ def main():
     check("the picture behind is bright, so the ring earned it",
           open_l > 120, f"{open_l:.0f} of 255")
 
+    print("\nA clip may stand behind the lyrics, and the words still hold")
+    # A backdrop that moves is the case a fixed darkening cannot serve: the
+    # number that suited a dark shot blows out on the next cut. The clip here
+    # cuts from near-black to near-white on purpose.
+    clip_mp4 = os.path.join(tmp, "back.mp4")
+    subprocess.run([AU.ffmpeg(), "-y", "-v", "error",
+                    "-f", "lavfi", "-i", "color=c=0x101830:s=320x180:d=4",
+                    "-f", "lavfi", "-i", "color=c=0xf6f2e8:s=320x180:d=6",
+                    "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]",
+                    "-map", "[v]", "-r", "8", clip_mp4], check=True)
+    back_words = "we hold the line through all of it".split()
+    back_song = {"colors": ["#4de1ff", "#ff8ad1"],
+                 "theme": {"bg": "#0a0b14", "text": "#e8ebf5"},
+                 "coverDark": 40,
+                 "data": {"title": "Cut", "duration": 10.0, "coverDark": 40,
+                          "lines": [
+        {"text": " ".join(back_words), "start": 1.0, "end": 9.0, "voice": 1,
+         "words": [{"w": w, "t": 1.0 + i * 1.1, "d": 1.1, "s": 1}
+                   for i, w in enumerate(back_words)]}]}}
+    wav_b = tone(os.path.join(tmp, "b2.wav"), 220.0, 10.0)
+
+    def back_still(at, with_clip=True):
+        class AB:
+            width, height, fps, crf = 480, 270, 10, 30
+            preset, font, timings = "ultrafast", None, None
+            start, seconds, audio = 0.0, 0.0, "minus"
+            intro = False
+        a = AB(); a.still = at
+        a.backdrop = clip_mp4 if with_clip else None
+        a.output = os.path.join(tmp, f"back-{at}-{int(with_clip)}.png")
+        video.render(back_song, wav_b, a.output, a)
+        return Image.open(a.output).convert("RGB")
+
+    def band_light(im):
+        Wb, Hb = im.size
+        strip = im.crop((0, int(Hb * 0.40), Wb, int(Hb * 0.76))).convert("L")
+        return sum(strip.getdata()) / (strip.width * strip.height)
+
+    dark_shot, bright_shot = back_still(2.0), back_still(7.0)
+    check("the clip is really there: two moments are not the same picture",
+          list(dark_shot.getdata()) != list(bright_shot.getdata()))
+    lit = band_light(bright_shot)
+    check("a white scene does not become a white wall behind the words",
+          lit < 95, f"{lit:.0f} of 255")
+    check("and a dark scene is not dragged darker still",
+          band_light(dark_shot) < lit, f"{band_light(dark_shot):.0f}")
+    # a clip that cannot be read is no backdrop, never a failed render
+    broken = os.path.join(tmp, "notaclip.mp4")
+    open(broken, "wb").write(b"this is not a video at all")
+    class ABK:
+        width, height, fps, crf = 480, 270, 10, 30
+        preset, font, timings = "ultrafast", None, None
+        start, seconds, audio = 0.0, 0.0, "minus"
+        intro = False
+        still = 2.0
+        backdrop = broken
+        output = os.path.join(tmp, "broken.png")
+    try:
+        video.render(back_song, wav_b, ABK.output, ABK())
+        check("a clip that cannot be read is simply no backdrop",
+              os.path.isfile(ABK.output))
+    except Exception as e:
+        check("a clip that cannot be read is simply no backdrop", False, e)
+
     print("\nA long line wraps instead of shrinking")
     # The line about the shown video shrank to letters read only from the
     # front row. It wraps onto a second row now — split between words — and

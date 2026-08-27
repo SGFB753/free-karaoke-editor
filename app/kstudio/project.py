@@ -274,9 +274,13 @@ def pack(folder: str, out_dir: str) -> str:
         for entry in sorted(os.listdir(folder)):
             path = os.path.join(folder, entry)
             # Only the song itself: a rendered page or clip is made again in
-            # one press, and weighs more than everything else together.
+            # one press, and weighs more than everything else together. The
+            # backdrop is the exception — it is an .mp4 the song was given,
+            # not one it produced, and nothing could make it again.
+            made_here = (entry.lower().endswith((".mp4", ".html"))
+                         and not entry.startswith("backdrop."))
             if os.path.isfile(path) and not entry.startswith("_") \
-                    and not entry.lower().endswith((".mp4", ".html")):
+                    and not made_here:
                 z.write(path, entry)
     return out
 

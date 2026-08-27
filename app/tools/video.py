@@ -52,6 +52,22 @@ COL_PIP = (52, 58, 82)          # guide dots between lines
 COL_EDGE = (5, 6, 12)           # the outline under every letter
 SCRIM = 0.42                    # how deep the band under the words goes
 
+# A clip standing behind the lyrics is not there to be watched — it is there
+# to move a little colour. So it is taken small and blurred into a field.
+# Full frames would cost a decode and a blur apiece and gigabytes to hold; a
+# field is a few tens of kilobytes, and the eye cannot tell, because there is
+# nothing left in it sharp enough to tell by.
+BACKDROP_W = 160                # how wide a field is kept
+BACKDROP_EVERY = 0.5            # seconds between the frames sampled from the clip
+BACKDROP_HOLD = 3               # frames one stretched field serves
+BACKDROP_LIT = 74               # how bright the band under the words may stand
+# Darkening follows the clip the way a limiter follows a sound: it clamps
+# down the instant a cut brings something bright under the words, and lets go
+# slowly afterwards. Easing both ways looked calm on paper and read as a frame
+# slowly dimming after every cut.
+BACKDROP_DROP = 0.60            # how fast it darkens when the clip flares
+BACKDROP_LIFT = 0.05            # how slowly it lets go again
+
 
 def edged(font):
     """Outline settings for a piece of writing, scaled to its own size.
@@ -573,6 +589,50 @@ def make_background(W, H, cover_uri: str = "", dark: int = 66):
     return img.copy()
 
 
+def backdrop_fields(path, W, H, every=BACKDROP_EVERY, log=None):
+    """Small blurred stills taken along a clip: the backdrop, frame by frame.
+
+    ffmpeg does the decoding and the shrinking in one pass, which it is far
+    better at than we are, and hands back raw pixels of a size a song's worth
+    of them fits in memory. Each is blurred once, here, and never again: the
+    render then only has to stretch one.
+
+    A clip that cannot be read gives an empty list, and the caller falls back
+    to the still cover. A backdrop is decoration; it must never be the reason
+    a render fails.
+    """
+    from PIL import Image, ImageFilter
+
+    sw = BACKDROP_W
+    sh = max(2, int(round(sw * H / max(W, 1))) // 2 * 2)
+    every = max(0.1, float(every))
+    cmd = [AU.ffmpeg(), "-v", "error", "-i", path,
+           "-an", "-sn",
+           "-vf", (f"fps={1.0 / every:.6f},"
+                   f"scale={sw}:{sh}:force_original_aspect_ratio=increase,"
+                   f"crop={sw}:{sh}"),
+           "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+    size = sw * sh * 3
+    fields = []
+    try:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        while True:
+            raw = proc.stdout.read(size)
+            if not raw or len(raw) < size:
+                break
+            fields.append(Image.frombytes("RGB", (sw, sh), raw)
+                          .filter(ImageFilter.GaussianBlur(radius=3)))
+        proc.stdout.close()
+        proc.wait(timeout=30)
+    except Exception:
+        return []
+    if log:
+        log(tr(f"backdrop: {len(fields)} frames from the clip",
+               f"фон: {len(fields)} кадров из клипа"))
+    return fields
+
+
 def _lay_scrim(img):
     """A soft dark band where the words will stand.
 
@@ -643,7 +703,7 @@ def _draw_background(W, H, cover_uri: str = "", dark: int = 66):
 
 # ---------------------------------------------------------------- render
 def render(payload, audio_wav, out_path, args, on_progress=None):
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageStat
 
     apply_colors(payload)
     if on_progress:
@@ -701,6 +761,12 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     cover_dark = int(payload.get("coverDark") or 66)
     bgs = [make_background(W, H, u, cover_dark) for u in cover_uris]
     bg = bgs[0]
+    # A clip may stand behind the lyrics instead of a still. If it cannot be
+    # read, the still cover is still there: a backdrop is decoration, never a
+    # reason for a render to fail.
+    back_path = getattr(args, "backdrop", None)
+    fields = (backdrop_fields(back_path, W, H, log=on_progress)
+              if back_path and os.path.isfile(back_path) else [])
     small = ImageFont.truetype(font_path, int(H * 0.020))
     # The song's name deserves better than the caption size — and its own
     # font, so growing it does not swell every section heading with it.
@@ -805,14 +871,27 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     # The name in the corner never changes, and drawing it anew on each of
     # thousands of frames was pure ceremony: it is painted into the background
     # once, and every frame starts from a copy that already carries it.
+    shown_name = ""
     if title:
-        shown = title
-        while len(shown) > 8 and name_font.getlength(shown) > W - 2 * margin:
-            shown = shown[:-2].rstrip() + "\u2026"
-        for one in bgs:
-            ImageDraw.Draw(one).text((margin, int(H * 0.028)), shown,
+        shown_name = title
+        while len(shown_name) > 8 \
+                and name_font.getlength(shown_name) > W - 2 * margin:
+            shown_name = shown_name[:-2].rstrip() + "\u2026"
+
+    def stamp_name(img):
+        """The name in its corner. Painted into a still background once; on a
+        clip, where no two frames are the same picture, painted onto each
+        stretched field as it is made — still once per several frames, never
+        once per frame."""
+        if shown_name:
+            ImageDraw.Draw(img).text((margin, int(H * 0.028)), shown_name,
                                      font=name_font, fill=(132, 140, 168),
                                      **edged(name_font))
+        return img
+
+    if shown_name and not fields:
+        for one in bgs:
+            stamp_name(one)
 
     def furniture(d, prog):
         """The bar along the bottom: on every frame, the opening included."""
@@ -832,9 +911,59 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
     XFADE = 1.2
 
+    # A clip's field is stretched once and then serves several frames: at
+    # that blur nothing moves fast enough for the eye to catch the hold, and
+    # the stretch is the whole cost of a moving backdrop.
+    held = {"slot": None, "img": None}
+    eased = {"k": None}
+
+    def field_at(t):
+        """The clip's field due at second `t`, between the two sampled."""
+        i = max(0.0, t) / BACKDROP_EVERY
+        a = min(len(fields) - 1, max(0, int(i)))
+        b = min(len(fields) - 1, a + 1)
+        f = i - int(i)
+        if a == b or f <= 0.001:
+            return fields[a]
+        return Image.blend(fields[a], fields[b], min(max(f, 0.0), 1.0))
+
+    def fit_dark(sm):
+        """How far to pull this field down.
+
+        A still cover is darkened by the one number the singer chose. A clip
+        will not hold still: the number that suited a dark shot blows out on
+        the next cut. So the band where the words stand is measured, and the
+        darkening is whatever keeps it from going bright — never lighter than
+        the singer asked for. It moves slowly, or a cut would pump the whole
+        frame.
+        """
+        base = (100 - max(0, min(95, cover_dark))) / 100.0
+        w0, h0 = sm.size
+        band = sm.crop((0, int(h0 * 0.40), w0, int(h0 * 0.76))).convert("L")
+        lit = ImageStat.Stat(band).mean[0] or 1.0
+        want = min(base, BACKDROP_LIT / lit)
+        prev = eased["k"]
+        if prev is None:
+            eased["k"] = want
+        else:
+            step = BACKDROP_DROP if want < prev else BACKDROP_LIFT
+            eased["k"] = prev + (want - prev) * step
+        return max(0.04, min(1.0, eased["k"]))
+
+    def clip_bg(t):
+        slot = int(max(0.0, t) * max(args.fps, 1)) // BACKDROP_HOLD
+        if held["slot"] != slot:
+            sm = field_at(t)
+            sm = ImageEnhance.Brightness(sm).enhance(fit_dark(sm))
+            held["slot"] = slot
+            held["img"] = stamp_name(_lay_scrim(sm.resize((W, H), Image.BILINEAR)))
+        return held["img"].copy()
+
     def bg_for(t):
-        """The background under second `t` of the song: one picture, or the
-        slideshow frame due at that moment, mid-crossfade when it is one."""
+        """The background under second `t` of the song: one picture, the
+        slideshow frame due at that moment, or the clip standing behind."""
+        if fields:
+            return clip_bg(t)
         if len(bgs) < 2:
             return bg.copy()
         step = duration / len(bgs)
@@ -847,7 +976,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
     def intro_frame(tt):
         """A frame of the opening, `tt` seconds into it."""
-        frame = bg.copy()
+        # The opening stands on the clip's first field, not on a still it
+        # would then jump away from when the music starts.
+        frame = clip_bg(0.0) if fields else bg.copy()
         d = ImageDraw.Draw(frame)
         if card_font and tt < INTRO_CARD:
             d.text((W // 2, int(H * 0.44)), card_name, font=card_font,
@@ -1245,6 +1376,9 @@ def main(argv=None) -> int:
     p.add_argument("--crf", type=int, default=20, help="quality: lower is better (18–24)")
     p.add_argument("--preset", default="medium", help="x264 encoding speed")
     p.add_argument("--font", help="path to a .ttf")
+    p.add_argument("--backdrop",
+                   help="a clip to stand behind the lyrics, blurred to a "
+                        "slow field of colour")
     p.add_argument("--start", type=float, default=0.0, help="start from this second")
     p.add_argument("--seconds", type=float, default=0.0, help="render only N seconds (a sample)")
     p.add_argument("--no-intro", dest="intro", action="store_false",

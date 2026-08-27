@@ -1584,6 +1584,10 @@ def main():
     # computer, not into a backup. Packed and unpacked it is the same song.
     packed_dir = os.path.join(tmp, "packed")
     os.makedirs(packed_dir, exist_ok=True)
+    # Two .mp4 files in the folder, and only one of them is the song's own: a
+    # rendered clip is made again in one press, a backdrop could never be.
+    open(os.path.join(with_cover, "backdrop.mp4"), "wb").write(b"clip bytes")
+    open(os.path.join(with_cover, "Song_karaoke.mp4"), "wb").write(b"rendered")
     zip_path = PRJ.pack(with_cover, packed_dir)
     check("the song packs into one file", os.path.isfile(zip_path), zip_path)
     import zipfile
@@ -1592,6 +1596,9 @@ def main():
           "project.json" in inside and any(n.startswith("mix") or n.startswith("instrumental")
                                            for n in inside), inside)
     check("and the cover it stands on", "cover.jpg" in inside, inside)
+    check("the backdrop travels with it", "backdrop.mp4" in inside, inside)
+    check("but a rendered clip does not — it weighs more than the song",
+          "Song_karaoke.mp4" not in inside, inside)
     back_root = os.path.join(tmp, "unpacked")
     os.makedirs(back_root, exist_ok=True)
     back = PRJ.unpack(zip_path, back_root)

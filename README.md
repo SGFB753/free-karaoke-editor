@@ -435,6 +435,15 @@ it and the video turns them slowly, one into the next. The 🌗 knob beside it
 sets how dark the backdrop stands, from nothing to almost black; the number
 can simply be typed.
 
+**`🎞 Clip behind`** puts a moving clip behind the lyrics instead of a still
+— a file, or a link (the song's own will do). It is blurred into a slow field
+of colour, so the smallest copy a site offers is worth exactly as much as the
+best one, and what the song keeps is a few hundred pixels at four frames a
+second: small enough to travel inside a packed song. The darkening is no
+longer a fixed number either — the band where the words stand is measured on
+every field, and the frame clamps down the instant a cut brings something
+bright under the text, letting go slowly afterwards. `🎞✕` takes it away.
+
 **`⇪`** holds the other ways out: an UltraStar file for the singing games,
 `.ass` subtitles with a word-by-word karaoke sweep, and **`⇩ Pack`** — the
 whole song in one `.karaoke.zip` to carry to another computer, which “Open a
@@ -582,7 +591,7 @@ python app/tools/video.py page.html -o clip.mp4
 ```
 
 1920×1080 by default, `--audio minus|guide|original`, `--seconds N` to render a
-short sample first. Before drawing, the video prints its own report — song,
+short sample first, `--backdrop FILE` to stand a clip behind the lyrics. Before drawing, the video prints its own report — song,
 length, lines, where two voices sing at once, stretches left to the original,
 colours, audio mode, number of frames — so a wrong file or forgotten marks show
 up before the long part, not after it.

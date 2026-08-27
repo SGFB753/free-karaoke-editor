@@ -27,6 +27,7 @@ from .i18n import tr
 # on it forever. Fifteen minutes is far more than audio ever needs.
 TIMEOUT = int(os.environ.get("KARAOKE_FETCH_TIMEOUT") or 900)
 MAX_MB = 600                      # the same ceiling a dropped file has
+CLIP_MAX_MB = 80                  # a backdrop is blurred to a field: the worst copy will do
 
 # yt-dlp leaves these behind while it works; they are not the download.
 LEFTOVERS = (".part", ".ytdl", ".temp", ".info.json", ".jpg", ".webp", ".png")
@@ -442,3 +443,63 @@ def download(url: str, dest_dir: str, log: Optional[Callable] = None) -> dict:
     return {"path": dst, "name": os.path.basename(dst),
             "title": clean_title(shown), "track": track, "artist": artist,
             "cover": cover, "duration": info.get("duration") or 0}
+
+
+def clip(url: str, dest_dir: str, log: Optional[Callable] = None) -> str:
+    """The video behind the link, at its smallest, to stand behind the lyrics.
+
+    The backdrop is taken 160 pixels wide and blurred past recognising, so the
+    worst copy a site offers is worth exactly as much as the best one — and it
+    is a few megabytes instead of several hundred. A stream with no sound in
+    it is asked for first, since the song already has its own.
+
+    Gives back the path of what came down.
+    """
+    say = log or (lambda _m: None)
+    url = check_url(url)
+    cmd = tool()
+    if not cmd:
+        raise FetchError(how_to_install())
+
+    os.makedirs(dest_dir, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix=".clip-", dir=dest_dir)
+    deadline = time.time() + TIMEOUT
+    say(tr("Taking the clip from the link, at its smallest…",
+           "Достаю клип по ссылке, в самом мелком виде…"))
+    try:
+        for i, client in enumerate(CLIENTS):
+            args = list(cmd) + [
+                "--no-playlist", "--newline", "--no-colors",
+                "--retries", "3", "--socket-timeout", "30",
+                "--max-filesize", f"{CLIP_MAX_MB}m",
+                # smallest picture, and no sound: the song brought its own
+                "-f", "worstvideo[height>=144]/worstvideo/worst",
+                "--restrict-filenames",
+                "-o", os.path.join(tmp, "clip.%(ext)s"),
+            ]
+            if client:
+                args += ["--extractor-args", f"youtube:player_client={client}"]
+            args += extra_args() + ["--", url]
+            code, lines = _attempt(args, say, deadline)
+            if code == 0:
+                break
+            reason = _reason(lines, code)
+            if bool(TRY_AGAIN.search("\n".join(lines[-8:]))) and i + 1 < len(CLIENTS):
+                _empty(tmp)
+                continue
+            raise FetchError(reason)
+        got = sorted(os.listdir(tmp))
+        if not got:
+            raise FetchError(tr("the link gave no picture",
+                                "по ссылке не пришло картинки"))
+        src = os.path.join(tmp, got[0])
+        dst = os.path.join(dest_dir, "backdrop" + os.path.splitext(got[0])[1])
+        if os.path.exists(dst):
+            os.remove(dst)
+        shutil.move(src, dst)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    mb = os.path.getsize(dst) / 1024 / 1024
+    say(tr(f"Got the clip: {os.path.basename(dst)} ({mb:.1f} MB)",
+           f"Клип получен: {os.path.basename(dst)} ({mb:.1f} МБ)"))
+    return dst

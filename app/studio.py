@@ -677,6 +677,50 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True, "cover": True,
                                    "frames": len(names)})
 
+            m = re.match(r"^/api/project/([^/]+)/backdrop$", path)
+            if m:
+                folder = project_dir(m.group(1))
+                data = P.load(folder)
+                if body.get("off"):
+                    for old in os.listdir(folder):
+                        if old.startswith("backdrop."):
+                            try:
+                                os.remove(os.path.join(folder, old))
+                            except OSError:
+                                pass
+                    data["backdrop"] = None
+                    P.save(folder, data)
+                    return self._json({"ok": True, "backdrop": False})
+                src = (body.get("path") or body.get("url") or "").strip()
+                got = None
+                if re.match(r"^https?://", src):
+                    # The link the song itself came from will do: the backdrop
+                    # is asked for at the smallest size the site offers, since
+                    # it is blurred past recognising anyway.
+                    try:
+                        got = FE.clip(src, folder)
+                        src = got
+                    except Exception as e:
+                        return self._err(400, tr(f"could not fetch the clip: {e}",
+                                                 f"не вышло скачать клип: {e}"))
+                if not os.path.isfile(src):
+                    return self._err(400, tr("no such file", "нет такого файла"))
+                try:
+                    name = set_backdrop(folder, src)
+                except Exception as e:
+                    return self._err(400, tr(f"not a clip: {e}",
+                                             f"это не клип: {e}"))
+                finally:
+                    if got and os.path.isfile(got):
+                        try:
+                            os.remove(got)
+                        except OSError:
+                            pass
+                data = P.load(folder)
+                data["backdrop"] = name
+                P.save(folder, data)
+                return self._json({"ok": True, "backdrop": True})
+
             m = re.match(r"^/api/project/([^/]+)/pack$", path)
             if m:
                 folder = project_dir(m.group(1))
@@ -1476,6 +1520,12 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
         a.start = 0.0; a.seconds = float(opts.get("seconds", 0) or 0)
         a.audio = opts.get("audio", "minus"); a.timings = None; a.output = out
         a.intro = bool(opts.get("intro", True))   # the name and a count of three
+        # The clip behind the lyrics, if the song was given one. A missing
+        # file is simply no backdrop: the still cover is still there.
+        back = data.get("backdrop")
+        a.backdrop = (os.path.join(folder, back)
+                      if back and os.path.isfile(os.path.join(folder, back))
+                      else None)
 
         log(tr("Drawing the frames…", "Рисую кадры…"))
         payload = B.read_payload(tmp_html)
@@ -1599,6 +1649,38 @@ def set_cover(folder: str, src: str) -> list:
     return out
 
 
+BACKDROP_W = 320
+BACKDROP_FPS = 4
+
+
+def set_backdrop(folder: str, src: str) -> str:
+    """A clip to stand behind the lyrics, kept small on purpose.
+
+    The render blurs the backdrop into a field 160 pixels wide, so carrying a
+    full copy of a video around a song folder would be paying for detail that
+    is thrown away before the first frame is drawn. What is kept is a few
+    hundred pixels at four frames a second — a handful of megabytes for any
+    song, small enough to travel inside a packed one.
+    """
+    import subprocess as sp
+    for old in os.listdir(folder):
+        if old.startswith("backdrop.") :
+            try:
+                os.remove(os.path.join(folder, old))
+            except OSError:
+                pass
+    dst = os.path.join(folder, "backdrop.mp4")
+    p = sp.run([AU.ffmpeg(), "-y", "-v", "error", "-i", src, "-an", "-sn",
+                "-vf", (f"fps={BACKDROP_FPS},scale={BACKDROP_W}:-2"),
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "32",
+                "-pix_fmt", "yuv420p", dst],
+               stdout=sp.PIPE, stderr=sp.PIPE)
+    if p.returncode != 0 or not os.path.isfile(dst):
+        raise ValueError(p.stderr.decode(errors="replace")[-160:]
+                         or tr("not a clip", "не клип"))
+    return "backdrop.mp4"
+
+
 def still_frame(folder: str, at: float, opening: bool = False) -> bytes:
     """One frame of the clip as it will be, drawn now and shown at once.
 
@@ -1639,6 +1721,10 @@ def still_frame(folder: str, at: float, opening: bool = False) -> bytes:
             start, seconds, audio = 0.0, 0.0, "minus"
             intro = True
         a = Args()
+        back = data.get("backdrop")
+        a.backdrop = (os.path.join(folder, back)
+                      if back and os.path.isfile(os.path.join(folder, back))
+                      else None)
         # Asked in the song's own time; the clip counts from its first frame,
         # and between the two stands the opening.
         lead = video.intro_lead(a, str(data.get("title") or "").strip())

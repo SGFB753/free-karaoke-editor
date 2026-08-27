@@ -271,6 +271,44 @@ if (backIn.id){
   await post(`/api/project/${encodeURIComponent(backIn.id)}/delete`, {});
 }
 
+console.log('\n--- a clip can stand behind the lyrics ---');
+// The backdrop is a real file here, made on the spot: the endpoint is the
+// only place that turns any clip into the small one a song carries around.
+{
+  const fsx = await import('fs');
+  const os = await import('os');
+  const pathx = await import('path');
+  const { execFileSync } = await import('child_process');
+  const clip = pathx.join(os.tmpdir(), 'karaoke-back-' + process.pid + '.mp4');
+  let made = true;
+  try{
+    execFileSync('ffmpeg', ['-y', '-v', 'error', '-f', 'lavfi', '-i',
+      'color=c=0x203040:s=320x180:d=3', '-r', '8', clip]);
+  }catch(e){ made = false; }
+  ok('a clip to stand behind is made', made);
+  if (made){
+    const set = await post(`/api/project/${encodeURIComponent(pid)}/backdrop`,
+                           {path: clip});
+    ok('the studio takes it', set.ok === true && set.backdrop === true,
+       JSON.stringify(set));
+    const rec = await get('/api/project/' + encodeURIComponent(pid));
+    ok('and the song remembers it', rec.backdrop === 'backdrop.mp4', rec.backdrop);
+    // the frame preview must draw with it and not fall over
+    const shot = await fetch(API + `/api/project/${encodeURIComponent(pid)}/still?at=2`);
+    ok('a frame still draws with the clip behind', shot.ok, shot.status);
+    const off = await post(`/api/project/${encodeURIComponent(pid)}/backdrop`,
+                           {off: true});
+    ok('and it can be taken away again',
+       off.ok === true && off.backdrop === false, JSON.stringify(off));
+    const rec2 = await get('/api/project/' + encodeURIComponent(pid));
+    ok('the song forgets it too', !rec2.backdrop, rec2.backdrop);
+    try{ fsx.unlinkSync(clip); }catch(e){}
+  }
+  const bad = await post(`/api/project/${encodeURIComponent(pid)}/backdrop`,
+                         {path: '/nowhere/at/all.mp4'});
+  ok('a path to nothing is refused, not swallowed', !!bad.error, JSON.stringify(bad));
+}
+
 ok('nothing in the window went wrong', errs.length === 0, errs.slice(0, 2).join(' | '));
 await b.close();
 await post(`/api/project/${encodeURIComponent(pid)}/delete`, {});
