@@ -316,17 +316,17 @@ def main():
           corner_ink(9.5) == 0, corner_ink(9.5))
 
     print("\nSyllables read as one word in the frame")
-    # “ма=ла=фи=ли” is four timed pieces and one word on screen: the frame
+    # “ко=ло=ко=ла” is four timed pieces and one word on screen: the frame
     # must show no gaps between them, and never break a line inside a word.
     syl_song = {"colors": ["#00ff00", "#ff00ff"],
                 "theme": {"bg": "#000000", "text": "#ffffff"},
                 "data": {"title": "T", "duration": 12.0, "lines": [
-        {"text": "малафили меня", "start": 2.0, "end": 6.0, "voice": 1,
-         "words": [{"w": "ма", "t": 2.0, "d": 1.0, "s": 1},
-                   {"w": "ла", "t": 3.0, "d": 1.0, "s": 1, "g": True},
-                   {"w": "фи", "t": 4.0, "d": 1.0, "s": 1, "g": True},
-                   {"w": "ли", "t": 5.0, "d": 0.5, "s": 1, "g": True},
-                   {"w": "меня", "t": 5.5, "d": 0.5, "s": 2}]}]}}
+        {"text": "колокола звенят", "start": 2.0, "end": 6.0, "voice": 1,
+         "words": [{"w": "ко", "t": 2.0, "d": 1.0, "s": 1},
+                   {"w": "ло", "t": 3.0, "d": 1.0, "s": 1, "g": True},
+                   {"w": "ко", "t": 4.0, "d": 1.0, "s": 1, "g": True},
+                   {"w": "ла", "t": 5.0, "d": 0.5, "s": 1, "g": True},
+                   {"w": "звенят", "t": 5.5, "d": 0.5, "s": 2}]}]}}
     wavs = tone(os.path.join(tmp, "k.wav"), 220.0, 12.0)
     class ASY:
         width, height, fps, crf = 640, 360, 5, 30
@@ -341,7 +341,7 @@ def main():
     ims = Image.open(shot_s).convert("RGB")
     Ws, Hs = ims.size
     # the gaps between ink columns inside the main line: one word means one
-    # run of letters, with only a single wider gap before “меня”
+    # run of letters, with only a single wider gap before “звенят”
     cols = [x for x in range(Ws)
             if any(sum(ims.getpixel((x, y))) > 90
                    for y in range(int(Hs * 0.38), int(Hs * 0.52)))]
@@ -349,6 +349,68 @@ def main():
     wide = [g for g in gaps if g > Ws * 0.02]
     check("the syllables stand as one word, with one space before the next",
           len(wide) <= 1, f"gaps {sorted(gaps)[-4:]}, wide {wide}")
+
+    print("\nEvery letter carries a dark ring, over any picture at all")
+    # Until now the words were readable only because the backdrop was tame.
+    # Put a near-white picture behind them, darkened barely at all, and the
+    # old frame handed the singer grey letters on a grey wall. The ring is
+    # what the eye holds on to, so it is measured here and not eyeballed.
+    import base64 as _b64
+    import io as _io
+    bright = Image.new("RGB", (640, 360), (243, 240, 232))
+    _bb = _io.BytesIO(); bright.save(_bb, "JPEG", quality=90)
+    bright_uri = "data:image/jpeg;base64," + _b64.b64encode(_bb.getvalue()).decode()
+    ring_words = "we sing until the glare gives in".split()
+    ring_song = {"colors": ["#4de1ff", "#ff8ad1"],
+                 "theme": {"bg": "#0a0b14", "text": "#e8ebf5"},
+                 "cover": bright_uri, "coverDark": 20,
+                 "data": {"title": "Bright", "duration": 12.0,
+                          "cover": bright_uri, "coverDark": 20, "lines": [
+        {"text": " ".join(ring_words), "start": 2.0, "end": 8.0, "voice": 1,
+         "words": [{"w": w, "t": 2.0 + i * 0.75, "d": 0.75, "s": 1}
+                   for i, w in enumerate(ring_words)]}]}}
+    wav_r = tone(os.path.join(tmp, "r.wav"), 220.0, 12.0)
+
+    class ARING:
+        width, height, fps, crf = 640, 360, 5, 30
+        preset, font, timings = "ultrafast", None, None
+        start, seconds, audio = 0.0, 0.0, "minus"
+        intro = False
+        still = 4.5                      # mid-line: lit words and unlit ones
+        output = os.path.join(tmp, "ring.png")
+    video.render(ring_song, wav_r, ARING.output, ARING())
+    rim = Image.open(ARING.output).convert("RGB")
+    Wr, Hr = rim.size
+    rp = rim.load()
+
+    def _lum(c):
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+
+    band = range(int(Hr * 0.36), int(Hr * 0.62))
+    letters, around = [], []
+    hot = video.COL_HOT
+    for y in band:
+        for x in range(Wr):
+            if all(abs(rp[x, y][i] - hot[i]) < 30 for i in range(3)):
+                letters.append((x, y))
+    lset = set(letters)
+    for x, y in letters:
+        for dx in (-3, -2, 2, 3):
+            q = (x + dx, y)
+            if 0 <= q[0] < Wr and q not in lset:
+                around.append(_lum(rp[q]))
+    check("the sung words are found on the bright picture",
+          len(letters) > 200, len(letters))
+    ring_l = sum(around) / max(len(around), 1)
+    check("and what touches them is dark, not the picture",
+          ring_l < 105, f"{ring_l:.0f} of 255")
+    # …and the picture really is bright where no words are, or the check above
+    # would pass on a frame that is simply dark all over.
+    far = [_lum(rp[x, y]) for y in range(int(Hr * 0.05), int(Hr * 0.16))
+           for x in range(int(Wr * 0.55), Wr, 3)]
+    open_l = sum(far) / max(len(far), 1)
+    check("the picture behind is bright, so the ring earned it",
+          open_l > 120, f"{open_l:.0f} of 255")
 
     print("\nA long line wraps instead of shrinking")
     # The line about the shown video shrank to letters read only from the

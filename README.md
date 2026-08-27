@@ -253,7 +253,7 @@ Second line
   the neighbouring word.
 * `[00:12.34] line` — a ready LRC timing. If the file has them, alignment is
   skipped.
-* `ma=la=fi=li` — a syllable break. The pieces are timed one by one, so a held
+* `for=ev=er=more` — a syllable break. The pieces are timed one by one, so a held
   note lights up syllable by syllable, and the mark itself is never shown: on
   screen, on the page and in the video the word is whole. A soft hyphen works
   the same way; an ordinary hyphen is a letter and stays where it is.
@@ -609,6 +609,12 @@ below — the text scrolls rather than changes. A line too long for the frame
 breaks in two at a word, at full size, instead of shrinking until it cannot
 be read across a room; the line quoted in the countdown is cut at a word and
 finished with an ellipsis rather than mid-word.
+
+Every letter carries a dark outline, and a picture behind the lyrics gets a
+soft dark band under the rows where the words stand. Until now the words were
+readable only because the backdrop was tame: over a bright cover a grey line
+could melt into a grey wall. The ring does not care what is behind it — the
+name in the corner, the opening card and the labels carry one too.
 
 If a cover was chosen in the editor it stands behind the lyrics — blurred,
 darkened to the depth you set, and, when the cover is the clip itself, turned

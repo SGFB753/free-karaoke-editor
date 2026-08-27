@@ -44,6 +44,24 @@ COL_SIDE = (63, 69, 92)         # neighbouring lines
 COL_SECT = (255, 204, 77)       # section label
 COL_BAR = (77, 225, 255)
 COL_PIP = (52, 58, 82)          # guide dots between lines
+# Every letter carries a dark ring. Until now the words were readable only
+# because the backdrop was tame — a woven gradient, or a cover the singer had
+# darkened by hand. Over a picture nobody chose, and over anything that moves,
+# there is always a frame with something bright exactly under a word. The ring
+# does not care what is behind it.
+COL_EDGE = (5, 6, 12)           # the outline under every letter
+SCRIM = 0.42                    # how deep the band under the words goes
+
+
+def edged(font):
+    """Outline settings for a piece of writing, scaled to its own size.
+
+    Everything the frame says stands over a picture somebody else chose. The
+    lyrics carry a ring; so must the name in the corner, the opening card,
+    the count and the labels — one of them left bare is the one that
+    disappears over a bright frame."""
+    return {"stroke_width": max(1, int(round(getattr(font, "size", 20) * 0.055))),
+            "stroke_fill": COL_EDGE}
 
 # A wait shorter than this is not counted down: it is a breath between lines,
 # and three dots under a line being sung say nothing anyone needs.
@@ -452,7 +470,12 @@ class LineArt:
 
         asc, desc = self.font.getmetrics()
         self.row_h = asc + desc + 8
-        self.h = self.row_h * len(rows)
+        # Room for the ring. The rows keep their spacing — only the layer
+        # grows, by as much as the outline sticks out, so the ring is never
+        # shaved off at the top of the first row or the foot of the last.
+        self.edge_w = max(1, int(round(self.font.size * 0.055)))
+        self.pad = self.edge_w
+        self.h = self.row_h * len(rows) + 2 * self.pad
 
         def row_x(idxs):
             total = self.font.getlength(row_text_of(idxs))
@@ -476,8 +499,10 @@ class LineArt:
             img = Image.new("RGBA", (width, self.h), (0, 0, 0, 0))
             d = ImageDraw.Draw(img)
             for r, row in enumerate(rows):
-                d.text((row_x(row), 4 + r * self.row_h), row_text_of(row),
-                       font=self.font, fill=color + (255,))
+                d.text((row_x(row), self.pad + 4 + r * self.row_h),
+                       row_text_of(row), font=self.font, fill=color + (255,),
+                       stroke_width=self.edge_w,
+                       stroke_fill=COL_EDGE + (255,))
             return img
 
         self.dim = draw(COL_DIM if main else COL_SIDE)
@@ -514,10 +539,17 @@ class LineArt:
         current row up to the sweep."""
         row, x = self._fill_at(line, t)
         out = []
+        # The boxes live in the layer's own coordinates, and the layer now
+        # begins with a strip of padding. The lit crop is pasted at the same
+        # offset the dim layer was, so the two rings land on each other and
+        # the sweep leaves no seam.
+        top = self.pad
         for r in range(row):
-            out.append((0, r * self.row_h, self.dim.width, (r + 1) * self.row_h))
+            out.append((0, top + r * self.row_h, self.dim.width,
+                        top + (r + 1) * self.row_h))
         if x > 0:
-            out.append((0, row * self.row_h, int(x), (row + 1) * self.row_h))
+            out.append((0, top + row * self.row_h, int(x),
+                        top + (row + 1) * self.row_h))
         return out
 
 
@@ -541,6 +573,39 @@ def make_background(W, H, cover_uri: str = "", dark: int = 66):
     return img.copy()
 
 
+def _lay_scrim(img):
+    """A soft dark band where the words will stand.
+
+    The outline keeps a letter readable against anything; the band keeps the
+    whole line from having to fight for it. Only pictures get one — the woven
+    gradient is already quiet, and a band on it would show as a band. It is
+    laid once, into the background itself, so no frame pays for it.
+    """
+    from PIL import Image
+
+    W, H = img.size
+    # full strength across the seats where lyrics sit, easing away above and
+    # below, so the edge of the band is never a line anybody can see
+    top, tin, bout, bot = 0.28, 0.40, 0.76, 0.86
+    mask = Image.new("L", (1, H))
+    mp = mask.load()
+    for y in range(H):
+        f = y / max(H - 1, 1)
+        if f <= top or f >= bot:
+            v = 0.0
+        elif f < tin:
+            v = (f - top) / (tin - top)
+        elif f > bout:
+            v = (bot - f) / (bot - bout)
+        else:
+            v = 1.0
+        # eased, not linear: a straight ramp still reads as a shape
+        v = v * v * (3 - 2 * v)
+        mp[0, y] = int(SCRIM * 255 * v)
+    return Image.composite(Image.new("RGB", (W, H), (0, 0, 0)), img,
+                           mask.resize((W, H), Image.BILINEAR))
+
+
 def _draw_background(W, H, cover_uri: str = "", dark: int = 66):
     from PIL import Image, ImageEnhance, ImageFilter
 
@@ -561,7 +626,7 @@ def _draw_background(W, H, cover_uri: str = "", dark: int = 66):
             img = img.crop((x0, y0, x0 + W, y0 + H))
             img = img.filter(ImageFilter.GaussianBlur(radius=max(H // 55, 6)))
             k = (100 - max(0, min(95, int(dark)))) / 100.0
-            return ImageEnhance.Brightness(img).enhance(k)
+            return _lay_scrim(ImageEnhance.Brightness(img).enhance(k))
         except Exception:
             pass
     # Every row is one colour: a single-pixel-wide column stretched to the
@@ -746,7 +811,8 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             shown = shown[:-2].rstrip() + "\u2026"
         for one in bgs:
             ImageDraw.Draw(one).text((margin, int(H * 0.028)), shown,
-                                     font=name_font, fill=(132, 140, 168))
+                                     font=name_font, fill=(132, 140, 168),
+                                     **edged(name_font))
 
     def furniture(d, prog):
         """The bar along the bottom: on every frame, the opening included."""
@@ -785,10 +851,11 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         d = ImageDraw.Draw(frame)
         if card_font and tt < INTRO_CARD:
             d.text((W // 2, int(H * 0.44)), card_name, font=card_font,
-                   fill=_mix(COL_HOT, (255, 255, 255), 0.30), anchor="mm")
+                   fill=_mix(COL_HOT, (255, 255, 255), 0.30), anchor="mm",
+                   **edged(card_font))
             if art_font:
                 d.text((W // 2, int(H * 0.58)), card_artist, font=art_font,
-                       fill=COL_DIM, anchor="mm")
+                       fill=COL_DIM, anchor="mm", **edged(art_font))
         else:
             # The count stands small in the seat where the singing will be,
             # and the first words are already below it: a figure filling the
@@ -797,7 +864,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             # does.
             left = max(lead - tt, 0.0)
             d.text((W // 2, y_main), str(int(math.ceil(left)) or 1),
-                   font=num_font, fill=COL_HOT, anchor="mm")
+                   font=num_font, fill=COL_HOT, anchor="mm", **edged(num_font))
             first = next_sung(lines, -1)
             if first < len(lines):
                 draw_queue(frame, first)
@@ -937,7 +1004,8 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                     paste_faded(frame, piece, (bx[0], y_j + bx[1]), a_j)
                 if k == 0 and lines[j].get("section"):
                     d.text((margin, y_j - int(H * 0.055)),
-                           lines[j]["section"].upper(), font=small, fill=COL_SECT)
+                           lines[j]["section"].upper(), font=small,
+                           fill=COL_SECT, **edged(small))
                 if k == 0 and lines[j].get("keep") and lines[j].get("keepSoft"):
                     # A quiet original is an invitation — say so beside the
                     # line. A full-voice one needs no caption: the voice
@@ -946,7 +1014,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                            else "sing along with the original")
                     d.text((W - margin, y_j - int(H * 0.055)), tag,
                            font=small, fill=_mix(COL_DIM, (255, 255, 255), 0.3),
-                           anchor="ra")
+                           anchor="ra", **edged(small))
 
         # Guide dots: a countdown, not decoration. On the page they are
         # separators in a scrolling list; a frame has no scroll, so here

@@ -1378,11 +1378,11 @@ def main():
           rec_d.get("coverDark") == 95, rec_d.get("coverDark"))
 
     print("\nA word can be broken into syllables that nobody sees")
-    # “ма=ла=фи=ли”: the pieces are timed one by one — a held note lights up
+    # “ко=ло=ко=ла”: the pieces are timed one by one — a held note lights up
     # syllable by syllable — and the word reads whole on every screen.
-    syl = L.parse("ма=ла=фи=ли меня\nобычная строка\n(на-на-на)\n")
+    syl = L.parse("ко=ло=ко=ла звенят\nобычная строка\n(на-на-на)\n")
     first = syl.lines[0]
-    check("the line reads without the marks", first.text == "малафили меня",
+    check("the line reads without the marks", first.text == "колокола звенят",
           first.text)
     check("but its timing is in five pieces", len(first.words) == 5,
           [w.text for w in first.words])
@@ -1391,7 +1391,7 @@ def main():
           [w.glue for w in first.words])
     check("a real hyphen is left alone: it is a word, not a mark",
           syl.lines[2].words[0].text == "(на-на-на)", syl.lines[2].words[0].text)
-    soft = L.parse("ма\u00adла\u00adфи\u00adли\n")
+    soft = L.parse("ко\u00adло\u00adко\u00adла\n")
     check("a soft hyphen splits the same way", len(soft.lines[0].words) == 4,
           [w.text for w in soft.lines[0].words])
     js = first.words[1].to_json()
@@ -1405,10 +1405,10 @@ def main():
     us_syl = IO2.ultrastar_text(rec_syl, "a.mp3")
     notes = [l for l in us_syl.splitlines() if l.startswith("F ")]
     check("UltraStar joins the syllables into one word",
-          notes[0].endswith("ма") and notes[3].endswith("ли "), notes[:4])
+          notes[0].endswith("ко") and notes[3].endswith("ла "), notes[:4])
     ass_syl = IO2.ass_text(rec_syl)
     check("and the subtitles do the same",
-          "{\\k50}ма{\\k50}ла" in ass_syl,
+          "{\\k50}ко{\\k50}ло" in ass_syl,
           [l for l in ass_syl.splitlines() if l.startswith("Dialogue")])
 
     print("\nTorn words are re-laid; held notes are left alone")
@@ -1437,7 +1437,7 @@ def main():
     disorder = _mkline("out of order here", [(5.0, 5.4), (4.0, 4.4),
                                              (5.8, 6.2), (6.2, 6.6)])
     check("words out of order count as torn", A.repair_ragged(disorder) == 1)
-    held = _mkline("меня не малафили", [(2.0, 2.5), (2.5, 3.0), (3.0, 12.0)])
+    held = _mkline("гудят большие колокола", [(2.0, 2.5), (2.5, 3.0), (3.0, 12.0)])
     check("a held note is NOT torn: the long word stays long",
           A.repair_ragged(held) == 0
           and held.lines[0].words[-1].end - held.lines[0].words[-1].start > 8)

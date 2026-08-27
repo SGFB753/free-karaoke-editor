@@ -213,7 +213,7 @@ class Lyrics:
         return "\n".join(ln.text for ln in self.lines)
 
 
-# A syllable break written into the lyrics: “ма=ла=фи=ли”. The mark splits a
+# A syllable break written into the lyrics: “ко=ло=ко=ла”. The mark splits a
 # word into pieces that are timed one by one — a held note lights up syllable
 # by syllable — and it is never shown: on screen the word is whole again. The
 # soft hyphen is understood too, for text pasted from elsewhere.

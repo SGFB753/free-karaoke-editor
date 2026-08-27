@@ -7,6 +7,26 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.43.0
+
+**Every letter carries a dark ring now.** The words used to be readable only
+because the backdrop was tame — a woven gradient, or a cover the singer had
+darkened by hand. Over a bright picture a grey line melted into a grey wall,
+and over anything that moves there is always a frame with something pale
+exactly under a word. The outline does not care what is behind it. The name
+in the corner, the opening card, the count and the labels wear one too: one
+piece of writing left bare is the one that disappears.
+
+**And a picture behind the lyrics gets a band.** A soft darkening across the
+rows where the words stand, eased away above and below so its edge is never a
+line anybody can see. It is laid once, into the background itself, so no frame
+pays for it — and only pictures get one, since the woven gradient is quiet
+already and a band on it would show as a band.
+
+**The example in the manual was changed.** The word chosen to show a syllable
+break read as something coarse in Russian. It is bells now, in both manuals
+and in the tests.
+
 ## 4.42.1
 
 **The word is spelled the way the file is named.** The project ships a file
@@ -32,7 +52,7 @@ in the countdown ends in an ellipsis.
 
 ## 4.42.0
 
-**A word can be broken into syllables that nobody sees.** Write “ма=ла=фи=ли”
+**A word can be broken into syllables that nobody sees.** Write “for=ev=er=more”
 in the lyrics and the pieces are timed one by one — a held note lights up
 syllable by syllable — while the word stays whole everywhere it is read: in
 the editor, on the page, in the video, in the UltraStar file and in the
