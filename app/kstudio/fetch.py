@@ -7,6 +7,7 @@ and the file picker is still there.
 
 from __future__ import annotations
 
+import glob
 import json
 import os
 import re
@@ -65,6 +66,28 @@ class FetchError(RuntimeError):
     pass
 
 
+def _setting(*names) -> str:
+    """One value out of settings.ini, by any of the names it may go under."""
+    app = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    want = {n.lower() for n in names}
+    for ini in (os.path.join(app, "settings.ini"),
+                os.path.join(os.path.dirname(app), "settings.ini")):
+        try:
+            with open(ini, encoding="utf-8-sig") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("#") or "=" not in line:
+                        continue
+                    key, _, val = line.partition("=")
+                    if key.strip().lower() in want:
+                        got = val.strip()
+                        if got:
+                            return got
+        except OSError:
+            continue
+    return ""
+
+
 def extra_args() -> list:
     """Whatever the person adds to the downloader themselves.
 
@@ -119,7 +142,23 @@ def places() -> list:
         out.append(os.path.dirname(sys.executable))
     out += ["/opt/homebrew/bin", "/usr/local/bin",
             os.path.expanduser("~/.local/bin")]
-    return [p for p in out if p]
+    # The version that pip used is very often not the version that is running.
+    # A double-clicked window takes whatever python3 the shell offers it, while
+    # `pip install` in a terminal may belong to another one entirely — and then
+    # yt-dlp sits in a folder one digit away from the one we just looked in.
+    # So every sibling is looked at, not only our own.
+    for pattern in ("~/Library/Python/*/bin",
+                    "/Library/Frameworks/Python.framework/Versions/*/bin",
+                    "/opt/homebrew/opt/python@*/libexec/bin",
+                    "~/.local/pipx/venvs/yt-dlp/bin",
+                    "~/Library/Application Support/pipx/venvs/yt-dlp/bin"):
+        out += sorted(glob.glob(os.path.expanduser(pattern)), reverse=True)
+    seen, uniq = set(), []
+    for folder in out:
+        if folder and folder not in seen:
+            seen.add(folder)
+            uniq.append(folder)
+    return uniq
 
 
 def tool() -> Optional[list]:
@@ -129,7 +168,11 @@ def tool() -> Optional[list]:
     and how the checks put a stand-in there instead of the real internet.
     """
     own = (os.environ.get("KARAOKE_YTDLP") or "").strip()
+    if not own:
+        # …and settings.ini says the same thing without an environment to set.
+        own = _setting("yt-dlp", "загрузчик")
     if own:
+        own = os.path.expanduser(own)
         return [own]
     found = shutil.which("yt-dlp")
     if found:
@@ -164,14 +207,31 @@ def check_url(url: str) -> str:
 
 
 def how_to_install() -> str:
-    """Why there is nothing to download with, in the words that fit the case."""
+    """Why there is nothing to download with, in the words that fit the case.
+
+    “Install it with pip” is useless advice to somebody who just did. A
+    machine holds several Pythons — the one a terminal reaches and the one a
+    double-clicked window finds are often not the same — and pip puts yt-dlp
+    beside whichever it belongs to. So the command named here is bound to the
+    very Python that is doing the looking, and it says which one that is.
+    """
     try:
         import yt_dlp  # noqa: F401
     except ImportError:
-        return tr("yt-dlp is not installed — it is what takes the sound out of a "
-                  "link. Install it with: pip install yt-dlp",
-                  "Не установлен yt-dlp — он и достаёт звук из ссылки. "
-                  "Поставить: pip install yt-dlp")
+        me = sys.executable or "python3"
+        return tr(
+            f"yt-dlp is not installed for this Python — it is what takes the "
+            f"sound out of a link. If you installed it already, it went to "
+            f"another Python: this window runs {me}. Install it here:\n"
+            f'  "{me}" -m pip install -U yt-dlp\n'
+            f"Or write the path to your own copy in settings.ini as "
+            f"“yt-dlp = /path/to/yt-dlp”.",
+            f"Для этого Python не установлен yt-dlp — он и достаёт звук из "
+            f"ссылки. Если вы его уже ставили, он попал к другому Python: это "
+            f"окно работает на {me}. Поставить сюда:\n"
+            f'  "{me}" -m pip install -U yt-dlp\n'
+            f"Либо впишите путь к своей копии в settings.ini: "
+            f"«yt-dlp = /путь/к/yt-dlp».")
     # The library is here and the command is not, and this Python cannot even
     # say where it lives itself — so it cannot be asked to run the library.
     return tr("yt-dlp is installed as a library, but the command is nowhere to "

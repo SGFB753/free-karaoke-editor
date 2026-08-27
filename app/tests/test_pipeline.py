@@ -2348,6 +2348,45 @@ def main():
     del os.environ["KARAOKE_YTDLP_ARGS"], os.environ["KARAOKE_STUB_LOG"]
     del os.environ["KARAOKE_YTDLP"]
 
+    print("\nWhen the downloader is nowhere to be found, the words help")
+    # “Install it with pip” is useless advice to somebody who just did. A
+    # machine holds several Pythons — a terminal reaches one, a double-clicked
+    # window finds another — and pip leaves yt-dlp beside whichever it belongs
+    # to. The message has to name the one that is doing the looking.
+    class _NoYtDlp:
+        def find_spec(self, name, path=None, target=None):
+            if name.split(".")[0] == "yt_dlp":
+                raise ImportError("not for this Python")
+            return None
+    _blocker = _NoYtDlp()
+    sys.meta_path.insert(0, _blocker)
+    for _m in [m for m in sys.modules if m.split(".")[0] == "yt_dlp"]:
+        del sys.modules[_m]
+    try:
+        said = FE.how_to_install()
+    finally:
+        sys.meta_path.remove(_blocker)
+    check("the message names the very Python that went looking",
+          sys.executable in said, said[:90])
+    check("and offers a command bound to it, not a bare “pip install”",
+          "-m pip install" in said, said[:90])
+
+    # A person who knows where their copy is should be able to say so without
+    # setting an environment variable for a double-clicked window.
+    _real_setting = FE._setting
+    FE._setting = lambda *names: "/somewhere/of/my/own/yt-dlp"
+    was = os.environ.pop("KARAOKE_YTDLP", None)
+    try:
+        check("a path written in the settings is the one that is used",
+              FE.tool() == ["/somewhere/of/my/own/yt-dlp"], FE.tool())
+    finally:
+        FE._setting = _real_setting
+        if was is not None:
+            os.environ["KARAOKE_YTDLP"] = was
+    folders = FE.places()
+    check("and no folder is searched twice",
+          len(folders) == len(set(folders)), len(folders))
+
     print("\nThe words, looked up by the name of the song")
     import importlib.util
     import threading

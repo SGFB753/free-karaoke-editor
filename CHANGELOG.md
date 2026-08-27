@@ -7,6 +7,23 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.44.1
+
+**“yt-dlp is not installed” — said to somebody who had just installed it.**
+A machine holds several Pythons. A terminal reaches one; a double-clicked
+window runs a shell that reads a different profile and finds another. Pip
+leaves yt-dlp beside whichever Python it belongs to, and the window went
+looking beside its own. The old message answered this by advising the very
+command that had already been run.
+
+It now names the Python that went looking and gives the command that installs
+the downloader *there* — `"/that/python" -m pip install -U yt-dlp` — which
+cannot land beside the wrong one. More folders are searched first, too: every
+sibling version under `~/Library/Python`, the python.org framework
+directories, Homebrew's own, and where pipx keeps its venvs. And a path can
+simply be written down in `settings.ini` as `yt-dlp = …`, which needs no
+environment a double-clicked window would never see.
+
 ## 4.44.0
 
 **A clip can stand behind the lyrics now, not just a picture.** Give the song

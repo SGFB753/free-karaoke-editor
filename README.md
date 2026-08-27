@@ -165,6 +165,17 @@ to the projects — the same place a dropped file lands. It needs `yt-dlp`:
 pip install yt-dlp
 ```
 
+If the window still says it is not installed after you installed it, the two
+are talking about different Pythons: a machine holds several, a terminal
+reaches one and a double-clicked window finds another, and pip leaves yt-dlp
+beside whichever it belongs to. The message names the Python that went looking
+and gives the command that installs it there. You can also point straight at
+your copy in `settings.ini`:
+
+```ini
+yt-dlp = /opt/homebrew/bin/yt-dlp
+```
+
 Without it the window says so before anything is pasted, and the file picker is
 still there. If the download fails — a private video, a dead link, a country
 block — the reason the downloader gave is shown as it is, and the field is
