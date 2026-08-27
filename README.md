@@ -413,6 +413,37 @@ on your own music.
   the song through by pressing Space on every line, undo, save the page with
   your edits.
 
+## Finding your way around a long song
+
+Above the timeline stands a strip with the whole song on it: the marked
+stretches, the lines left to the original, the quiet places, the window you
+are looking at and the playhead. A click on it jumps, a drag scrubs — on an
+eight-minute song the wheel is a hike and this is a step.
+
+Where two lines overlap, their blocks lie on top of each other. The first
+press takes the upper one, as always; a second press on the same spot,
+without moving the mouse, dives to the line underneath, so both can be
+edited.
+
+**`▣ Frame`** draws what the video will look like at the playhead — the same
+drawing the clip is made of, in a moment rather than the minutes a render
+takes. It follows a seek, and the arrows beside it step through the song.
+
+**`⛰ Cover`** puts a picture behind the lyrics, blurred and darkened: any
+image, a pasted link to one, or the clip itself — six frames are cut across
+it and the video turns them slowly, one into the next. The 🌗 knob beside it
+sets how dark the backdrop stands, from nothing to almost black; the number
+can simply be typed.
+
+**`⇪`** holds the other ways out: an UltraStar file for the singing games,
+`.ass` subtitles with a word-by-word karaoke sweep, and **`⇩ Pack`** — the
+whole song in one `.karaoke.zip` to carry to another computer, which “Open a
+packed song” unpacks exactly as it was. A pack dropped into the window opens
+itself.
+
+**`MP4 video`** asks first: the size, the frames per second, the quality and
+whether the opening runs. What you choose is remembered for the next song.
+
 ## Tune one line, reuse it
 
 A chorus is sung the same way every time. **⧉ Rhythm** remembers the word
@@ -571,6 +602,17 @@ written in the language of the lyrics, not of the program.
 
 Once the last line has been sung the frame holds it for five seconds and then
 empties, instead of leaving it lit to the end of the recording.
+
+The lines do not blink from one to the next: the whole column rides upwards,
+the sung line leaving through the top while the one after it comes up from
+below — the text scrolls rather than changes. A line too long for the frame
+breaks in two at a word, at full size, instead of shrinking until it cannot
+be read across a room; the line quoted in the countdown is cut at a word and
+finished with an ellipsis rather than mid-word.
+
+If a cover was chosen in the editor it stands behind the lyrics — blurred,
+darkened to the depth you set, and, when the cover is the clip itself, turned
+slowly from one frame into the next.
 
 The video takes the colours and the look from the page: the second voice is
 painted in its own colour, and when two voices sing at once they are drawn on

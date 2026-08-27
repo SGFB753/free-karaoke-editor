@@ -76,7 +76,7 @@ def main():
            if re.search("[А-Яа-яЁё]", n) and not n.startswith(".")]
     check("no Cyrillic left in the file names", not cyr, ", ".join(cyr))
     # This is what the move was for: only what a person needs is in the root —
-    # the two launchers, the two readmes, the two changelogs, the licence, the
+    # the two launchers, the two readmes, the two changelogs, the license, the
     # songs, the code.
     root_items = sorted(n for n in os.listdir(HOME)
                         if not n.startswith(".") and n not in ("node_modules", "__pycache__"))
@@ -86,12 +86,12 @@ def main():
           os.path.isfile(os.path.join(HOME, "CHANGELOG.md"))
           and os.path.isfile(os.path.join(HOME, "CHANGELOG.ru.md")))
     # An open repository has to say what may be done with it, or the answer is
-    # “nothing”: without a licence the default is all rights reserved.
+    # “nothing”: without a license the default is all rights reserved.
     lic = os.path.join(HOME, "LICENSE")
     check("there is a LICENSE in the root", os.path.isfile(lic))
     if os.path.isfile(lic):
         text = open(lic, encoding="utf-8").read()
-        check("it is a real licence text, not a stub",
+        check("it is a real license text, not a stub",
               "MIT License" in text and "WITHOUT WARRANTY" in text and len(text) > 900,
               f"{len(text)} characters")
         check("and both readmes point at it",
@@ -297,6 +297,36 @@ def main():
         ids = re.findall(r'id="([^"]+)"', page_src)
         dupes = sorted({i for i in ids if ids.count(i) > 1})
         check(f"{page_name} has no duplicated ids", not dupes, ", ".join(dupes))
+
+    print("\nThe files spell things one way")
+    # The British spelling of the word is one letter away from the file's own
+    # name, LICENSE, and a document that says both looks careless. The needle
+    # is built from halves so this very file does not trip the check.
+    docs = []
+    for root, dirs, files in os.walk(HOME):
+        dirs[:] = [d for d in dirs
+                   if d not in ("node_modules", ".git", "projects", "__pycache__")]
+        for name in files:
+            if name.endswith((".md", ".py", ".js", ".html", ".txt", ".json", ".yml")):
+                docs.append(os.path.join(root, name))
+    british = []
+    for path in docs:
+        try:
+            text = open(path, encoding="utf-8").read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        if ("lic" + "ence") in text.lower():
+            british.append(os.path.relpath(path, HOME))
+    check("nothing spells it the British way where the file is LICENSE",
+          not british, british[:4])
+
+    # …and the changelog holds each version once: a duplicated tail once grew
+    # in it unnoticed, and half the history was there twice.
+    for name in ("CHANGELOG.md", "CHANGELOG.ru.md"):
+        heads = re.findall(r"^## (.+)$", open(os.path.join(HOME, name),
+                                              encoding="utf-8").read(), re.M)
+        dupes = sorted({h for h in heads if heads.count(h) > 1})
+        check(f"{name} names every section once", not dupes, dupes[:4])
 
     print("\nThe version the program tells everyone")
     # Three places name it, and a person comparing them has to get one answer:
