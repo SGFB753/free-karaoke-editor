@@ -1,5 +1,5 @@
 KARAOKE FROM A SONG AND ITS LYRICS
-Version 4.45.3
+Version 4.46.0
 
 
 WHAT YOU NEED
@@ -214,7 +214,8 @@ In the studio:
   - while nobody sings, a countdown to the nearest line runs at the top — so
     you can see the song has not stalled. Short pauses are not counted;
   - on the right is the list of lines worth checking;
-  - the "Standalone HTML" and "MP4 video" buttons — when everything is ready;
+  - the "Standalone HTML", "MP3 320" and "MP4 video" buttons — when
+    everything is ready. MP3 carries the same karaoke backing as the video;
   - "Time it again" — re-reads THE SAME lyrics file from disk. Fixed the txt
     (split the lines differently, corrected words) — press this button, there
     is nothing to pick;
@@ -372,6 +373,11 @@ lines, where two sing together, the colours, the number of frames), and in
 the intro and in long interludes it shows a countdown to the nearest line at
 the top. The colours and the styling are taken from the page itself. When the
 file is ready, the folder it is in opens.
+
+The Studio also has an "MP3 320" button. It writes a separate
+..._karaoke.mp3 beside the original song: the instrumental, with the original
+voice restored only on lines and wordless stretches marked for it. The source
+song is never overwritten.
 
 
 IF THE TIMING HAS DRIFTED

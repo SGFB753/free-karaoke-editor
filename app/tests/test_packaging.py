@@ -33,7 +33,7 @@ def main():
     build_path = os.path.join(ROOT, "packaging", "build-windows.ps1")
     with open(build_path, encoding="utf-8-sig") as f:
         build_script = f.read()
-    check("finished EXE gets a video dependency smoke test",
+    check("finished EXE gets a media dependency smoke test",
           "--internal-package-smoke" in build_script)
 
     workflow_path = os.path.join(os.path.dirname(ROOT), ".github", "workflows",

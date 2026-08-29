@@ -1575,7 +1575,7 @@ def replace_track(folder: str, src: str, kind: str, shift: bool, log) -> dict:
 
 
 def export(folder: str, kind: str, opts: dict, log) -> dict:
-    """Export: a standalone HTML page or an MP4 video."""
+    """Export a page, karaoke audio, video, or an interchange file."""
     data = P.load(folder)
     lyr = _lyrics_from(data)
     tracks = {}
@@ -1642,13 +1642,8 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
                f"Готово: {out} — субтитры с караоке-заливкой"))
         return {"kind": "ass", "path": out}
 
-    if kind == "mp4":
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "video", os.path.join(ROOT, "tools", "video.py"))
-        video = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(video)
-
+    if kind in ("mp3", "mp4"):
+        video = _video_module()
         tmp_html = os.path.join(folder, "_render.html")
         B.build_html(tmp_html, lyr, data["duration"], tracks, data.get("engine", ""),
                      embed=True, title=data.get("title"), artist=data.get("artist"),
@@ -1660,30 +1655,36 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
                      cover_paths=([os.path.join(folder, n)
                                    for n in data.get("coverSet") or []]
                                   if data.get("coverBg") else None))
-        out = os.path.join(out_dir, base + ".mp4")
-
-        class Args:
-            pass
-        a = Args()
-        a.width = int(opts.get("width", 1920)); a.height = int(opts.get("height", 1080))
-        a.fps = int(opts.get("fps", 30)); a.crf = int(opts.get("crf", 20))
-        a.preset = opts.get("preset", "medium"); a.font = opts.get("font")
-        a.start = 0.0; a.seconds = float(opts.get("seconds", 0) or 0)
-        a.audio = opts.get("audio", "minus"); a.timings = None; a.output = out
-        a.intro = bool(opts.get("intro", True))   # the immediate count of three
-        # The clip behind the lyrics, if the song was given one. A missing
-        # file is simply no backdrop: the still cover is still there.
-        back = data.get("backdrop")
-        a.backdrop = (os.path.join(folder, back)
-                      if back and os.path.isfile(os.path.join(folder, back))
-                      else None)
-
-        log(tr("Drawing the frames…", "Рисую кадры…"))
         payload = B.read_payload(tmp_html)
         import tempfile
         tmpdir = tempfile.mkdtemp(prefix="karaoke_render_")
         try:
-            wav = video.extract_audio(payload, tmp_html, tmpdir, a.audio)
+            wav = video.extract_audio(payload, tmp_html, tmpdir,
+                                      opts.get("audio", "minus"))
+            if kind == "mp3":
+                out_base = os.path.join(out_dir, base + "_karaoke")
+                log(tr("Encoding MP3 at 320 kbit/s…",
+                       "Кодирую MP3 в 320 кбит/с…"))
+                out, _mime = AU.encode(wav, out_base, "mp3",
+                                       bitrate_kbps=320)
+                log(tr(f"Done: {out}", f"Готово: {out}"))
+                return {"kind": "mp3", "path": out, "bitrate": 320}
+
+            out = os.path.join(out_dir, base + ".mp4")
+            class Args:
+                pass
+            a = Args()
+            a.width = int(opts.get("width", 1920)); a.height = int(opts.get("height", 1080))
+            a.fps = int(opts.get("fps", 30)); a.crf = int(opts.get("crf", 20))
+            a.preset = opts.get("preset", "medium"); a.font = opts.get("font")
+            a.start = 0.0; a.seconds = float(opts.get("seconds", 0) or 0)
+            a.audio = opts.get("audio", "minus"); a.timings = None; a.output = out
+            a.intro = bool(opts.get("intro", True))
+            back = data.get("backdrop")
+            a.backdrop = (os.path.join(folder, back)
+                          if back and os.path.isfile(os.path.join(folder, back))
+                          else None)
+            log(tr("Drawing the frames…", "Рисую кадры…"))
             last = [""]
             def prog(msg):
                 if msg != last[0]:
@@ -2002,6 +2003,24 @@ def main(argv=None) -> int:
             ImageFont.load_default()
             ImageStat.Stat(image).mean
             _video_module()
+            # The release also promises a ready-to-use 320 kbit/s MP3 path.
+            # Exercise the bundled ffmpeg/libmp3lame, not merely the Python
+            # function that will eventually launch it.
+            import tempfile
+            import shutil
+            import wave
+            smoke_dir = tempfile.mkdtemp(prefix="karaoke_package_smoke_")
+            try:
+                wav = os.path.join(smoke_dir, "silence.wav")
+                with wave.open(wav, "wb") as w:
+                    w.setparams((2, 2, 44100, 4410, "NONE", ""))
+                    w.writeframes(b"\0" * 4410 * 4)
+                mp3, _mime = AU.encode(wav, os.path.join(smoke_dir, "audio"),
+                                       "mp3", bitrate_kbps=320)
+                if not os.path.isfile(mp3) or os.path.getsize(mp3) < 1000:
+                    raise RuntimeError("packaged MP3 encoder produced no file")
+            finally:
+                shutil.rmtree(smoke_dir, ignore_errors=True)
             return 0
         except Exception:
             path = os.path.join(os.path.dirname(os.path.abspath(sys.executable)),

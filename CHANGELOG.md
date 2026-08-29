@@ -7,6 +7,15 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.46.0
+
+**The Studio can export a 320 kbit/s MP3.** The new button makes the same
+karaoke backing as the MP4: the instrumental plus the original vocal only on
+lines and wordless stretches explicitly kept for it. It is encoded as CBR
+320 kbit/s and saved as a separate `_karaoke.mp3`, so the source recording can
+never be overwritten. Both the browser-to-server export and the actual ffmpeg
+bitrate are covered by tests.
+
 ## 4.45.3
 
 **MP4 rendering works in the packaged Windows application.** `tools/video.py`

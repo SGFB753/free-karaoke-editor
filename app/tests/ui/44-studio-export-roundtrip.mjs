@@ -41,6 +41,8 @@ const proj = async () => (await (await fetch(API+"/api/project/"+encodeURICompon
 const before = await proj();
 doc.querySelectorAll('.card')[0].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(1400);
+ok('the window offers a 320 kbit/s MP3 export',
+   !!$("btnExportMp3") && /320/.test($("btnExportMp3").textContent));
 
 console.log('--- setting the song up in the window ---');
 doc.querySelectorAll('#scroll .ln')[1].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
@@ -103,6 +105,23 @@ ok('the page opens without the internet',
    !/https?:\/\/(?!127\.0\.0\.1)/.test(page.replace(/<!--[\s\S]*?-->/g,'')),
    (page.match(/https?:\/\/[^\s"']+/g)||[]).slice(0,2).join(' '));
 
+console.log('\n--- exporting the same karaoke mix as MP3 320 ---');
+const audioJob = await (await fetch(API+"/api/project/"+encodeURIComponent(PID)+"/export",
+  {method:'POST', headers:{'Content-Type':'application/json'},
+   body: JSON.stringify({kind:'mp3'})})).json();
+let audioOut = null;
+for (let i = 0; i < 120; i++){
+  const st = await (await fetch(API+"/api/job?id="+encodeURIComponent(audioJob.job))).json();
+  if (st.done){ audioOut = st.result; break; }
+  await sleep(500);
+}
+ok('the MP3 export finished', !!audioOut && !!audioOut.path, JSON.stringify(audioOut));
+ok('it has a separate karaoke name and cannot overwrite the source',
+   audioOut && /_karaoke\.mp3$/i.test(audioOut.path), audioOut && audioOut.path);
+ok('the server records the requested 320 kbit/s rate',
+   audioOut && audioOut.bitrate === 320, JSON.stringify(audioOut));
+ok('the MP3 file is on disk', audioOut && fs.existsSync(audioOut.path));
+
 console.log('\n--- and the finished page really shows it ---');
 const dom2 = new JSDOM(page, { runScripts:'dangerously', pretendToBeVisual:true,
   url:'https://local.test/exported',
@@ -142,6 +161,7 @@ await fetch(API+'/api/project/'+encodeURIComponent(PID)+'/timings', {
   })
 });
 try { fs.unlinkSync(out.path); } catch(e){}
+try { if (audioOut) fs.unlinkSync(audioOut.path); } catch(e){}
 
 ok('the window has no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');

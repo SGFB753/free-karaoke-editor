@@ -521,7 +521,7 @@ def check_video(tmp):
     video = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(video)
 
-    from kstudio import audio as AU
+    from kstudio import audio as AU, winproc
     instr = make_two_tone(os.path.join(tmp, "instr.wav"), 220.0)
     voc = make_two_tone(os.path.join(tmp, "voc.wav"), 660.0)
     payload = {"audio": {"instrumental": os.path.basename(instr),
@@ -546,6 +546,14 @@ def check_video(tmp):
     check("and the unison stretch carries it quietly — a guide, not a soloist",
           loud_out * 4 < loud_soft < loud_in * 0.6,
           f"soft {loud_soft:.4f} vs full {loud_in:.4f}")
+
+    mp3, _mime = AU.encode(wav, os.path.join(tmp, "karaoke-320"), "mp3",
+                           bitrate_kbps=320)
+    probe = winproc.run([AU.ffmpeg(), "-hide_banner", "-i", mp3],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    description = probe.stderr.decode(errors="replace")
+    check("the standalone MP3 is really encoded at 320 kbit/s",
+          "320 kb/s" in description, description[-300:])
 
 
 def make_two_tone(path, freq, dur=10.0, sr=22050):

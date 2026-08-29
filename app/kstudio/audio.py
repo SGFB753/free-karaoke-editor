@@ -167,7 +167,8 @@ def to_wav(src: str, dst: str, sample_rate: int = 44100, mono: bool = False) -> 
     return dst
 
 
-def encode(src: str, dst_base: str, codec: str = "mp3", sample_rate: int = 44100) -> Tuple[str, str]:
+def encode(src: str, dst_base: str, codec: str = "mp3", sample_rate: int = 44100,
+           bitrate_kbps: Optional[int] = None) -> Tuple[str, str]:
     """Compress for the web. Returns (path, mime).
 
     The sample rate is set explicitly: the instrumental and the vocal play in
@@ -178,6 +179,17 @@ def encode(src: str, dst_base: str, codec: str = "mp3", sample_rate: int = 44100
         raise AudioError(tr(f"Unknown codec {codec}. Available: {', '.join(CODECS)}",
                             f"Неизвестный кодек {codec}. Доступны: {', '.join(CODECS)}"))
     args, ext, mime = CODECS[codec]
+    if bitrate_kbps is not None:
+        bitrate_kbps = int(bitrate_kbps)
+        if codec != "mp3" or not 8 <= bitrate_kbps <= 320:
+            raise AudioError(tr("An explicit bitrate is supported only for MP3 "
+                                "between 8 and 320 kbit/s.",
+                                "Явный битрейт поддерживается только для MP3 "
+                                "от 8 до 320 кбит/с."))
+        # Export is a file people may play outside the karaoke page. Use an
+        # exact CBR bitrate there; the compact embedded web tracks keep using
+        # the quality-based default above.
+        args = ["-c:a", "libmp3lame", "-b:a", f"{bitrate_kbps}k"]
     dst = dst_base + ext
     p = _run([ffmpeg(), "-y", "-i", src, "-vn", "-ac", "2",
               "-ar", str(sample_rate), *args, dst])

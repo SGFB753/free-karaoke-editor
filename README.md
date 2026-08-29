@@ -14,7 +14,7 @@ account, no subscription.
 This is a user-focused fork of the
 [original free-karaoke-editor](https://github.com/frdm666/free-karaoke-editor).
 Its goal is a dependable end-to-end Windows workflow: open a normal desktop
-application, add a song and lyrics, correct the timing, and produce HTML or MP4
+application, add a song and lyrics, correct the timing, and produce HTML, MP3 or MP4
 without configuring Python by hand. The source workflow for macOS and Linux is
 still supported.
 
@@ -44,7 +44,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the detailed history and rationale.
 | **Instrumental** | separated with Demucs, or use the artist's own — the voice is then extracted per frequency band |
 | **Editing** | a window where lines and single words are dragged into place; every change saves itself |
 | **Two voices** | a lead and a backing part, their own colours, two lanes, simultaneous lines side by side |
-| **Output** | one standalone HTML, an `.lrc`, or an MP4 for YouTube |
+| **Output** | standalone HTML, karaoke MP3 320, `.lrc`, subtitles, or MP4 for YouTube |
 | **Languages** | interface in English and Russian, lyrics in 14 |
 
 ## Windows EXE (no Python or package installation)
@@ -182,7 +182,7 @@ Two things people trip over:
 ### Building a Windows release in your fork
 
 Run the **Windows release** workflow and give it a tag matching the application
-version, for example `v4.45.3`. GitHub Actions builds the Windows ZIP,
+version, for example `v4.46.0`. GitHub Actions builds the Windows ZIP,
 creates the checksum and publishes both to Releases. The build embeds
 `${{ github.repository }}`, so a fork automatically updates from its own
 Releases, not from upstream.
@@ -522,6 +522,11 @@ itself.
 
 **`MP4 video`** asks first: the size, the frames per second, the quality and
 whether the opening runs. What you choose is remembered for the next song.
+
+**`MP3 320`** writes the same karaoke backing used by the video as a CBR
+320 kbit/s file: the instrumental, with the original voice restored only on
+lines and wordless stretches marked for it. The separate
+`name_karaoke.mp3` sits beside the source song, which is never overwritten.
 
 ## Tune one line, reuse it
 

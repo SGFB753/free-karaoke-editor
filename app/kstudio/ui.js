@@ -34,7 +34,9 @@ const STR = {
     trackHint: "Use the artist's real instrumental instead of the separated one",
     realign: "↻ Re-time",
     realignHint: "Re-read the same lyrics file from disk and time it again — if you edited it",
-    exportHtml: "Standalone HTML", exportMp4: "MP4 video",
+    exportHtml: "Standalone HTML", exportMp4: "MP4 video", exportMp3: "MP3 320",
+    mp3Hint: "Export the same karaoke backing used by the video: the instrumental "
+      + "plus the original voice only where it is marked, at 320 kbit/s",
     summary: "Summary", check: "Check", openFolder: "Open folder", hide: "Hide",
     timeline: "Timeline", noLine: "no line selected",
     lineStartsHere: "⌖ Line starts here", andRest: "and all after it",
@@ -421,8 +423,9 @@ const STR = {
     askRealign: "Re-read the lyrics file and time it again?\n\nIt takes the same file used for the build — with every change you made in it.\n\nYour timing edits for this song will be replaced.",
     jobHtml: "Building a standalone HTML",
     jobReady: "Done",
-    jobVideo: "Rendering the video",
+    jobVideo: "Rendering the video", jobMp3: "Encoding MP3 at 320 kbit/s",
     videoReady: "Video ready",
+    mp3Ready: "MP3 320 ready",
     lineNo: (n, t) => "line " + n + ": " + t,
   },
   ru: {
@@ -452,7 +455,9 @@ const STR = {
     realign: "↻ Разметить заново",
     realignHint: "Перечитать тот же файл с текстом с диска и разметить заново — " +
       "если вы его отредактировали",
-    exportHtml: "Отдельный HTML", exportMp4: "Видео MP4",
+    exportHtml: "Отдельный HTML", exportMp4: "Видео MP4", exportMp3: "MP3 320",
+    mp3Hint: "Вывести ту же караоке-минусовку, что звучит в видео: инструментал "
+      + "и оригинальный голос только на отмеченных местах, 320 кбит/с",
     summary: "Сводка", check: "Проверить", openFolder: "Открыть папку",
     hide: "Скрыть", timeline: "Дорожка", noLine: "строка не выбрана",
     lineStartsHere: "⌖ Начало строки — сюда", andRest: "и все следующие",
@@ -836,8 +841,9 @@ const STR = {
     askRealign: "Перечитать файл с текстом и разметить заново?\n\nБерётся тот же файл, что и при сборке — со всеми правками, которые вы в нём сделали.\n\nВаши правки времени у этой песни будут заменены.",
     jobHtml: "Собираю отдельный HTML",
     jobReady: "Готово",
-    jobVideo: "Рисую видео",
+    jobVideo: "Рисую видео", jobMp3: "Кодирую MP3 в 320 кбит/с",
     videoReady: "Видео готово",
+    mp3Ready: "MP3 320 готов",
     lineNo: (n, t) => "строка " + n + ": " + t,
   },
 };
@@ -4165,6 +4171,14 @@ async function exportKind(kind, label){
 }
 $("btnExportUs").addEventListener("click", () => exportKind("ultrastar", T.jobUs));
 $("btnExportAss").addEventListener("click", () => exportKind("ass", T.jobAss));
+
+$("btnExportMp3").addEventListener("click", async () => {
+  await flush();
+  const j = await api(`/api/project/${encodeURIComponent(pid)}/export`, {kind:"mp3"});
+  watchJob(j.job, T.jobMp3, r => {
+    screen("scrEdit"); showMade(r.path); toast(T.mp3Ready); reveal(r.path);
+  });
+});
 
 $("btnExportHtml").addEventListener("click", async () => {
   await flush();
