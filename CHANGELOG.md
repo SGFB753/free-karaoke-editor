@@ -7,6 +7,14 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.46.1
+
+**Windows releases tolerate a one-off browser-test hiccup without hiding the
+evidence.** The complete suite is retried once on a shared GitHub runner, while
+both attempts are retained as a downloadable log artifact. A repeatable error
+still fails the release. This release contains the 320 kbit/s MP3 export added
+in 4.46.0.
+
 ## 4.46.0
 
 **The Studio can export a 320 kbit/s MP3.** The new button makes the same

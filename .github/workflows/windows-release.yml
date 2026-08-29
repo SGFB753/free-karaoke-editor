@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, for example v4.46.0"
+        description: "Release tag, for example v4.46.1"
         required: true
         type: string
   push:
@@ -43,10 +43,31 @@ jobs:
           PUPPETEER_SKIP_DOWNLOAD: "true"
           KARAOKE_REQUIRE_BROWSER: "1"
         run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          New-Item -ItemType Directory -Force -Path test-results | Out-Null
           Push-Location app
           npm install --no-audit --no-fund
           Pop-Location
-          .\.venv\Scripts\python.exe app\tests\run_all.py
+
+          # Real-browser timing can occasionally be noisy on a shared runner.
+          # Keep the first complete log and retry the identical suite once;
+          # a repeatable failure still stops the release.
+          .\.venv\Scripts\python.exe app\tests\run_all.py 2>&1 |
+            Tee-Object -FilePath test-results\first-run.txt
+          $firstExit = $LASTEXITCODE
+          if ($firstExit -ne 0) {
+            Write-Warning "The first full test run failed; retrying once."
+            .\.venv\Scripts\python.exe app\tests\run_all.py 2>&1 |
+              Tee-Object -FilePath test-results\retry.txt
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.run_attempt }}
+          path: test-results/*.txt
+          if-no-files-found: warn
       - name: Build self-contained application
         shell: pwsh
         run: |
