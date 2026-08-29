@@ -540,7 +540,7 @@ def main():
     json.dump({"lines": [{"text": l.text, "start": l.start + 1.5, "end": l.end + 1.5,
                           "words": [{"w": w.text, "t": w.start + 1.5, "d": w.end - w.start}
                                     for w in l.words]} for l in lyr.lines]},
-              open(tj, "w"), ensure_ascii=False)
+              open(tj, "w", encoding="utf-8"), ensure_ascii=False)
     B.apply_timings(lyr2, tj)
     check("the shift was applied", abs(lyr2.lines[0].start - (lyr.lines[0].start + 1.5)) < 1e-6)
 
@@ -554,7 +554,7 @@ def main():
     worst = 0.0
     for ms in (250, 507, 1503):
         moved = os.path.join(tmp, f"сдвиг{ms}.wav")
-        _sp.run(["ffmpeg", "-y", "-loglevel", "error", "-i", song,
+        _sp.run([AU.ffmpeg(), "-y", "-loglevel", "error", "-i", song,
                  "-af", f"adelay={ms}|{ms}", moved], check=True)
         ea, ha = AU.rms_envelope(song, hop_ms=10)
         eb, _hb = AU.rms_envelope(moved, hop_ms=10)
@@ -2029,8 +2029,8 @@ def main():
           all(f'value="{n}"' in page for n in have),
           [n for n in have if f'value="{n}"' not in page])
 
-    # Which separator ran decides how clean the voice is, and the timing is made
-    # from that voice — so the choice has to reach Demucs, not stop halfway.
+    # Which separator ran decides how clean the karaoke tracks are, so the
+    # choice has to reach Demucs, not stop halfway.
     from kstudio import separate as S
     seen = {}
     real_sep = S.separate
@@ -2048,6 +2048,54 @@ def main():
               seen.get("model"))
     finally:
         S.separate = real_sep
+
+    # Separation must never change the recording Whisper receives. Demucs can
+    # lose quiet or processed words; that used to make merely asking for an
+    # instrumental move otherwise-correct lyrics.
+    seen_sources = {}
+    real_sep = S.separate
+    real_align = A.align
+    real_envelope = P.build_envelope
+
+    def watch_align(lyrics, audio_path, *args, **kwargs):
+        seen_sources["timing"] = audio_path
+        seen_sources["isolated"] = kwargs.get("isolated")
+        return real_align(lyrics, audio_path, *args, **kwargs)
+
+    def watch_envelope(audio_path, *args, **kwargs):
+        seen_sources["envelope"] = audio_path
+        return real_envelope(audio_path, *args, **kwargs)
+
+    S.separate = lambda *args, **kwargs: (song_for_build, song_for_build)
+    A.align = watch_align
+    P.build_envelope = watch_envelope
+    try:
+        P.create(song_for_build, text_for_build, os.path.join(tmp, "sep-source"),
+                 align_engine="energy", separate=True)
+        check("an instrumental does not replace the original timing source",
+              os.path.basename(seen_sources.get("timing", "")) == "source.wav"
+              and seen_sources.get("isolated") is False,
+              seen_sources)
+        check("the vocal stem still supplies the waveform",
+              seen_sources.get("envelope") == song_for_build, seen_sources)
+    finally:
+        S.separate = real_sep
+        A.align = real_align
+        P.build_envelope = real_envelope
+
+    import studio as ST
+    picked, picked_isolated = ST.timing_audio(
+        tmp, {"source_audio": song_for_build,
+              "tracks": {"vocals": "missing-vocals.wav"}})
+    check("re-timing also prefers the original recording",
+          picked == song_for_build and picked_isolated is False,
+          (picked, picked_isolated))
+    picked, picked_isolated = ST.timing_audio(
+        tmp, {"source_audio": os.path.join(tmp, "moved-away.wav"),
+              "tracks": {"vocals": os.path.basename(song_for_build)}})
+    check("an old project can still fall back to its vocal stem",
+          picked == song_for_build and picked_isolated is True,
+          (picked, picked_isolated))
 
     print("\nA whole song built with wordless stretches marked")
     # The road end to end, without a neural net in it: build a real project and
@@ -2291,7 +2339,8 @@ def main():
     os.makedirs(bin_dir, exist_ok=True)
     where, can_extract = FE._tools(bin_dir)
     check("a strangely named ffmpeg is given the name yt-dlp looks for",
-          where and os.path.exists(os.path.join(where, "ffmpeg")), where)
+          where and os.path.exists(os.path.join(
+              where, "ffmpeg" + (".exe" if os.name == "nt" else ""))), where)
     check("and with no ffprobe the sound is not pulled out on the spot",
           can_extract is False)
     args = FE._base_args(["yt-dlp"], bin_dir)
@@ -2299,13 +2348,41 @@ def main():
     check("and the folder handed over is the one with the right names",
           args[args.index("--ffmpeg-location") + 1] == where)
 
+    # Ordinary Windows accounts cannot create symlinks. A pip-installed
+    # ffmpeg must still be made visible to yt-dlp without asking for admin
+    # rights; copying is the last fallback when links are unavailable.
+    no_links = os.path.join(tmp, "no-links")
+    real_link, real_symlink = os.link, os.symlink
+
+    def refuse_link(*args, **kwargs):
+        raise OSError("links are unavailable")
+
+    os.link = os.symlink = refuse_link
+    try:
+        copied_where, copied_extract = FE._tools(no_links)
+        check("ffmpeg is copied when Windows refuses both kinds of link",
+              copied_where and os.path.isfile(os.path.join(
+                  copied_where, "ffmpeg" + (".exe" if os.name == "nt" else ""))),
+              copied_where)
+        check("a copied ffmpeg without ffprobe still downloads the whole file",
+              copied_extract is False)
+    finally:
+        os.link, os.symlink = real_link, real_symlink
+
     AU.ffmpeg, AU.ffprobe = was_ff, was_fp
     try:
         where2, can2 = FE._tools(bin_dir)
-        check("an ordinary pair is handed over as it stands",
-              can2 and where2 == os.path.dirname(AU.ffmpeg()), where2)
-        check("and then the sound is pulled out at once",
-              "-x" in FE._base_args(["yt-dlp"], bin_dir))
+        real_probe = AU.ffprobe()
+        if real_probe:
+            check("an ordinary pair is handed over as it stands",
+                  can2 and where2 == os.path.dirname(AU.ffmpeg()), where2)
+            check("and then the sound is pulled out at once",
+                  "-x" in FE._base_args(["yt-dlp"], bin_dir))
+        else:
+            check("ffmpeg without ffprobe is handed over safely",
+                  bool(where2) and not can2, where2)
+            check("without ffprobe the whole media is downloaded",
+                  "-x" not in FE._base_args(["yt-dlp"], bin_dir))
     except AU.AudioError:
         check("an ordinary pair is handed over as it stands", True, "no ffmpeg here")
 

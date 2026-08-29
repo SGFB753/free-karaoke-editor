@@ -63,7 +63,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'voc_'));
 // “Own instrumental” — the same song, since one without vocal peaks cannot be
 // made here, so subtraction must either give silence or refuse.
 const own = path.join(tmp, 'own.wav');
-execFileSync('ffmpeg', ['-y','-loglevel','error','-i', process.env.KARAOKE_SONG,
+execFileSync(process.env.KARAOKE_FFMPEG || 'ffmpeg', ['-y','-loglevel','error','-i', process.env.KARAOKE_SONG,
   '-af','adelay=800|800', own]);
 const j = await (await fetch(API+'/api/project/'+encodeURIComponent(PID)+'/track', {
   method:'POST', headers:{'Content-Type':'application/json'},

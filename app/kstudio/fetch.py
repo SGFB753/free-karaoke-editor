@@ -22,6 +22,7 @@ import time
 from typing import Callable, Optional
 
 from . import audio as AU
+from . import winproc as WP
 from .i18n import tr
 
 # A download that never ends is worse than one that fails: the window would sit
@@ -194,9 +195,11 @@ def tool() -> Optional[list]:
     if found:
         return [found]
     for folder in places():                 # installed, but not where PATH looks
-        path = os.path.join(folder, "yt-dlp.exe" if os.name == "nt" else "yt-dlp")
-        if os.path.isfile(path) and os.access(path, os.X_OK):
-            return [path]
+        names = ("yt-dlp.exe", "yt-dlp") if os.name == "nt" else ("yt-dlp",)
+        for name in names:
+            path = os.path.join(folder, name)
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                return [path]
     try:                                    # installed as a library, no command
         import yt_dlp  # noqa: F401
     except ImportError:
@@ -204,7 +207,13 @@ def tool() -> Optional[list]:
     # A Python that cannot say where it lives cannot be asked to run a module;
     # passing that emptiness on gives a crash about NoneType instead of an
     # answer about the song.
-    return [sys.executable, "-m", "yt_dlp"] if sys.executable else None
+    if not sys.executable:
+        return None
+    # In a PyInstaller build sys.executable is KaraokeStudio.exe, not a Python
+    # interpreter.  The main entry point provides this private dispatch so the
+    # bundled yt-dlp still gets a clean child process.
+    return ([sys.executable, "--internal-ytdlp"] if getattr(sys, "frozen", False)
+            else [sys.executable, "-m", "yt_dlp"])
 
 
 def available() -> bool:
@@ -369,10 +378,22 @@ def _tools(tmp: str) -> tuple:
                 continue
             link = os.path.join(folder, name)
             if not os.path.exists(link):      # a second try reuses the folder
-                os.symlink(src, link)
-    except (OSError, AttributeError, NotImplementedError):
-        # No links to be had (Windows without the right, say): better to let
-        # yt-dlp look for itself than to point it at half a folder.
+                # Windows normally refuses symlinks unless Developer Mode or
+                # administrator rights are enabled. A hard link needs neither
+                # when both files are on one volume; copying is the final,
+                # cross-volume fallback. The binary is only one file.
+                made = False
+                for put in (os.link, os.symlink, shutil.copy2):
+                    try:
+                        put(src, link)
+                        made = True
+                        break
+                    except (OSError, AttributeError, NotImplementedError):
+                        continue
+                if not made:
+                    return None, False
+    except OSError:
+        # No usable folder: let yt-dlp look for a system install itself.
         return None, False
     return folder, bool(fp)
 
@@ -405,13 +426,33 @@ def _base_args(cmd: list, tmp: str) -> list:
 
 def _attempt(args: list, say: Callable, deadline: float) -> tuple:
     """Run the downloader once and give back its code and its last words."""
+    # A configured downloader may be a Python script.  POSIX executes its
+    # shebang; Windows answers WinError 193 when a .py file is passed straight
+    # to CreateProcess.  This is especially common in tests and portable
+    # installs where there is no generated yt-dlp.exe wrapper.
+    run_args = list(args)
+    if (os.name == "nt" and run_args and run_args[0].lower().endswith(".py")
+            and sys.executable):
+        run_args.insert(0, sys.executable)
+    options = dict(stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                   encoding="utf-8", errors="replace", bufsize=1)
     try:
-        p = subprocess.Popen(args, stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT, text=True,
-                             encoding="utf-8", errors="replace", bufsize=1)
+        p = WP.Popen(run_args, **options)
     except OSError as e:
-        raise FetchError(tr(f"could not start the downloader: {e}",
-                            f"не вышло запустить загрузчик: {e}"))
+        # An extensionless Python script copied from another platform has no
+        # Windows file association for CreateProcess either.  Error 193 is the
+        # unambiguous signal; retry it through our interpreter.
+        if (os.name == "nt" and getattr(e, "winerror", None) == 193
+                and run_args and os.path.isfile(run_args[0]) and sys.executable
+                and run_args[0] != sys.executable):
+            try:
+                p = WP.Popen([sys.executable] + run_args, **options)
+            except OSError as again:
+                raise FetchError(tr(f"could not start the downloader: {again}",
+                                    f"не вышло запустить загрузчик: {again}"))
+        else:
+            raise FetchError(tr(f"could not start the downloader: {e}",
+                                f"не вышло запустить загрузчик: {e}"))
     lines = []
     for line in p.stdout:
         line = line.rstrip()

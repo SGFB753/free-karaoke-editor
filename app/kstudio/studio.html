@@ -175,12 +175,21 @@
     border-bottom:1px solid var(--line)}
   .browser .top input{flex:1; font-size:0.7812rem}
   .browser .body{flex:1; overflow:auto; padding:6px}
+  .browser .brpaste{padding:10px 12px; border-bottom:1px solid var(--line);
+    background:rgba(0,0,0,.18)}
+  .browser .brpaste textarea{min-height:150px; max-height:32vh}
+  .browser .brpaste .opts{display:flex; align-items:center; gap:8px; margin-top:8px}
   .row{display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:8px;
     cursor:pointer; font-size:0.8438rem}
   .row:hover{background:rgba(255,255,255,.08)}
   .row .ic{width:18px; text-align:center; opacity:.75}
   .row .sz{margin-left:auto; font-size:0.7812rem; color:var(--muted)}
   .browser .foot{padding:10px 12px; border-top:1px solid var(--line); display:flex; gap:8px}
+  /* Ordinary files are chosen by the operating system now.  The compact
+     dialog remains only for the useful extras: pasted/found lyrics and URLs. */
+  .browser.compact{height:auto; max-height:min(70vh,620px)}
+  .browser.compact .top{display:none}
+  .browser.compact .body{min-height:0; max-height:38vh}
 
   /* ---------- progress ---------- */
   .joblog{font-family:ui-monospace,Consolas,monospace; font-size:0.8125rem; color:var(--muted);
@@ -335,6 +344,14 @@
     .side .sum{min-height:1.6rem}
     .probs{min-height:2rem}
   }
+  /* At netbook height the wrapped timeline leaves too little room for both a
+     dashboard and the actionable problem list. Keep the checks usable; the
+     same summary remains available on the new-song screen and at normal
+     window sizes. */
+  @media (max-height:660px){
+    .side > h3:first-child, .side > .sum{display:none}
+    .probs{min-height:2.5rem}
+  }
   /* On a cramped window the how-to paragraph under the toolbar is a luxury:
      it wraps into several rows and starves the editor of the very height the
      Check panel needs. The hints live in the tooltips anyway. */
@@ -429,14 +446,16 @@
      not look like litter. */
   .wrd.tiny{padding:0; color:transparent}
   .wrd .wtx{pointer-events:none}
-  /* The word edges set its length. A narrow word gets no grips — they would
-     eat it whole; dragging the middle is enough there. */
+  /* The word edges set its length. On a very short word the two grips divide
+     the chip in half: otherwise its edges disappear precisely when the user
+     needs them to make the word longer. Once stretched, the usual free middle
+     becomes available for moving it again. */
   .wgrip{position:absolute; top:0; bottom:0; width:6px; cursor:ew-resize;
-    background:rgba(255,255,255,.22)}
+    background:rgba(255,255,255,.22); z-index:2}
   .wgrip.left{left:0; border-radius:5px 0 0 5px}
   .wgrip.right{right:0; border-radius:0 5px 5px 0}
   .wrd:hover .wgrip{background:rgba(255,255,255,.45)}
-  .wrd.tiny .wgrip{display:none}
+  .wrd.tiny .wgrip{display:block; width:50%; max-width:8px}
   .play-head{position:absolute; top:0; bottom:0; width:2px; background:#fff;
     pointer-events:none; box-shadow:0 0 6px rgba(255,255,255,.6)}
 
@@ -489,6 +508,7 @@
     <h1 data-t="appTitle">Karaoke Studio</h1>
     <span class="muted" id="capNote"></span>
     <div class="sp"></div>
+    <button id="btnUpdate" class="hide" data-t="updateCheck">Check for updates</button>
     <button id="btnLang" data-tt="langUi" title="Interface language">EN</button>
     <button id="btnUnpack" data-tt="unpackHint" data-t="openPack">Open a packed song</button>
     <button class="pri" id="btnAdd" data-t="addSong">＋ Add a song</button>
@@ -603,7 +623,7 @@
     <span class="saved on ok" id="savedNote" data-t="savedNote">saved</span>
     <div class="sp"></div>
     <button id="btnLyrics" data-tt="lyricsHint" data-t="otherLyrics"
-            title="Take a different lyrics file and time the song to it">⇄ Other lyrics</button>
+            title="Choose a different lyrics file or paste the text, then time the song to it">⇄ Other lyrics</button>
     <button id="btnTrack" data-tt="trackHint" data-t="ownTrack"
             title="Use the artist's real instrumental instead of the separated one">♪ My instrumental</button>
     <button id="btnRealignPart" data-tt="realignPartHint" data-t="realignPart"
@@ -796,7 +816,7 @@
         <option value="24" data-t="expQLight">lighter file</option>
       </select></div>
     <label class="knob"><input type="checkbox" id="expIntro" checked>
-      <span data-t="expIntroLbl">the opening: the name and a count of three</span></label>
+      <span data-t="expIntroLbl">countdown 3–2–1 before the song</span></label>
     <div class="row btns">
       <button class="pri" id="btnExpGo" data-t="expGo">Render</button>
       <button id="btnExpCancel" data-t="cancel">Cancel</button>
@@ -819,11 +839,24 @@
       <button id="brUp">↑</button>
       <input id="brPath" readonly>
     </div>
+    <div class="brpaste hide" id="brPaste">
+      <textarea id="brPasteText" data-tp="pastePh"
+        placeholder="One line of the song per line. Repeats written out as many times as they are sung."></textarea>
+      <div class="opts">
+        <button class="pri" id="brPasteUse" data-t="useText">Use this text</button>
+        <span class="hint" id="brPasteCount"></span>
+      </div>
+    </div>
     <div class="body" id="brBody"></div>
-    <div class="foot"><span class="sp" id="brTitle" style="flex:1;font-size:0.7812rem;color:var(--muted)"></span>
+    <div class="foot"><button class="pri" id="brNative" data-t="choose">Choose…</button>
+      <button class="hide" id="brPasteOpen" data-t="pasteText">Paste the text</button>
+      <span class="sp" id="brTitle" style="flex:1;font-size:0.7812rem;color:var(--muted)"></span>
       <button id="brCancel" data-t="cancel">Cancel</button></div>
   </div>
 </div>
+<!-- A hidden file input deliberately owns the click: unlike a home-grown
+     directory listing it opens Explorer/Finder/the desktop's native picker. -->
+<input class="hide" type="file" id="nativeFile">
 
 <div class="drop hide" id="dropHint">
   <div class="dropbox">

@@ -1,5 +1,5 @@
 KARAOKE FROM A SONG AND ITS LYRICS
-Version 4.44.2
+Version 4.45.2
 
 
 WHAT YOU NEED
@@ -165,9 +165,10 @@ wrong language the timing drifts.
 
 Wait for the build and you land in the editor.
 
-Do not feel like dragging — the "Add a song" button and picking the files
-by hand. The browser opens where you were last time; the folders for songs
-and for lyrics are remembered separately.
+Do not feel like dragging — use "Add a song" and pick the files by hand.
+"Choose" opens the operating system's ordinary file picker, filtered for
+audio or lyrics. "Other lyrics" keeps a compact window for pasting and found
+alternatives; its Choose button opens the same native picker.
 
 When you pick a model the window says whether it is already downloaded: an
 absent one has to be waited for (medium is a gigabyte and a half). While a
@@ -217,7 +218,7 @@ In the studio:
   - "Time it again" — re-reads THE SAME lyrics file from disk. Fixed the txt
     (split the lines differently, corrected words) — press this button, there
     is nothing to pick;
-  - "Other lyrics" — if the new text is in a different file;
+  - "Other lyrics" — choose another file or paste the new text into the window;
   - the cross on a song card removes it from the studio (the sources are
     intact);
   - "♪ Own backing track" — put the artist's real instrumental in place of

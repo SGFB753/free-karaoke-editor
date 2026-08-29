@@ -10,6 +10,7 @@ import { execFileSync } from 'child_process';
 let fail = 0;
 const ok = (n, c, e='') => { console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c) fail++; };
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const PY = process.env.KARAOKE_PYTHON || 'python3';
 
 // A cover no one could miss: a plain red jpeg.
 const RED = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAASACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD5/ooor8kP9CwooooAKKKKACiiigD/2Q==';
@@ -18,7 +19,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'cover_'));
 const txt = path.join(tmp, 'lyrics.txt');
 fs.writeFileSync(txt, 'title: Обложка\n\nПервая строка песни\nВторая строка песни\n', 'utf8');
 const bare = path.join(tmp, 'bare.html');
-execFileSync('python3', ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', bare,
+execFileSync(PY, ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', bare,
   '--align','energy','--no-separate','--ui-lang','ru']);
 
 // The same page, with the cover slipped into the payload — exactly the field
@@ -46,7 +47,7 @@ const looks = async file => {
   const png = await p.screenshot({type:'png'});
   const shot = path.join(tmp, 'shot.png');
   fs.writeFileSync(shot, png);
-  const out = execFileSync('python3', ['-c', `
+  const out = execFileSync(PY, ['-c', `
 from PIL import Image
 im = Image.open(${JSON.stringify(path.join(tmp, 'shot.png'))}).convert('RGB')
 W, H = im.size

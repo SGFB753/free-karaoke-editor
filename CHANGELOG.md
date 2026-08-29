@@ -7,6 +7,57 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.45.2
+
+**Closing the Studio window now closes its EXE process too.** The browser app
+keeps a private local lifetime connection to its own server. When the last
+window closes, that instance exits after a short grace period; a normal page
+reload reconnects in time and multiple Studio instances do not stop one
+another.
+
+## 4.45.1
+
+**The autonomous Windows build no longer flashes terminal windows during
+work.** ffmpeg/ffprobe, yt-dlp, Demucs and the video encoder are started with
+Windows' no-console flags. A frozen-build safety net also covers ffmpeg calls
+made internally by Whisper, while Explorer, the browser, the updater and the
+Studio window itself remain normal GUI applications. Windows PowerShell's BOM
+in the release metadata no longer silently disables update checks.
+
+## 4.45.0
+
+**Windows now has a self-contained release and safe in-app updates.** The
+PyInstaller one-folder build carries Python, ffmpeg, Whisper, Demucs, yt-dlp
+and, in the full release job, the `small` Whisper and `htdemucs` weights. A
+machine using the release does not run pip and does not fetch model packages
+on first use. The release ZIP is checked against its SHA-256 before a separate
+updater replaces the program; `projects/` and `settings.ini` are preserved,
+and a failed replacement rolls back. A fork automatically embeds its own
+`owner/repository`, so its builds check that fork's GitHub Releases.
+
+**“Original” now reaches the live mixer on the click that changes it.** It no
+longer waits for playback to cross another timing boundary: full vocal is
+applied at `1.0`, the sing-along state at `0.35`, and the third click mutes it.
+
+**Windows script downloaders work as scripts.** A configured `yt-dlp.py`, or
+an extensionless Python launcher copied from another system, is now run
+through the application's Python instead of ending in WinError 193.
+
+**The editor and video fixes from this pass are covered as release behaviour.**
+Timing is taken from the original mix, the timeline pans by wheel or drag,
+replacement lyrics can be pasted directly, micro-overlaps no longer become
+fake duet layouts, and the video begins with `3–2–1` without an extra blank
+three seconds.
+
+**Files now come from the operating system's native picker.** The home-grown
+drive listing no longer stands between “Choose” and a file. “Other lyrics”
+keeps only its useful compact dialog — paste and found alternatives — and its
+file button is native too. `Ctrl+Z` also works immediately after button-driven
+edits, dialogs close with Escape or a backdrop click, and the MP4 option now
+honestly says “countdown 3–2–1”; there is no separate title card anymore.
+Release assembly uses a staging directory, so a running previous build no
+longer blocks creation of the next archive on Windows.
+
 ## 4.44.2
 
 **macOS was asked the wrong question about its own folders.** The search knew

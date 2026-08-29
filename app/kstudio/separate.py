@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from . import winproc as WP
 from .i18n import tr
 from typing import Callable, List, Optional, Tuple
 
@@ -97,8 +98,8 @@ def _run_with_pulse(cmd: List[str], log: Log) -> "_Done":
 
     from .progress import Heartbeat
 
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, bufsize=1, errors="replace")
+    proc = WP.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, bufsize=1, errors="replace")
     chunks: List[str] = []
     pct = re.compile(r"(\d{1,3})%")
 
@@ -144,7 +145,10 @@ def separate(wav_path: str, out_dir: str, model: str = "htdemucs",
 
     # --segment cuts the track into chunks: without it Demucs keeps the whole
     # song in memory and runs out of it on a weak machine.
-    cmd = [sys.executable, "-m", "demucs", "-n", model, "--two-stems", "vocals",
+    runner = ([sys.executable, "--internal-demucs"]
+              if getattr(sys, "frozen", False)
+              else [sys.executable, "-m", "demucs"])
+    cmd = runner + ["-n", model, "--two-stems", "vocals",
            "--segment", "7", "-j", "1", "-o", out_dir, wav_path]
     if device:
         cmd += ["-d", device]

@@ -5,6 +5,8 @@ music/
 *_karaoke.html
 
 karaoke.zip
+dist/
+build/
 
 # Python
 __pycache__/

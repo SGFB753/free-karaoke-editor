@@ -10,6 +10,10 @@ const $ = id => document.getElementById(id);
 const STR = {
   en: {
     appTitle: "Karaoke Studio", addSong: "＋ Add a song",
+    updateCheck: "Check for updates", updateNone: "You have the latest version",
+    updateAvailable: v => `Update to ${v}`,
+    updateAsk: v => `Download and install Karaoke Studio ${v}?\n\nThe program will restart. Songs and settings stay in place.`,
+    updateDownloading: "Downloading the update", updateRestart: "Restarting with the new version…",
     emptyTtl: "Nothing here yet",
     emptyBody: 'Press “Add a song” and point to two files: the song itself and ' +
       'its lyrics.<br>The program works out the instrumental and the timing once — ' +
@@ -25,7 +29,7 @@ const STR = {
     langTitle: "Language of the lyrics", instrumental: "Instrumental",
     build: "Build", working: "Working…", toList: "← To the list", songs: "← Songs",
     savedNote: "saved", otherLyrics: "⇄ Other lyrics",
-    lyricsHint: "Take a different lyrics file and time the song to it",
+    lyricsHint: "Choose a different lyrics file or paste the text, then time the song to it",
     ownTrack: "♪ My instrumental",
     trackHint: "Use the artist's real instrumental instead of the separated one",
     realign: "↻ Re-time",
@@ -116,7 +120,8 @@ const STR = {
       + "darkened, so the words stay readable — on the finished page and in "
       + "the MP4. It appears when the song comes from a link.",
     fineSepHint: "Four passes over the song instead of one (htdemucs_ft): the "
-      + "voice comes out cleaner, and the timing is made from that voice. "
+      + "instrumental and voice stem come out cleaner; timing still uses the "
+      + "original. "
       + "About four times longer, and 300 MB more to download the first time.",
     askRemove: t => `Remove “${t}” from the studio?\n\nThe original song and lyrics stay where they are.`,
     lookingAt: "Looking at what this song is…",
@@ -177,7 +182,7 @@ const STR = {
     veryRough: " (very roughly)",
     noStableWarn: "stable-ts is not installed — the timing will be approximate, line by line.",
     pickTrack: "Choose the real instrumental",
-    pickLyrics: "Choose the file with the new lyrics",
+    pickLyrics: "Choose a file with the new lyrics or paste them",
     pickFile: "Choose a file",
     mb: " MB",
     noFiles: "Nothing suitable here",
@@ -312,7 +317,7 @@ const STR = {
     sungTogether: "sing along with the original",
     saving: "saving…",
     nameHint: "The song's name — click to fix it. It stands in the corner of "
-      + "the video, on its opening card and on the finished page, and it is "
+      + "the video and on the finished page, and it is "
       + "what the exported files are called.",
     moreExpHint: "The other ways out: an UltraStar file for the singing "
       + "games, .ass subtitles with the karaoke sweep, or the whole song "
@@ -338,7 +343,7 @@ const STR = {
     expQBest: "better and heavier",
     expQNorm: "the usual",
     expQLight: "lighter file",
-    expIntroLbl: "the opening: the name and a count of three",
+    expIntroLbl: "countdown 3–2–1 before the song",
     expGo: "Render",
     swMore: "wheel…",
     coverBtn: "⛰ Cover",
@@ -366,15 +371,15 @@ const STR = {
     coverGone: "The cover is off — the plain background is back",
     pickCover: "A picture for the cover — or a clip to cut one from",
     showFrame: "▣ Frame",
-    showOpening: "Opening",
+    showOpening: "Countdown 3–2–1",
     stillHint: "Show what the video will look like at this moment — without "
       + "rendering it. The same drawing the clip is made of.",
     stillAt: t => "the clip at " + t,
-    stillOpeningAt: "the opening",
+    stillOpeningAt: "the 3–2–1 countdown",
     stillFailed: "The frame could not be drawn: ",
     nameLabel: "What the song is called",
     nameNewHint: "Filled in from the link, or from the name of the file. It "
-      + "stands in the corner of the video, on its opening card and on the "
+      + "stands in the corner of the video and on the "
       + "finished page — and it can be changed later, in the corner of the editor.",
     namePlaceTitle: "song",
     namePlaceArtist: "artist",
@@ -412,7 +417,7 @@ const STR = {
     realignNew: "Timing to the new lyrics",
     realignSame: "Recomputing the timing",
     realignDone: "Timing recomputed",
-    askLyrics: "Take a different lyrics file and time the song to it?\n\nYour timing edits for this song will be replaced.",
+    askLyrics: "Take different lyrics and time the song to them?\n\nYour timing edits for this song will be replaced.",
     askRealign: "Re-read the lyrics file and time it again?\n\nIt takes the same file used for the build — with every change you made in it.\n\nYour timing edits for this song will be replaced.",
     jobHtml: "Building a standalone HTML",
     jobReady: "Done",
@@ -422,6 +427,10 @@ const STR = {
   },
   ru: {
     appTitle: "Караоке-студия", addSong: "＋ Добавить песню",
+    updateCheck: "Проверить обновления", updateNone: "У вас последняя версия",
+    updateAvailable: v => `Обновить до ${v}`,
+    updateAsk: v => `Скачать и установить Karaoke Studio ${v}?\n\nПрограмма перезапустится. Песни и настройки останутся на месте.`,
+    updateDownloading: "Скачиваю обновление", updateRestart: "Перезапускаюсь в новой версии…",
     emptyTtl: "Здесь пока пусто",
     emptyBody: 'Нажмите «Добавить песню» и укажите два файла: саму песню и ' +
       'текст.<br>Программа один раз посчитает минусовку и разметку — дальше ' +
@@ -437,7 +446,7 @@ const STR = {
     langTitle: "Язык текста песни", instrumental: "Минусовка",
     build: "Собрать", working: "Работаю…", toList: "← К списку", songs: "← Песни",
     savedNote: "сохранено", otherLyrics: "⇄ Другой текст",
-    lyricsHint: "Взять другой файл с текстом и разметить песню под него",
+    lyricsHint: "Выбрать другой файл или вставить текст и разметить песню под него",
     ownTrack: "♪ Своя минусовка",
     trackHint: "Подставить настоящую минусовку от исполнителя вместо разделённой",
     realign: "↻ Разметить заново",
@@ -527,7 +536,8 @@ const STR = {
       + "затемнённую, чтобы слова читались, — на готовой странице и в MP4. "
       + "Появляется, когда песня пришла по ссылке.",
     fineSepHint: "Четыре прохода по песне вместо одного (htdemucs_ft): вокал "
-      + "выходит чище, а разметка считается именно по нему. Примерно вчетверо "
+      + "и минусовка выходят чище; разметка по-прежнему считается по оригиналу. "
+      + "Примерно вчетверо "
       + "дольше, и при первом запуске качается ещё 300 МБ.",
     askRemove: t => `Убрать «${t}» из студии?\n\nИсходная песня и текст останутся на месте.`,
     lookingAt: "Смотрю, что за песня…",
@@ -588,7 +598,7 @@ const STR = {
     veryRough: " (очень грубо)",
     noStableWarn: "stable-ts не установлен — разметка будет приблизительной, по строкам.",
     pickTrack: "Выберите настоящую минусовку",
-    pickLyrics: "Выберите файл с новым текстом",
+    pickLyrics: "Выберите файл с новым текстом или вставьте его",
     pickFile: "Выберите файл",
     mb: " МБ",
     noFiles: "Подходящих файлов здесь нет",
@@ -722,7 +732,7 @@ const STR = {
     sungTogether: "в унисон с оригиналом",
     saving: "сохраняю…",
     nameHint: "Название песни — нажмите, чтобы поправить. Оно стоит в углу "
-      + "ролика, на его заставке и на готовой странице, и по нему называются "
+      + "ролика и на готовой странице, и по нему называются "
       + "выгруженные файлы.",
     moreExpHint: "Другие выходы: файл UltraStar для игр, где поют, "
       + ".ass-субтитры с караоке-заливкой — или вся песня одним файлом, "
@@ -748,7 +758,7 @@ const STR = {
     expQBest: "лучше и тяжелее",
     expQNorm: "обычное",
     expQLight: "полегче файл",
-    expIntroLbl: "заставка: название и счёт до трёх",
+    expIntroLbl: "отсчёт 3–2–1 перед песней",
     expGo: "Рендерить",
     swMore: "круг…",
     coverBtn: "⛰ Обложка",
@@ -776,15 +786,15 @@ const STR = {
     coverGone: "Обложка убрана — обычный фон вернулся",
     pickCover: "Картинка для обложки — или клип, из которого её вырезать",
     showFrame: "▣ Кадр",
-    showOpening: "Заставка",
+    showOpening: "Отсчёт 3–2–1",
     stillHint: "Показать, как будет выглядеть видео в этот момент, — не "
       + "рендеря его. Рисуется тем же кодом, что и сам ролик.",
     stillAt: t => "ролик на " + t,
-    stillOpeningAt: "заставка",
+    stillOpeningAt: "отсчёт 3–2–1",
     stillFailed: "Кадр не нарисовался: ",
     nameLabel: "Как называется песня",
     nameNewHint: "Заполняется из ссылки или из имени файла. Это имя стоит в "
-      + "углу ролика, на его заставке и на готовой странице — и его можно "
+      + "углу ролика и на готовой странице — и его можно "
       + "поменять потом, в углу редактора.",
     namePlaceTitle: "песня",
     namePlaceArtist: "артист",
@@ -822,7 +832,7 @@ const STR = {
     realignNew: "Размечаю под новый текст",
     realignSame: "Пересчитываю разметку",
     realignDone: "Разметка пересчитана",
-    askLyrics: "Взять другой файл с текстом и разметить песню под него?\n\nВаши правки времени у этой песни будут заменены.",
+    askLyrics: "Взять другой текст и разметить песню под него?\n\nВаши правки времени у этой песни будут заменены.",
     askRealign: "Перечитать файл с текстом и разметить заново?\n\nБерётся тот же файл, что и при сборке — со всеми правками, которые вы в нём сделали.\n\nВаши правки времени у этой песни будут заменены.",
     jobHtml: "Собираю отдельный HTML",
     jobReady: "Готово",
@@ -913,6 +923,8 @@ $("btnLang").addEventListener("click", async () => {
 });
 // Some labels are assembled on the fly — those are redrawn separately.
 function relabel(){
+  if (updateInfo && updateInfo.available)
+    $("btnUpdate").textContent = T.updateAvailable(updateInfo.version);
   if (!$("scrEdit").classList.contains("hide")){
     $("hint").textContent = T.hotkeys;
     if (sel >= 0) $("selNote").textContent = T.lineNo(sel+1, fmtMs(lines[sel].start));
@@ -936,9 +948,50 @@ function screen(name){
 
 /* ================= song list ================= */
 let caps = {}, lastData = null;
+let updateInfo = null, updateChecked = false;
+let desktopLifetime = null;
+function keepDesktopProcessWithThisWindow(){
+  if (!caps.desktopSession || desktopLifetime) return;
+  // This request remains open for exactly as long as the page does. The
+  // server gives a reload a short reconnect grace, but treats a closed app
+  // window as the end of its own EXE process.
+  desktopLifetime = new EventSource("/api/lifetime");
+}
+async function checkUpdate(silent=false){
+  if (!caps.updates) return;
+  const btn = $("btnUpdate");
+  btn.disabled = true;
+  try{
+    updateInfo = await api("/api/update");
+    if (updateInfo.available){
+      btn.textContent = T.updateAvailable(updateInfo.version);
+      btn.classList.add("pri");
+      if (silent) toast(T.updateAvailable(updateInfo.version));
+    } else {
+      btn.textContent = T.updateCheck;
+      btn.classList.remove("pri");
+      if (!silent) toast(T.updateNone);
+    }
+  }catch(e){ if (!silent) toast(e.message); }
+  finally { btn.disabled = false; }
+}
+$('btnUpdate').addEventListener('click', async () => {
+  if (!updateInfo || !updateInfo.available) return checkUpdate(false);
+  if (!confirm(T.updateAsk(updateInfo.version))) return;
+  try{
+    const started = await api('/api/update/download', {});
+    watchJob(started.job, T.updateDownloading, async ready => {
+      $("jobTitle").textContent = T.updateRestart;
+      try { await api('/api/update/apply', {token: ready.token}); }
+      catch(e){ $("jobTitle").textContent = T.jobFail; $("jobLog").textContent = e.message;
+        $("btnJobBack").classList.remove("hide"); }
+    });
+  }catch(e){ toast(e.message); }
+});
 async function loadList(){
   const st = await api("/api/state");
   caps = st.caps;
+  keepDesktopProcessWithThisWindow();
   extraLangs = st.uiLangs || [];
   labelLang();
   const notes = [];
@@ -946,6 +999,13 @@ async function loadList(){
   if (!caps.whisper) notes.push(T.noStable);
   if (!caps.demucs) notes.push(T.noDemucs);
   $("capNote").textContent = notes.join(" · ");
+  $("btnUpdate").classList.toggle("hide", !caps.updates);
+  if (caps.updates && !updateChecked){
+    updateChecked = true;
+    // Checking is harmless and small; installation always waits for a clear
+    // confirmation.  Do it once per opened application, never on every redraw.
+    checkUpdate(true);
+  }
 
   const box = $("cards"); box.innerHTML = "";
   $("emptyNote").classList.toggle("hide", st.projects.length > 0);
@@ -1129,7 +1189,70 @@ let pickTarget = null;
 document.querySelectorAll("[data-pick]").forEach(b =>
   b.addEventListener("click", () => openBrowser(b.dataset.pick)));
 $("brCancel").addEventListener("click", () => $("browser").classList.add("hide"));
+$("browser").addEventListener("click", e => {
+  if (e.target === $("browser")) $("browser").classList.add("hide");
+});
 $("brUp").addEventListener("click", () => showDir($("brBody").dataset.parent));
+
+// Escape always closes the top dialog, even while its textarea/input owns the
+// focus.  Capture runs before the editor's shortcuts and before a field can
+// swallow the key.
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  const top = !$("browser").classList.contains("hide") ? $("browser")
+            : !$("expDlg").classList.contains("hide") ? $("expDlg") : null;
+  if (!top) return;
+  top.classList.add("hide");
+  e.preventDefault();
+  e.stopImmediatePropagation();
+}, true);
+
+const PICK_ACCEPT = {
+  audio: ".mp3,.wav,.flac,.m4a,.ogg,.opus,.aac,.wma,.mp4",
+  track: ".mp3,.wav,.flac,.m4a,.ogg,.opus,.aac,.wma,.mp4",
+  lyrics: ".txt,.lrc", lyrics2: ".txt,.lrc",
+  pack: ".zip",
+  cover: "image/*,video/mp4,video/webm,.mkv,.mov",
+  backdrop: "video/*,.mkv,.mov",
+};
+
+// The browser cannot reveal a local path, by design.  Its native picker gives
+// us the bytes instead; upload() puts them in the Studio inbox and returns the
+// normal server-side path expected by every existing operation.
+function chooseNative(kind){
+  pickTarget = kind;
+  const input = $("nativeFile");
+  input.value = "";                         // choosing the same file must fire again
+  input.accept = PICK_ACCEPT[kind] || "";
+  input.click();                             // opens Explorer/Finder/native picker
+}
+$("brNative").addEventListener("click", () => chooseNative(pickTarget));
+
+async function usePickedFile(kind, file){
+  if (!file) return;
+  toast(T.taking(file.name));
+  try{
+    const got = await upload(file);
+    $("browser").classList.add("hide");
+    if (kind === "pack") return unpackSong(got.path);
+    if (kind === "cover") return takeCover(got.path);
+    if (kind === "backdrop") return takeBackdrop(got.path);
+    if (kind === "track") return replaceTrack(got.path);
+    if (kind === "lyrics2") return realign(got.path);
+    if (kind === "lyrics"){
+      $("inLyrics").value = got.path;
+    } else {
+      lastSong = null;                        // chosen by hand, not fetched by link
+      $("grpCover").classList.add("hide");
+      $("chkCover").checked = false;
+      $("inAudio").value = got.path;
+      if (!$("inTitle").value.trim()) $("inTitle").value = fileStem(file.name);
+    }
+    askReport();
+  }catch(err){ toast(T.dropFail + err.message); }
+}
+$("nativeFile").addEventListener("change", e =>
+  usePickedFile(pickTarget, e.target.files && e.target.files[0]));
 
 // The browser opens where it was left, not at the top: hunting for the same
 // file across the whole drive every time is a chore. Audio and lyrics folders
@@ -1164,15 +1287,58 @@ async function unpackSong(path){
   }catch(e){ toast(e.message); }
 }
 async function openBrowser(kind){
+  // For an ordinary file there is no intermediate window: go straight to the
+  // operating system.  These three keep a compact dialog because they also
+  // offer pasted/found lyrics or a web link.
+  if (!["lyrics2", "cover", "backdrop"].includes(kind)){
+    chooseNative(kind);
+    return;
+  }
   pickTarget = kind;
+  const canPaste = kind === "lyrics2";
+  $("brPasteOpen").classList.add("hide");
+  $("brPaste").classList.toggle("hide", !canPaste);
+  $("brPasteText").value = "";
+  $("brPasteCount").textContent = "";
   $("browser").classList.remove("hide");
+  $("browser").querySelector(".browser").classList.add("compact");
   $("brTitle").textContent = kind === "track" ? T.pickTrack
     : kind === "lyrics2" ? T.pickLyrics
     : kind === "pack" ? T.openPack
     : kind === "cover" ? T.pickCover
     : kind === "backdrop" ? T.pickBackdrop : T.pickFile;
-  await showDir(startDir(kind));
+  const body = $("brBody");
+  body.innerHTML = "";
+  if (kind === "lyrics2"){
+    await foundRows(body);
+    $("brPasteText").focus();
+  }
+  if (kind === "cover") coverUrlRow(body);
+  if (kind === "backdrop") backdropUrlRow(body);
 }
+
+function countOtherText(){
+  const n = $("brPasteText").value.split("\n").filter(x => x.trim()).length;
+  $("brPasteCount").textContent = n ? T.countLines(n) : "";
+}
+$("brPasteOpen").addEventListener("click", () => {
+  $("brPaste").classList.toggle("hide");
+  if (!$("brPaste").classList.contains("hide")) $("brPasteText").focus();
+});
+$("brPasteText").addEventListener("input", countOtherText);
+$("brPasteText").addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") $("brPasteUse").click();
+});
+$("brPasteUse").addEventListener("click", async () => {
+  const text = $("brPasteText").value.trim();
+  if (!text) return toast(T.pasteEmpty);
+  try{
+    const saved = await api("/api/lyrics/save",
+      {text, name: songName || (data && data.title) || "lyrics"});
+    $("browser").classList.add("hide");
+    realign(saved.path);
+  }catch(e){ toast(e.message); }
+});
 // Looking the words up worked only while building; picking “another text”
 // for a finished song sent a person back to files alone. The same search now
 // stands above the file list — and a record that knows its times is taken
@@ -2194,6 +2360,13 @@ function toggleKeep(){
     markKeep(i);
     if (blockEls[i]) blockEls[i].classList.toggle("keep", to.keep);
   });
+  // The mixer used to notice this only on a later animation frame.  In a
+  // paused editor, or while changing the line under the playhead, that made
+  // the button look as if it only changed the label and did nothing to the
+  // sound.  Re-evaluate the playhead immediately from the freshly edited
+  // lines; the next sample the browser plays already has the requested voice.
+  keepOn = hasStems ? inKeep(mediaTime()) : 0;
+  applyVoice();
   refreshKeep(); touched();
   toast(idx.length > 1 ? T.keepManyMsg(to, idx.length)
     : to.keepSoft ? T.keepSoftMsg : (to.keep ? T.keepOnMsg : T.keepOffMsg));
@@ -2910,6 +3083,7 @@ function hitLimit(){
   toast(T.edgeLimit);
 }
 $("blocks").addEventListener("pointerdown", e => {
+  if (e.button !== 0) return;                   // middle button pans the timeline
   const blk = e.target.closest(".blk"); if (!blk) return;
   const i = +blk.dataset.i;
   // Overlapping blocks stack, and the top one used to swallow every press:
@@ -2936,6 +3110,7 @@ $("blocks").addEventListener("pointerdown", e => {
 });
 // A word is dragged the same way as a line, but only it is changed.
 $("words").addEventListener("pointerdown", e => {
+  if (e.button !== 0) return;                   // middle button pans the timeline
   const el = e.target.closest(".wrd"); if (!el || sel < 0) return;
   const j = +el.dataset.j, w = lines[sel].words[j];
   snap("");
@@ -3295,6 +3470,24 @@ function spread(ln){
 }
 
 /* ---------- seeking along the timeline ---------- */
+// Wheel and grab-to-pan move the visible time window. The line and word
+// blocks keep their own drag gestures; empty waveform space pans with the left
+// button, and the middle button pans from anywhere.
+let tlpan = null;
+$("tlwrap").addEventListener("wheel", e => {
+  if (!dur || marking) return;
+  const raw = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+  if (!raw) return;
+  const px = raw * (e.deltaMode === 1 ? 16 : e.deltaMode === 2
+                    ? $("tlwrap").clientWidth : 1);
+  const dt = clamp(px / 100 * zoom * 0.12, -zoom * 0.8, zoom * 0.8);
+  seek(mediaTime() + dt);
+  drawWave();
+  drawBlocks();
+  paintMap();
+  e.preventDefault();
+}, {passive:false});
+
 $("tlwrap").addEventListener("pointerdown", e => {
   // While marking, the timeline is for marking: a press on an existing mark
   // takes it off, a press anywhere else starts a new one.
@@ -3314,9 +3507,39 @@ $("tlwrap").addEventListener("pointerdown", e => {
   // Empty timeline space means seeking. What lies on it does not: a line block
   // and a word chip are dragged, not seeked. Without this rule, grabbing a word
   // first seeked the song and the stage jumped to another line under your hand.
-  if (e.target.closest(".blk") || e.target.closest(".wrd")) return;
-  seek(tOf(e.offsetX));
+  const overItem = e.target.closest(".blk") || e.target.closest(".wrd");
+  if (overItem && e.button !== 1) return;
+  if (e.button !== 0 && e.button !== 1) return;
+  tlpan = {x:e.clientX, time:mediaTime(), moved:false};
+  if ($("tlwrap").setPointerCapture)
+    try{ $("tlwrap").setPointerCapture(e.pointerId); }catch(err){}
+  $("tlwrap").classList.add("drag");
+  e.preventDefault();
 });
+window.addEventListener("pointermove", e => {
+  if (!tlpan || drag || wdrag || marking) return;
+  const dx = e.clientX - tlpan.x;
+  if (Math.abs(dx) < 3) return;
+  tlpan.moved = true;
+  seek(tlpan.time - dx / pps());
+  drawWave();
+  drawBlocks();
+  paintMap();
+});
+function finishTimelinePan(e, seekClick){
+  if (!tlpan) return;
+  const pan = tlpan; tlpan = null;
+  $("tlwrap").classList.remove("drag");
+  if (seekClick && !pan.moved){
+    const r = $("tlwrap").getBoundingClientRect();
+    seek(tOf(e.clientX - r.left));
+    drawWave();
+    drawBlocks();
+    paintMap();
+  }
+}
+window.addEventListener("pointerup", e => finishTimelinePan(e, true));
+window.addEventListener("pointercancel", e => finishTimelinePan(e, false));
 /* ---------- marking the stretches that hold no words ----------
    A vocalise is voice: nothing measurable tells it from a sung line. The
    timeline is where a person can see it — a loud stretch with no lines under
@@ -3590,7 +3813,17 @@ function tick(){
 /* ================= keyboard ================= */
 document.addEventListener("keydown", e => {
   if ($("scrEdit").classList.contains("hide")) return;
-  if (e.target.tagName === "INPUT") return;
+  // The editor's shortcuts belong to the stage, not to a field somebody is
+  // typing in. Ctrl+V in “Other lyrics” must paste text rather than invoke
+  // “Paste rhythm”; Backspace must edit text rather than delete a lyric line.
+  const field = e.target && e.target.closest &&
+    e.target.closest("input, textarea, select, [contenteditable='true']");
+  if (field) return;
+  // A click leaves focus on its toolbar button. Plain Space/Enter still belong
+  // to that button, but Ctrl+Z/C/V/D remain editor shortcuts; otherwise Undo
+  // mysteriously stops working immediately after the operation it should undo.
+  const button = e.target && e.target.closest && e.target.closest("button");
+  if (button && !e.ctrlKey && !e.metaKey) return;
   const nudge = (d) => { if (sel<0) return;
     snap("nudge");                  // holding a key is one undo step
     const last = restToo() ? lines.length-1 : sel;

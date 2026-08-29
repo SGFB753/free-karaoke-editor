@@ -30,8 +30,33 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+# A windowed PyInstaller executable intentionally has no console handles.
+# Whisper/tqdm and a few optional libraries still call stdout.write even when
+# their own progress UI is disabled; give them a harmless sink instead of
+# letting an otherwise successful offline alignment die on None.write.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w", encoding="utf-8")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
+ROOT = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+# A full Windows release may carry the model weights too.  Point Whisper and
+# Demucs at that read-only cache before either library is imported; a packaged
+# program then needs no first-run model download.
+if getattr(sys, "frozen", False):
+    bundled_models = os.path.join(ROOT, "models")
+    if os.path.isdir(bundled_models):
+        os.environ.setdefault("XDG_CACHE_HOME", bundled_models)
+        os.environ.setdefault("TORCH_HOME", os.path.join(bundled_models, "torch"))
+        os.environ.setdefault("HF_HOME", os.path.join(bundled_models, "huggingface"))
 sys.path.insert(0, ROOT)
+
+from kstudio import winproc as WP            # noqa: E402
+
+# Whisper launches ffmpeg inside its own package, so wrapping only the calls in
+# our modules is not enough.  The policy affects redirected console helpers in
+# the autonomous GUI build; Explorer and browser windows remain ordinary.
+WP.install_frozen_policy()
 
 from kstudio import i18n
 from kstudio.i18n import tr
@@ -43,11 +68,58 @@ from kstudio import findlyrics as FL       # noqa: E402
 from kstudio import lang as LG            # noqa: E402
 from kstudio import project as P           # noqa: E402
 from kstudio import separate as S          # noqa: E402
+from kstudio import update as UP            # noqa: E402
 
 UI = os.path.join(ROOT, "kstudio", "studio.html")
+# Modules in a PyInstaller onedir build live under its private _internal
+# folder. Deriving the project location from __file__ would put songs beside
+# those temporary/runtime files. The executable directory is stable, visible
+# to the user, and is also the directory the updater preserves.
+if getattr(sys, "frozen", False) and not os.environ.get("KARAOKE_PROJECTS"):
+    os.environ["KARAOKE_PROJECTS"] = os.path.join(
+        os.path.dirname(os.path.abspath(sys.executable)), "projects")
 PROJECTS = P.projects_root()
 JOBS: dict = {}
 JOBS_LOCK = threading.Lock()
+PENDING_UPDATES: dict = {}
+DESKTOP_SESSION = False
+
+# The visible Chrome/Edge app window and this local server are separate
+# processes.  An EventSource held by the page tells us when the last window of
+# this particular Studio instance has really gone away.  The generation makes
+# an ordinary reload cancel the pending shutdown.
+WINDOW_LINK_LOCK = threading.Lock()
+WINDOW_LINKS = 0
+WINDOW_LINK_GENERATION = 0
+WINDOW_CLOSE_GRACE = 2.5
+
+
+def window_link_opened() -> None:
+    global WINDOW_LINKS, WINDOW_LINK_GENERATION
+    with WINDOW_LINK_LOCK:
+        WINDOW_LINKS += 1
+        WINDOW_LINK_GENERATION += 1
+
+
+def window_link_closed(server) -> None:
+    global WINDOW_LINKS, WINDOW_LINK_GENERATION
+    with WINDOW_LINK_LOCK:
+        WINDOW_LINKS = max(0, WINDOW_LINKS - 1)
+        WINDOW_LINK_GENERATION += 1
+        generation = WINDOW_LINK_GENERATION
+        empty = WINDOW_LINKS == 0
+    if not empty:
+        return
+
+    def finish_if_still_closed():
+        with WINDOW_LINK_LOCK:
+            closed = WINDOW_LINKS == 0 and WINDOW_LINK_GENERATION == generation
+        if closed:
+            server.shutdown()
+
+    timer = threading.Timer(WINDOW_CLOSE_GRACE, finish_if_still_closed)
+    timer.daemon = True
+    timer.start()
 
 
 # --------------------------------------------------------------------------- #
@@ -166,6 +238,8 @@ def capabilities() -> dict:
     from kstudio import sysinfo
     return {"ffmpeg": ff, "whisper": have_ts, "demucs": S.available(),
             "pillow": have_pil, "version": __version__,
+            "updates": UP.supported(),
+            "desktopSession": DESKTOP_SESSION,
             # taking the sound out of a link, and where a suggested text
             # would come from — the window says both before it is asked
             "fetch": FE.available(), "fetchHelp": FE.how_to_install(),
@@ -391,6 +465,35 @@ class Handler(BaseHTTPRequestHandler):
                                    "caps": capabilities(),
                                    "projectsDir": PROJECTS})
 
+            if path == "/api/lifetime":
+                if not DESKTOP_SESSION:
+                    return self._err(404, tr("not found", "РЅРµ РЅР°Р№РґРµРЅРѕ"))
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+                self.send_header("Cache-Control", "no-cache, no-store")
+                self.send_header("Connection", "keep-alive")
+                self.end_headers()
+                if self.command == "HEAD":
+                    return
+                window_link_opened()
+                try:
+                    while True:
+                        self.wfile.write(b": karaoke-window\n\n")
+                        self.wfile.flush()
+                        time.sleep(0.75)
+                except (BrokenPipeError, ConnectionResetError, OSError):
+                    pass
+                finally:
+                    window_link_closed(self.server)
+                return
+
+            if path == "/api/update":
+                try:
+                    return self._json(UP.public(UP.latest()))
+                except Exception as e:
+                    return self._err(502, tr(f"could not check for updates: {e}",
+                                             f"не удалось проверить обновления: {e}"))
+
             if path == "/api/job":
                 with JOBS_LOCK:
                     job = JOBS.get(q.get("id", [""])[0])
@@ -522,6 +625,32 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"ok": True})
                 except Exception as e:
                     return self._err(500, tr(f"could not open the folder: {e}", f"не вышло открыть папку: {e}"))
+
+            if path == "/api/update/download":
+                if not UP.supported():
+                    return self._err(400, tr("updates are available in the Windows application",
+                                             "обновления доступны в Windows-приложении"))
+
+                def prepare(log):
+                    result = UP.download(log)
+                    token = uuid.uuid4().hex
+                    PENDING_UPDATES[token] = result["path"]
+                    return {"token": token, "version": result["version"]}
+
+                return self._json({"job": start_job(
+                    tr("Downloading the update", "Скачиваю обновление"), prepare)})
+
+            if path == "/api/update/apply":
+                token = str(body.get("token") or "")
+                archive = PENDING_UPDATES.pop(token, "")
+                if not archive:
+                    return self._err(400, tr("the prepared update was not found",
+                                             "подготовленное обновление не найдено"))
+                UP.launch(archive)
+                # Let the JSON reply reach the window, then release every DLL
+                # so the external updater can replace the application folder.
+                threading.Timer(0.5, self.server.shutdown).start()
+                return self._json({"ok": True})
 
             if path == "/api/report":
                 # The report before building: the song, the text, what to expect.
@@ -757,6 +886,9 @@ class Handler(BaseHTTPRequestHandler):
                 src = body.get("path", "")
                 kind = body.get("track", "instrumental")
                 shift = bool(body.get("shift", True))
+                if not src or not os.path.isfile(src):
+                    return self._err(400, tr("no such audio file",
+                                             "нет такого аудиофайла"))
                 jid = start_job(tr("Swapping the track", "Меняю дорожку"),
                                 lambda log: replace_track(folder, src, kind, shift, log))
                 return self._json({"job": jid})
@@ -846,6 +978,29 @@ def browse(path: str, kind: str) -> dict:
             "dirs": dirs, "files": files, "drives": drives}
 
 
+def timing_audio(folder: str, data: dict) -> tuple:
+    """The complete recording used for re-timing, plus whether it is isolated.
+
+    Demucs stems are playback material.  They are not a reliable transcript
+    source: a separator can lose quiet speech or processed vocals.  Prefer the
+    original file, then a mix kept by older/non-separated projects.  A vocal
+    stem is only the last-resort fallback for a project whose source moved.
+    """
+    source = data.get("source_audio") or ""
+    if source and os.path.isfile(source):
+        return source, False
+
+    tracks = data.get("tracks") or {}
+    for kind in ("mix", "vocals", "instrumental"):
+        name = tracks.get(kind)
+        if name:
+            path = os.path.join(folder, name)
+            if os.path.isfile(path):
+                return path, kind == "vocals"
+    raise FileNotFoundError(tr("the song audio was not found",
+                               "не найден звук песни"))
+
+
 def realign_part(folder: str, opts: dict, log) -> dict:
     """Time a handful of lines again, and leave the rest of the song alone.
 
@@ -882,9 +1037,7 @@ def realign_part(folder: str, opts: dict, log) -> dict:
         raise ValueError(tr("the chosen lines could not be read back as text",
                             "выбранные строки не удалось прочитать обратно как текст"))
 
-    tracks = data.get("tracks") or {}
-    stem = tracks.get("vocals") or tracks.get("mix") or tracks.get("instrumental")
-    audio = os.path.join(folder, stem)
+    audio, isolated = timing_audio(folder, data)
     AU.ensure_on_path()
     model = (opts.get("model") or data.get("model") or "small")
     log(tr(f"Timing lines {a + 1}–{b + 1} again, inside {A.mmss(lo)}–{A.mmss(hi)}, "
@@ -902,7 +1055,7 @@ def realign_part(folder: str, opts: dict, log) -> dict:
                        else (data.get("noText") or ""), dur)
     piece, engine = A.align(piece, audio, dur, opts.get("align", "auto"), model,
                             opts.get("lang", "auto"), None, log,
-                            isolated=bool(tracks.get("vocals")), skip=outside)
+                            isolated=isolated, skip=outside)
 
     fresh = [ln.to_json() for ln in piece.lines]
     moved = 0
@@ -959,9 +1112,7 @@ def realign(folder: str, opts: dict, log) -> dict:
         raise ValueError(tr("the lyrics file has no lines at all",
                             "в файле с текстом не нашлось ни одной строки"))
 
-    tracks = data.get("tracks") or {}
-    stem = tracks.get("vocals") or tracks.get("mix") or tracks.get("instrumental")
-    audio = os.path.join(folder, stem)
+    audio, isolated = timing_audio(folder, data)
     AU.ensure_on_path()
     holes = A.spans(opts.get("noText") or "", data["duration"]) + \
         A.spans(getattr(lyr, "skips", []), data["duration"])
@@ -995,7 +1146,7 @@ def realign(folder: str, opts: dict, log) -> dict:
     lyr, engine = A.align(lyr, audio, data["duration"],
                           opts.get("align", "auto"), model,
                           opts.get("lang", "auto"), None, log,
-                          isolated=bool((data.get("tracks") or {}).get("vocals")),
+                          isolated=isolated,
                           skip=holes)
     fresh = [ln.to_json() for ln in lyr.lines]
     # A line put right by hand outweighs anything a model returns for it.
@@ -1086,8 +1237,8 @@ def shift_audio(path: str, seconds: float, tmp: str) -> str:
         flt = f"adelay={ms}|{ms}"
     else:
         flt = f"atrim=start={abs(seconds):.3f},asetpts=PTS-STARTPTS"
-    p = subprocess.run([AU.ffmpeg(), "-y", "-loglevel", "error", "-i", path,
-                        "-af", flt, out], capture_output=True, text=True)
+    p = WP.run([AU.ffmpeg(), "-y", "-loglevel", "error", "-i", path,
+                "-af", flt, out], capture_output=True, text=True)
     if p.returncode != 0 or not os.path.isfile(out):
         raise RuntimeError((p.stderr or tr("ffmpeg could not cope", "ffmpeg не справился")).strip()[:200])
     return out
@@ -1242,10 +1393,10 @@ def extract_vocals(mix: str, instr: str, off: float, quiet: list, tmp: str,
     out = os.path.join(tmp, "voice.wav")
     flt = (f"[1:a]volume={k:.4f}[i];[0:a][i]amerge=inputs=2,"
            f"pan=mono|c0=c0-c1[out]")
-    p = subprocess.run([AU.ffmpeg(), "-y", "-loglevel", "error",
-                        "-i", aligned, "-i", instr,
-                        "-filter_complex", flt, "-map", "[out]", out],
-                       capture_output=True, text=True)
+    p = WP.run([AU.ffmpeg(), "-y", "-loglevel", "error",
+                "-i", aligned, "-i", instr,
+                "-filter_complex", flt, "-map", "[out]", out],
+               capture_output=True, text=True)
     if p.returncode != 0 or not os.path.isfile(out):
         log(tr(f"  subtracting the instrumental failed ({(p.stderr or '').strip()[:80]})",
                f"  вычесть инструментал не вышло ({(p.stderr or '').strip()[:80]})"))
@@ -1519,7 +1670,7 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
         a.preset = opts.get("preset", "medium"); a.font = opts.get("font")
         a.start = 0.0; a.seconds = float(opts.get("seconds", 0) or 0)
         a.audio = opts.get("audio", "minus"); a.timings = None; a.output = out
-        a.intro = bool(opts.get("intro", True))   # the name and a count of three
+        a.intro = bool(opts.get("intro", True))   # the immediate count of three
         # The clip behind the lyrics, if the song was given one. A missing
         # file is simply no backdrop: the still cover is still there.
         back = data.get("backdrop")
@@ -1728,7 +1879,9 @@ def still_frame(folder: str, at: float, opening: bool = False) -> bytes:
         # Asked in the song's own time; the clip counts from its first frame,
         # and between the two stands the opening.
         lead = video.intro_lead(a, str(data.get("title") or "").strip())
-        a.still = (min(lead, video.INTRO_CARD / 2) if opening
+        # There is no separate title card any more: the opening begins with
+        # the useful 3-2-1 count. Keep the preview inside that count too.
+        a.still = (min(lead, video.INTRO_COUNT / 2) if opening
                    else lead + max(0.0, at))
         a.output = os.path.join(tmp, "frame.png")
         video.render(payload, os.path.join(folder, name), a.output, a)
@@ -1828,7 +1981,22 @@ def parse_args(argv):
 
 
 def main(argv=None) -> int:
-    want, no_browser, host = parse_args(sys.argv[1:] if argv is None else argv)
+    global DESKTOP_SESSION, WINDOW_LINKS, WINDOW_LINK_GENERATION
+    args = list(sys.argv[1:] if argv is None else argv)
+    # Frozen child-process entry points.  In source mode `python -m package`
+    # does this job; in an EXE there is no standalone Python to invoke.
+    if args[:1] == ["--internal-demucs"]:
+        from demucs.separate import main as demucs_main
+        demucs_main(args[1:])
+        return 0
+    if args[:1] == ["--internal-ytdlp"]:
+        import yt_dlp
+        return int(yt_dlp.main(args[1:]) or 0)
+    want, no_browser, host = parse_args(args)
+    DESKTOP_SESSION = not no_browser and host in ("127.0.0.1", "localhost", "::1")
+    with WINDOW_LINK_LOCK:
+        WINDOW_LINKS = 0
+        WINDOW_LINK_GENERATION += 1
     if want is None:
         port = free_port()
         if not port:
@@ -1868,12 +2036,15 @@ def main(argv=None) -> int:
                   "Чтобы закончить — закройте это окно консоли или нажмите Ctrl+C.\n"))
 
     srv = ThreadingHTTPServer((host, port), Handler)
+    srv.daemon_threads = True
     if not no_browser:
         threading.Timer(0.6, lambda: open_window(url)).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         print(tr("\nClosing the studio.", "\nЗакрываю студию."))
+    finally:
+        srv.server_close()
     return 0
 
 

@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+from . import winproc as WP
 from .i18n import tr
 from array import array
 from typing import List, Optional, Tuple
@@ -133,7 +134,7 @@ def ensure_on_path() -> None:
 
 
 def _run(cmd: List[str], **kw) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kw)
+    return WP.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kw)
 
 
 def duration(path: str) -> float:

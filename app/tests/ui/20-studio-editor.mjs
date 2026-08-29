@@ -106,6 +106,25 @@ ok('the blocks are still in place', doc.querySelectorAll('.blk').length===6,
 ok('the container is moved by a transform',
    /translateX/.test($('tlscroll').style.transform), $('tlscroll').style.transform);
 
+console.log('\n--- the timeline pans with the wheel and a held mouse ---');
+const timelinePos = () => $('tlscroll').style.transform + '|' + $('phead').style.left;
+const wheelBefore = timelinePos();
+$('tlwrap').dispatchEvent(new w.WheelEvent('wheel',
+  {bubbles:true, cancelable:true, deltaY:100}));
+await sleep(120);
+const wheelAfter = timelinePos();
+ok('the wheel moves the timeline', wheelAfter !== wheelBefore,
+   wheelBefore + ' → ' + wheelAfter);
+const down = new w.MouseEvent('pointerdown', {bubbles:true, cancelable:true,
+  clientX:700, button:0});
+$('tlwrap').dispatchEvent(down);
+w.dispatchEvent(new w.MouseEvent('pointermove', {bubbles:true, clientX:500, button:0}));
+w.dispatchEvent(new w.MouseEvent('pointerup', {bubbles:true, clientX:500, button:0}));
+await sleep(120);
+ok('holding and dragging empty space pans it too',
+   timelinePos() !== wheelAfter,
+   wheelAfter + ' → ' + timelinePos());
+
 console.log('\n--- the timeline zoom ---');
 const z0 = $('zoomNote').textContent;
 $('btnZoomIn').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));

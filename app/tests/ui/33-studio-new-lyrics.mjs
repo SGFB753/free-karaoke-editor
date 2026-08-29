@@ -143,6 +143,23 @@ ok('it asks before replacing the timing',
 ok('the file browser opened', !$('browser').classList.contains('hide'));
 ok('and it is labelled to the point', /новым текстом/i.test($('brTitle').textContent),
    $('brTitle').textContent);
+ok('the same window opens direct text pasting immediately',
+   !$('brPaste').classList.contains('hide') && $('brPasteOpen').classList.contains('hide'));
+$('brPasteText').value = 'первая вставленная строка\nвторая вставленная строка';
+$('brPasteText').dispatchEvent(new w.Event('input',{bubbles:true}));
+for (const [key, mods] of [['v',{ctrlKey:true}], ['z',{ctrlKey:true}],
+                           ['Backspace',{}]]){
+  const ev = new w.KeyboardEvent('keydown',
+    {key, ...mods, bubbles:true, cancelable:true});
+  const native = $('brPasteText').dispatchEvent(ev);
+  ok(`${key} is left to the lyrics textarea`, native && !ev.defaultPrevented);
+}
+ok('pasted lyrics keep their line breaks in a textarea',
+   !$('brPaste').classList.contains('hide') &&
+   $('brPasteText').value.split('\n').length === 2,
+   $('brPasteText').value);
+ok('the pasted line count is shown', /2/.test($('brPasteCount').textContent),
+   $('brPasteCount').textContent);
 const shown = [...doc.querySelectorAll('#brBody .row .nm')].map(e=>e.textContent);
 ok('it shows text files, not audio',
    shown.every(n => !/\.(mp3|wav|flac|m4a)$/i.test(n)), shown.slice(0,4).join(', '));

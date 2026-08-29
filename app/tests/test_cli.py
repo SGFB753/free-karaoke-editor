@@ -28,9 +28,14 @@ def check(name, cond, extra=""):
 
 
 def run(args, **kw):
-    env = dict(os.environ, KARAOKE_UI_LANG="ru", **kw.pop("env", {}))
+    # A redirected Windows console can advertise a legacy code page even when
+    # the files and the application are UTF-8. Keep the CLI test independent
+    # of the terminal hosting it (PowerShell, CI, or an IDE task).
+    env = dict(os.environ, KARAOKE_UI_LANG="ru", PYTHONIOENCODING="utf-8",
+               **kw.pop("env", {}))
     return subprocess.run([sys.executable] + args, cwd=ROOT, capture_output=True,
-                          text=True, env=env, **kw)
+                          text=True, encoding="utf-8", errors="replace",
+                          env=env, **kw)
 
 
 def payload_of(path):

@@ -14,7 +14,7 @@ const ok = (n, c, e='') => { console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:''
 
 // “The real backing track”: the same song, but starting 1.5 s later.
 const shifted = path.join(tmp, 'real.wav');
-execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', process.env.KARAOKE_SONG,
+execFileSync(process.env.KARAOKE_FFMPEG || 'ffmpeg', ['-y', '-loglevel', 'error', '-i', process.env.KARAOKE_SONG,
   '-af', 'adelay=1500|1500', shifted]);
 ok('a track shifted by 1.5 s is ready', fs.existsSync(shifted));
 
@@ -83,8 +83,10 @@ ok('the voice is still in the project', !!withVoice.tracks.vocals, JSON.stringif
      `${inst.length} and ${voc.length} bytes`);
   fs.writeFileSync(path.join(tmp,'i.mp3'), inst);
   fs.writeFileSync(path.join(tmp,'v.mp3'), voc);
-  const dur = f => parseFloat(execFileSync('ffprobe',
-    ['-v','error','-show_entries','format=duration','-of','csv=p=0', f]).toString());
+  // The self-contained Windows ffmpeg supplied by imageio has no separate
+  // ffprobe binary. Decode a tiny mono stream and measure it instead.
+  const dur = f => execFileSync(process.env.KARAOKE_FFMPEG || 'ffmpeg',
+    ['-v','error','-i',f,'-f','s16le','-ac','1','-ar','8000','-']).length / 16000;
   const di = dur(path.join(tmp,'i.mp3')), dv = dur(path.join(tmp,'v.mp3'));
   ok('the voice is now as long as the new backing track', Math.abs(di - dv) < 0.35,
      `backing ${di.toFixed(2)} s, voice ${dv.toFixed(2)} s`);
@@ -113,8 +115,8 @@ const bad = await (await fetch(API+'/api/project/'+encodeURIComponent(PID)+'/tra
   method:'POST', headers:{'Content-Type':'application/json'},
   body: JSON.stringify({path: '/no/such.wav', track: 'instrumental'})
 })).json();
-let bj = null;
-for (let i = 0; i < 30; i++){
+let bj = bad.error ? {done:true, ok:false, error:bad.error} : null;
+for (let i = 0; bad.job && i < 30; i++){
   await new Promise(r=>setTimeout(r,500));
   bj = await (await fetch(API+'/api/job?id='+bad.job)).json();
   if (bj.done) break;

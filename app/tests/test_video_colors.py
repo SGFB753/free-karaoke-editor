@@ -542,6 +542,10 @@ def main():
              {"w": "drags on", "t": 5.0, "d": 3.0, "s": 2}]},
         {"text": "tiny", "start": 7.0, "end": 10.0, "voice": 1,
          "words": [{"w": "tiny", "t": 7.0, "d": 3.0, "s": 1}]}]}}
+    check("a one-frame timestamp overlap is an ordinary line change",
+          not video.is_runover_pair({"end": 57.28}, {"start": 57.24}))
+    check("a real overlap still gets the two-line layout",
+          video.is_runover_pair({"end": 8.0}, {"start": 7.0}))
     wav6 = tone(os.path.join(tmp, "f.wav"), 220.0, 16.0)
     class AO:
         width, height, fps, crf = 640, 360, 5, 30
@@ -908,7 +912,7 @@ def main():
           t_rows and p_rows and max(t_rows) < min(p_rows) - H4 * 0.008,
           f"name ends {max(t_rows) if t_rows else '—'}, pill starts {min(p_rows) if p_rows else '—'}")
 
-    print("\nThe clip opens with the name and a count of three")
+    print("\nThe clip opens immediately with a count of three")
     # A karaoke that starts on the first frame catches everybody mid-breath.
     class AI:
         width, height, fps, crf = 480, 270, 4, 30
@@ -918,17 +922,13 @@ def main():
         output = os.path.join(tmp, "opening.mp4")
     class NoIntro(AI):
         intro = False
-    check("the opening is the card and the count", video.intro_lead(AI(), "Name") == 6.0,
+    check("the opening is one count of three", video.intro_lead(AI(), "Name") == 3.0,
           video.intro_lead(AI(), "Name"))
     check("a nameless song is only counted in", video.intro_lead(AI(), "") == 3.0,
           video.intro_lead(AI(), ""))
     check("and it can be turned off altogether",
           video.intro_lead(NoIntro(), "Name") == 0.0, video.intro_lead(NoIntro(), "Name"))
 
-    # No artist here on purpose: on the card the artist's name rides just
-    # under the song's, in the very row where the first waiting line stands
-    # during the count — and the two phases could then not be told apart by
-    # their bands. That the artist is drawn is plain in any rendered card.
     opening = {"colors": ["#00ff00", "#ff00ff"],
                "theme": {"bg": "#000000", "text": "#ffffff"},
                "data": {"title": "Named Song", "duration": 12.0, "lines": [
@@ -936,10 +936,10 @@ def main():
     wav4 = tone(os.path.join(tmp, "d.wav"), 220.0, 12.0)
     video.render(opening, wav4, AI.output, AI())
     check("the clip grew by the opening, and by exactly that much",
-          abs(AU.duration(AI.output) - 18.0) < 0.35, AU.duration(AI.output))
+          abs(AU.duration(AI.output) - 15.0) < 0.35, AU.duration(AI.output))
 
-    # Two bands: the seat where the name and then the count stand, and the
-    # queue below it where the words wait.
+    # Two bands: the seat where the count stands, and the queue below it where
+    # the first words wait.
     SEAT_B, WORDS_B = (0.38, 0.50), (0.55, 0.78)
 
     def mid_ink(at, band=(0.30, 0.75), lit=False):
@@ -958,22 +958,15 @@ def main():
             return sum(1 for r, g, b in px if g > 120 and r < 90 and b < 90)
         return sum(1 for c in px if sum(c) > 110)
 
-    check("the name stands large on the opening card",
-          mid_ink(1.0, SEAT_B) > 200, mid_ink(1.0, SEAT_B))
-    check("and the card holds nothing but the name",
-          mid_ink(1.0, WORDS_B) == 0, mid_ink(1.0, WORDS_B))
-    check("then the count takes its place", mid_ink(4.5, SEAT_B) > 10,
-          mid_ink(4.5, SEAT_B))
-    check("small enough to be a figure, not a poster",
-          mid_ink(4.5, SEAT_B) * 3 < mid_ink(1.0, SEAT_B),
-          f"{mid_ink(4.5, SEAT_B)} against the name's {mid_ink(1.0, SEAT_B)}")
+    check("the count starts on the first second",
+          mid_ink(1.0, SEAT_B) > 10, mid_ink(1.0, SEAT_B))
     check("and the words are already there to be read while it counts",
-          mid_ink(4.5, WORDS_B) > 40, mid_ink(4.5, WORDS_B))
+          mid_ink(1.0, WORDS_B) > 40, mid_ink(1.0, WORDS_B))
     # The song itself is pushed back by the opening: what used to happen at 8 s
-    # now happens at 14 s, and the sound waits with it.
+    # now happens at 11 s, and the sound waits with it.
     check("the singing arrives after the opening, not during it",
-          mid_ink(14.0, lit=True) > 20 and mid_ink(8.0, lit=True) == 0,
-          f"{mid_ink(14.0, lit=True)} lit at 14 s, {mid_ink(8.0, lit=True)} at 8 s")
+          mid_ink(11.0, lit=True) > 20 and mid_ink(5.0, lit=True) == 0,
+          f"{mid_ink(11.0, lit=True)} lit at 11 s, {mid_ink(5.0, lit=True)} at 5 s")
 
     heard = os.path.join(tmp, "opening.wav")
     subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-i", AI.output,
@@ -987,8 +980,8 @@ def main():
         seg = pcm[int(t0 * sr_o):int(t1 * sr_o)]
         return math.sqrt(sum(x * x for x in seg) / max(len(seg), 1))
 
-    check("the music holds back while the count runs", loud(0.5, 5.5) < 20, loud(0.5, 5.5))
-    check("and comes in when the count is done", loud(7.0, 11.0) > 200, loud(7.0, 11.0))
+    check("the music holds back while the count runs", loud(0.2, 2.8) < 20, loud(0.2, 2.8))
+    check("and comes in when the count is done", loud(4.0, 8.0) > 200, loud(4.0, 8.0))
 
     print("\nThe backing does not keep the ending to itself")
     # The last sound is not always the last line in the list: a na-na-na is

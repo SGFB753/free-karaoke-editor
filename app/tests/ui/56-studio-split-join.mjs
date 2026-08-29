@@ -324,7 +324,10 @@ const bar = await p.evaluate(() => {
 });
 ok('the play button holds the left edge', bar.left < bar.width * 0.1,
    JSON.stringify(bar));
-ok('and the voice knob the right one', bar.right < bar.width * 0.1,
+const hasStems = !!(before.tracks && before.tracks.instrumental && before.tracks.vocals);
+ok(hasStems ? 'and the voice knob holds the right one'
+            : 'the meaningless voice knob stays hidden without stems',
+   hasStems ? bar.right < bar.width * 0.1 : bar.right === bar.width,
    JSON.stringify(bar));
 
 console.log('\n--- both duet lines light up on the stage ---');

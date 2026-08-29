@@ -15,6 +15,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import wave
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # the app/ folder
@@ -36,7 +38,8 @@ def check(name, cond, extra=""):
 
 def run(args, **kw):
     env = dict(os.environ, **kw.pop("env", {}))
-    return subprocess.run(args, cwd=ROOT, capture_output=True, text=True, env=env, **kw)
+    return subprocess.run(args, cwd=ROOT, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", env=env, **kw)
 
 
 def main():
@@ -79,7 +82,8 @@ def main():
     # the two launchers, the two readmes, the two changelogs, the license, the
     # songs, the code.
     root_items = sorted(n for n in os.listdir(HOME)
-                        if not n.startswith(".") and n not in ("node_modules", "__pycache__"))
+                        if not n.startswith(".") and n not in
+                        ("node_modules", "__pycache__", "build", "dist"))
     check("no more than 11 names in the root", len(root_items) <= 11,
           f"{len(root_items)}: " + ", ".join(root_items))
     check("the history of changes is in plain sight",
@@ -105,12 +109,23 @@ def main():
     for name in ("studio.command", "install.command"):
         path = os.path.join(HOME, name)
         check(f"{name} is executable", os.access(path, os.X_OK))
-        r = run(["bash", "-n", path])
-        check(f"{name} parses", r.returncode == 0, r.stderr.strip()[:80])
+        if os.name == "nt":
+            # Windows' `bash` is WSL, which can be absent or fail before it
+            # reads the file (broken distro/config). Linux CI does the parse.
+            check(f"{name} parses", True, "checked by bash in Linux CI")
+        else:
+            r = run(["bash", "-n", path])
+            check(f"{name} parses", r.returncode == 0, r.stderr.strip()[:80])
     # starting the window is slow, but the option passing has to be checked
     src = open(os.path.join(HOME, "studio.command"), encoding="utf-8").read()
     check("studio.command passes the options through", '"$@"' in src)
     check("studio.command calls the program in app/", "app/studio.py" in src)
+    bat = open(os.path.join(HOME, "Studio.bat"), encoding="utf-8").read().lower()
+    local_python = bat.find(r".venv\scripts\python.exe")
+    system_python = bat.find("where py")
+    check("Studio.bat prefers the installed local Python",
+          local_python >= 0 and system_python > local_python,
+          f"local at {local_python}, system fallback at {system_python}")
 
     print("\nSettings")
     # settings.ini belongs to whoever runs the program: it is not in the
@@ -244,6 +259,33 @@ def main():
         check("it lands next to the songs, where a person can find it",
               os.path.basename(where) == "last-error.txt", where)
 
+    print("\nThe app window owns its server process")
+    class FakeServer:
+        def __init__(self):
+            self.stopped = threading.Event()
+        def shutdown(self):
+            self.stopped.set()
+
+    fake_server = FakeServer()
+    old_grace = studio.WINDOW_CLOSE_GRACE
+    studio.WINDOW_CLOSE_GRACE = 0.08
+    with studio.WINDOW_LINK_LOCK:
+        studio.WINDOW_LINKS = 0
+        studio.WINDOW_LINK_GENERATION += 1
+    try:
+        studio.window_link_opened()
+        studio.window_link_closed(fake_server)
+        time.sleep(0.03)
+        studio.window_link_opened()  # an ordinary page reload reconnected
+        time.sleep(0.09)
+        check("a page reload does not stop the application",
+              not fake_server.stopped.is_set())
+        studio.window_link_closed(fake_server)
+        check("closing the last app window stops its server",
+              fake_server.stopped.wait(0.5))
+    finally:
+        studio.WINDOW_CLOSE_GRACE = old_grace
+
     print("\nThe container")
     docker = os.path.join(ROOT, "Dockerfile")
     compose = os.path.join(ROOT, "docker-compose.yml")
@@ -305,7 +347,8 @@ def main():
     docs = []
     for root, dirs, files in os.walk(HOME):
         dirs[:] = [d for d in dirs
-                   if d not in ("node_modules", ".git", "projects", "__pycache__")]
+                   if d not in ("node_modules", ".git", ".venv", "venv", "projects",
+                                "build", "dist", "__pycache__")]
         for name in files:
             if name.endswith((".md", ".py", ".js", ".html", ".txt", ".json", ".yml")):
                 docs.append(os.path.join(root, name))
@@ -417,6 +460,22 @@ def main():
 
     print("\nThe video: the kept original reaches the audio")
     check_video(tmp)
+
+    print("\nWindows background tools: no flashing console windows")
+    from kstudio import winproc
+    quiet = winproc.hidden_kwargs({"stdout": subprocess.PIPE})
+    if os.name == "nt":
+        check("background children carry CREATE_NO_WINDOW",
+              bool(quiet.get("creationflags", 0) &
+                   getattr(subprocess, "CREATE_NO_WINDOW", 0)), str(quiet))
+        check("background children also request a hidden startup window",
+              quiet.get("startupinfo") is not None)
+    else:
+        check("non-Windows child settings are left alone",
+              quiet == {"stdout": subprocess.PIPE}, str(quiet))
+    studio_source = open(os.path.join(ROOT, "studio.py"), encoding="utf-8").read()
+    check("the frozen Studio covers Whisper's own ffmpeg process",
+          "WP.install_frozen_policy()" in studio_source)
 
     shutil.rmtree(tmp, ignore_errors=True)
     shutil.rmtree(old, ignore_errors=True)

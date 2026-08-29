@@ -163,20 +163,27 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
                                               separator,
                                               device=device, log=log)
 
-        align_src = vocals or work
-        # On the separated vocal silence is real silence — the repairs may
-        # trust it and move lines that lie where nobody sings.
+        # Separation is for the karaoke tracks, not for timing.  A separator
+        # can put a quiet, distorted or heavily processed voice into the
+        # instrumental stem.  Feeding that incomplete vocal to Whisper made
+        # enabling the instrumental move otherwise-correct lyrics.  The
+        # original recording is the one source that always contains every
+        # word, so the timing must not depend on the separation switch.
+        align_src = work
         # Stretches with no words: from the window, and from the lyrics file
         # itself where a heading carries a time range — “[Solo 3:10-3:50]”.
         holes = A.spans(skip, dur) + A.spans(getattr(lyr, "skips", []), dur)
         lyr, engine = A.align(lyr, align_src, dur, align_engine,
                               whisper_model, language, device, log,
-                              isolated=bool(vocals), skip=holes)
+                              isolated=False, skip=holes)
         log(tr(f"Timing ready ({B.ENGINE_LABEL.get(engine, engine)}).",
            f"Разметка готова ({B.ENGINE_LABEL.get(engine, engine)})."))
 
         log(tr("Working out the vocal waveform…", "Считаю волну вокала…"))
-        envelope = build_envelope(align_src, log)
+        # The separated voice is still the best source for the waveform and
+        # phrase display.  A bad stem may make those hints imperfect, but it
+        # can no longer corrupt the actual timing.
+        envelope = build_envelope(vocals or work, log)
 
         log(tr("Saving the tracks…", "Сохраняю дорожки…"))
         tracks = {}

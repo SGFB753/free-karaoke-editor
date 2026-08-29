@@ -1,0 +1,2 @@
+# Build-time only.  Runtime dependencies are collected into the release.
+pyinstaller>=6.11,<7

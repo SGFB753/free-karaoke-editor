@@ -195,7 +195,7 @@ const path2 = await import('path');
 const fs2 = await import('fs');
 const ctmp = fs2.mkdtempSync(path2.join(os2.tmpdir(), 'cover61_'));
 const clip = path2.join(ctmp, 'clip.mp4');
-execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi',
+execFileSync(process.env.KARAOKE_FFMPEG || 'ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi',
   '-i', 'color=c=red:s=64x36:d=3', '-pix_fmt', 'yuv420p', clip]);
 const cSet = await post(`/api/project/${encodeURIComponent(pid)}/cover`, {path: clip});
 ok('frames are cut out of the clip — a slideshow', cSet.ok === true
@@ -282,7 +282,7 @@ console.log('\n--- a clip can stand behind the lyrics ---');
   const clip = pathx.join(os.tmpdir(), 'karaoke-back-' + process.pid + '.mp4');
   let made = true;
   try{
-    execFileSync('ffmpeg', ['-y', '-v', 'error', '-f', 'lavfi', '-i',
+    execFileSync(process.env.KARAOKE_FFMPEG || 'ffmpeg', ['-y', '-v', 'error', '-f', 'lavfi', '-i',
       'color=c=0x203040:s=320x180:d=3', '-r', '8', clip]);
   }catch(e){ made = false; }
   ok('a clip to stand behind is made', made);

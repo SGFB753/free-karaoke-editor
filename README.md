@@ -20,7 +20,19 @@ account, no subscription.
 | **Output** | one standalone HTML, an `.lrc`, or an MP4 for YouTube |
 | **Languages** | interface in English and Russian, lyrics in 14 |
 
-## Start in three steps
+## Windows EXE (no Python or package installation)
+
+Open the newest GitHub Release, download `KaraokeStudio-windows-x64.zip`,
+unpack it and run `KaraokeStudio.exe`. The full release contains Python,
+ffmpeg, all Python libraries and the default Whisper/Demucs model weights.
+Windows may show SmartScreen because community builds are not code-signed;
+the accompanying `.sha256` and the updater both verify the downloaded ZIP.
+
+The application checks its own repository for a newer GitHub Release. An
+update is installed only after confirmation, preserves `projects/` and
+`settings.ini`, and rolls back if replacement fails.
+
+## Start from source in three steps
 
 1. Install Python 3.8+ from <https://python.org> (on Windows tick
    **“Add Python to PATH”**).
@@ -46,9 +58,8 @@ python app/karaoke.py song.mp3 lyrics.txt
 Everything else the setup script offers to install: `stable-ts` for word-level
 timing, `demucs` for the instrumental, `pillow` for the MP4 render.
 
-No `.exe` bundle is shipped on purpose: the program should work on macOS the
-same way it works on Windows, and the source has to stay readable — that is the
-point of publishing it.
+These are already included in the Windows release. They are needed here only
+when running directly from source.
 
 ## First run
 
@@ -101,6 +112,11 @@ git clone https://github.com/frdm666/free-karaoke-editor.git
 
 ## Updating
 
+The Windows EXE checks for releases itself. Press the update button that
+appears in the song-list header; it downloads the ZIP, verifies SHA-256,
+restarts and keeps songs/settings. Source checkouts are never rewritten by
+this updater.
+
 Taken with `git clone` once, the program updates with one command afterwards:
 
 ```bash
@@ -133,6 +149,23 @@ Two things people trip over:
 * When an update brings a new dependency — `yt-dlp` for links did — run the
   setup once more: `python3 app/tools/setup_check.py`. It skips whatever is
   already installed.
+
+### Building a Windows release in your fork
+
+Run the **Windows release** workflow and give it a tag matching the application
+version, for example `v4.45.2`. GitHub Actions builds the full offline ZIP,
+creates the checksum and publishes both to Releases. The build embeds
+`${{ github.repository }}`, so a fork automatically updates from its own
+Releases, not from upstream.
+
+For a local build after `Install.bat`:
+
+```powershell
+.\app\packaging\build-windows.bat -Repository owner/repository -WithModels
+```
+
+The result is `dist\KaraokeStudio-windows-x64.zip`. Omit `-WithModels` only
+for a smaller developer build whose model weights may download on first use.
 
 ## What is in the folder
 
@@ -341,17 +374,12 @@ on the audio. That is why an unintelligible vocal is not hopeless — but it is
 where the timing goes wrong most often, so the program leans on three things
 here, and two of them are yours to set.
 
-**Keep the instrumental on.** The timing is worked out from the separated voice,
-never from the mix: guitars and drums are simply not there for the model to
-mishear. Switching the instrumental off makes the timing much worse on a heavy
-song. Measured on a nine-minute deathcore track: segments the aligner gave up on
-fell from 27 to 22 the moment the voice was separated.
-
-**The voice is levelled before the model hears it.** A scream point-blank and a
-strangled rasp in the same song differ by a factor of thirty, and the quiet half
-used to reach the model as nothing at all. Levelling is automatic and touches
-neither pitch nor time — on the same track it took those 22 failed segments down
-to 19 and lifted confidence from 0.125 to 0.138. Nothing to switch on.
+**The instrumental does not change the timing source.** Whisper hears the
+original recording whether track separation is on or off. A separated stem can
+be cleaner, but it can also lose quiet speech, backing vocals and heavily
+processed words; using it for timing made the same lyrics move merely because
+the instrumental switch was enabled. Demucs still supplies the instrumental,
+the voice slider and the vocal waveform.
 
 **Say where there are no words.** A vocalise, a wordless scream, a hummed intro
 — see the section above. This is the one thing no measurement can do for you,
@@ -364,9 +392,9 @@ Beyond that, two switches worth having on a strong machine:
   1.6 GB instead of 3. On a screamed vocal the model is doing the hardest work
   it ever does, and this is the cheapest way to give it a better one.
 * **“Separate finely”** next to the instrumental switch — four passes over the
-  song instead of one (`htdemucs_ft`). The voice comes out cleaner, and since
-  the timing is made from that voice, the timing gets cleaner with it. About
-  four times longer, and 300 MB more to download the first time.
+  song instead of one (`htdemucs_ft`). The instrumental and voice stem come out
+  cleaner, without changing the timing source. About four times longer, and
+  300 MB more to download the first time.
 
 And pick the language of the song by hand instead of leaving it to be worked
 out. A re-time uses the model the song was built with, and says which one that
@@ -607,13 +635,12 @@ length, lines, where two voices sing at once, stretches left to the original,
 colours, audio mode, number of frames — so a wrong file or forgotten marks show
 up before the long part, not after it.
 
-Every clip opens with the song's name held large for three seconds, then a
-count of three, and only then the music: a karaoke that starts on the first
-frame catches everybody mid-breath. The count is small and the first lines
-stand under it, already where they will be when the singing starts. The name
-is the one you gave the song — click it in the editor's corner to change it.
+Every clip opens immediately with a count of three, and then the music: a
+karaoke that starts on the first frame catches everybody mid-breath. The count
+is small and the first lines stand under it, already where they will be when
+the singing starts. The song's name remains visible in the top corner.
 `--no-intro` starts with the song instead, and a sample cut from the middle
-(`--start`) never gets the card.
+(`--start`) never gets the count.
 
 During the intro and long instrumental stretches the video shows a countdown at
 the top — how long until the next line, which line it is, and a bar filling to
@@ -634,7 +661,7 @@ Every letter carries a dark outline, and a picture behind the lyrics gets a
 soft dark band under the rows where the words stand. Until now the words were
 readable only because the backdrop was tame: over a bright cover a grey line
 could melt into a grey wall. The ring does not care what is behind it — the
-name in the corner, the opening card and the labels carry one too.
+name in the corner, the opening count and the labels carry one too.
 
 If a cover was chosen in the editor it stands behind the lyrics — blurred,
 darkened to the depth you set, and, when the cover is the clip itself, turned

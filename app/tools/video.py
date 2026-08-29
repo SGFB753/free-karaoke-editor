@@ -30,6 +30,7 @@ sys.path.insert(0, ROOT)
 from kstudio.i18n import tr, lang as program_lang   # noqa: E402
 from kstudio import audio as AU      # noqa: E402
 from kstudio import build as B       # noqa: E402
+from kstudio import winproc as WP     # noqa: E402
 
 # ---------------------------------------------------------------- look
 # The defaults match the page. When the page carries its own colours and look,
@@ -73,7 +74,7 @@ def edged(font):
     """Outline settings for a piece of writing, scaled to its own size.
 
     Everything the frame says stands over a picture somebody else chose. The
-    lyrics carry a ring; so must the name in the corner, the opening card,
+    lyrics carry a ring; so must the name in the corner, the opening count,
     the count and the labels — one of them left bare is the one that
     disappears over a bright frame."""
     return {"stroke_width": max(1, int(round(getattr(font, "size", 20) * 0.055))),
@@ -85,11 +86,14 @@ PIP_MIN_GAP = 2.5
 # How long the last line stays after the song has been sung. Long enough to
 # let go of the note, short enough not to look like a frozen picture.
 END_HOLD = 5.0
-# The opening: the song's name, then a count of three. A karaoke that starts
-# on the first frame catches everybody mid-breath — nobody is at the
-# microphone yet, and the first line is gone before it is read.
-INTRO_CARD = 3.0
+# The opening is one immediate count of three. The title already remains in
+# the corner, so a separate title card only looked like a frozen delay.
 INTRO_COUNT = 3.0
+
+# Imported/hand-made timings commonly touch with a frame or two of rounding
+# overlap. That is a line boundary, not simultaneous singing. Only a visible
+# overlap is laid out as a two-line runover pair.
+RUNOVER_MIN = 0.20
 
 
 def _hex_rgb(value, fallback):
@@ -201,15 +205,17 @@ def next_sung(lines, i: int) -> int:
     return j
 
 
-def intro_lead(args, name: str) -> float:
-    """Seconds that run before the music: the card, and then the count.
-
-    A song with no name has no card to show — it is counted in, and that is
-    all of it.
-    """
+def intro_lead(args, _name: str) -> float:
+    """Seconds that run before the music: one immediate count of three."""
     if not getattr(args, "intro", True):
         return 0.0
-    return (INTRO_CARD if name else 0.0) + INTRO_COUNT
+    return INTRO_COUNT
+
+
+def is_runover_pair(older: dict, newer: dict) -> bool:
+    """True when adjacent lead lines visibly sing over one another."""
+    return float(older.get("end") or 0.0) - float(newer.get("start") or 0.0) \
+        >= RUNOVER_MIN
 
 
 def frame_lang(payload: dict) -> str:
@@ -391,7 +397,7 @@ def extract_audio(payload: dict, html_path: str, tmp: str, mode: str) -> str:
                      f"на {len(spans)} кусках ({total:.1f} с"
                      + (f", из них {quiet_n} потише — петь вместе" if quiet_n else "")
                      + ")"))
-            p = subprocess.run(
+            p = WP.run(
                 [AU.ffmpeg(), "-y", "-v", "error", "-i", instr, "-i", voc,
                  "-filter_complex",
                  f"[1:a]{chain}volume=0:enable='not({cond})'[v];"
@@ -416,7 +422,7 @@ def extract_audio(payload: dict, html_path: str, tmp: str, mode: str) -> str:
         level = "1.0" if mode == "original" else "0.35"
         print(tr(f"Clip audio: instrumental + vocal ({float(level)*100:.0f}%)",
                  f"Звук ролика: минусовка + вокал ({float(level)*100:.0f}%)"))
-        p = subprocess.run(
+        p = WP.run(
             [AU.ffmpeg(), "-y", "-v", "error", "-i", instr, "-i", voc,
              "-filter_complex", f"[1:a]volume={level}[v];[0:a][v]amix=inputs=2:normalize=0[a]",
              "-map", "[a]", "-c:a", "pcm_s16le", out],
@@ -615,8 +621,8 @@ def backdrop_fields(path, W, H, every=BACKDROP_EVERY, log=None):
     size = sw * sh * 3
     fields = []
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
+        proc = WP.Popen(cmd, stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE)
         while True:
             raw = proc.stdout.read(size)
             if not raw or len(raw) < size:
@@ -847,9 +853,8 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
     # The opening runs before the music, and only when the render begins at the
     # song's own beginning: a piece cut from the middle is a preview, and a
-    # title card in front of it would only be in the way.
+    # opening countdown in front of it would only be in the way.
     card_name = str(D.get("title") or "").strip()
-    card_artist = str(D.get("artist") or "").strip()
     lead = intro_lead(args, card_name) if t_start <= 0 else 0.0
     lead_frames = int(lead * args.fps)
 
@@ -901,12 +906,8 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             d.rectangle([margin, bar_y, margin + (W - 2 * margin) * prog,
                          bar_y + bar_h], fill=COL_BAR)
 
-    # The opening: the name held large, then three, two, one. The music is
-    # delayed by exactly as long, so nobody is caught mid-breath.
-    card_font = (fitted(card_name, int(H * 0.095), W - 2 * margin)
-                 if card_name and lead else None)
-    art_font = (fitted(card_artist, int(H * 0.042), W - 2 * margin)
-                if card_artist and lead else None)
+    # The opening: three, two, one. The music is delayed by exactly as long,
+    # so nobody is caught mid-breath.
     num_font = ImageFont.truetype(font_path, int(H * 0.060)) if lead else None
 
     XFADE = 1.2
@@ -980,25 +981,14 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         # would then jump away from when the music starts.
         frame = clip_bg(0.0) if fields else bg.copy()
         d = ImageDraw.Draw(frame)
-        if card_font and tt < INTRO_CARD:
-            d.text((W // 2, int(H * 0.44)), card_name, font=card_font,
-                   fill=_mix(COL_HOT, (255, 255, 255), 0.30), anchor="mm",
-                   **edged(card_font))
-            if art_font:
-                d.text((W // 2, int(H * 0.58)), card_artist, font=art_font,
-                       fill=COL_DIM, anchor="mm", **edged(art_font))
-        else:
-            # The count stands small in the seat where the singing will be,
-            # and the first words are already below it: a figure filling the
-            # frame hid the very text people are about to sing, and there is
-            # no reading it in three seconds if it only appears when the music
-            # does.
-            left = max(lead - tt, 0.0)
-            d.text((W // 2, y_main), str(int(math.ceil(left)) or 1),
-                   font=num_font, fill=COL_HOT, anchor="mm", **edged(num_font))
-            first = next_sung(lines, -1)
-            if first < len(lines):
-                draw_queue(frame, first)
+        # Start immediately with the useful count-in. The title already
+        # remains visible in the corner throughout the video.
+        left = max(lead - tt, 0.0)
+        d.text((W // 2, y_main), str(int(math.ceil(left)) or 1),
+               font=num_font, fill=COL_HOT, anchor="mm", **edged(num_font))
+        first = next_sung(lines, -1)
+        if first < len(lines):
+            draw_queue(frame, first)
         furniture(d, 0.0)
         return frame
 
@@ -1024,7 +1014,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             lead -= 1
         if lead > 0 and not lines[lead].get("backing") \
                 and t < max(lines[lead]["end"], lines[lead - 1]["end"]) \
-                and lines[lead - 1]["end"] > lines[lead]["start"] \
+                and is_runover_pair(lines[lead - 1], lines[lead]) \
                 and not lines[lead - 1].get("backing") \
                 and (lines[lead].get("voice") == 2) \
                 == (lines[lead - 1].get("voice") == 2):
@@ -1224,7 +1214,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
     # The encoder is started only now: a single frame needs no encoder at all,
     # and one left waiting on a pipe that never opens writes a broken file.
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = WP.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     t0 = time.time()
     try:
         for n in range(lead_frames):
@@ -1382,7 +1372,7 @@ def main(argv=None) -> int:
     p.add_argument("--start", type=float, default=0.0, help="start from this second")
     p.add_argument("--seconds", type=float, default=0.0, help="render only N seconds (a sample)")
     p.add_argument("--no-intro", dest="intro", action="store_false",
-                   help="start with the song instead of the name and a count of three")
+                   help="start with the song instead of a count of three")
     args = p.parse_args(argv)
 
     try:
@@ -1470,8 +1460,8 @@ def video_report(payload, args, song: float, want: float) -> str:
          else tr("default", "по умолчанию")),
         (tr("Audio", "Звук"), audio_name),
         (tr("Opening", "Заставка"),
-         tr(f"the name, then a count of three — {mmss(lead)}",
-            f"название и счёт до трёх — {mmss(lead)}")
+         tr(f"count of three — {mmss(lead)}",
+            f"счёт до трёх — {mmss(lead)}")
          if lead else tr("none, the song starts at once",
                          "нет, песня начинается сразу")),
         (tr("Frames", "Кадров"), f"{frames} ({fps} " + tr("fps", "к/с") + ")"),

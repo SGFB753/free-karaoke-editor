@@ -12,14 +12,17 @@ const dom = new JSDOM(html, { runScripts:"dangerously", pretendToBeVisual:true,
     w.fetch = (...a) => fetch(typeof a[0]==="string" && a[0].startsWith("/")
         ? API + a[0] : a[0], a[1]);
     w.__now=0;
+    w.__gains=[];
     w.AudioContext = class { constructor(){ this.state="running"; this.destination={}; }
       get currentTime(){ return w.__now; }
-      createGain(){ return {gain:{value:1, setTargetAtTime(v){this.value=v;}}, connect(){}}; }
+      createGain(){ const g={gain:{value:1, setTargetAtTime(v){this.value=v;}}, connect(){}};
+        w.__gains.push(g); return g; }
       createBufferSource(){ return {connect(){},start(){},stop(){},onended:null}; }
-      decodeAudioData(){ return Promise.resolve({duration:26.04}); } resume(){} };
+      decodeAudioData(){ return Promise.resolve({duration:1000}); } resume(){} };
     w.HTMLCanvasElement.prototype.getContext = () => ({
       scale(){}, clearRect(){}, fillRect(){}, beginPath(){}, moveTo(){}, lineTo(){},
-      stroke(){}, set fillStyle(v){}, set strokeStyle(v){}, set lineWidth(v){} });
+      stroke(){}, fillText(){}, set font(v){}, set textAlign(v){}, set textBaseline(v){},
+      set fillStyle(v){}, set strokeStyle(v){}, set lineWidth(v){} });
     w.Element.prototype.getBoundingClientRect = () =>
       ({left:0,top:0,width:900,height:96,right:900,bottom:96,x:0,y:0});
     w.Element.prototype.setPointerCapture = function(){};
@@ -86,7 +89,20 @@ ok('the look was saved', Array.isArray(d.theme) && d.theme[0] === '#101820',
 
 console.log('\n--- a span the original sings ---');
 ok('the button is there and switched off', !$("btnKeep").classList.contains('on'));
+// Put the playhead inside that line with the voice slider at zero.  The click
+// itself must change the mixer; waiting until the next line is the regression
+// seen when Studio was opened from the launcher.
+const selectedLine = (await proj()).lines[1];
+$('mmap').dispatchEvent(new w.MouseEvent('pointerdown', {bubbles:true,
+  clientX: selectedLine.start / 1000 * 900}));
+click('btnPlay'); w.__now = 0.2; await sleep(80);
+const vocalGain = w.__gains[1] && w.__gains[1].gain;
+ok('the vocal is muted before the mark', !vocalGain || vocalGain.value < 0.01,
+   vocalGain ? String(vocalGain.value) : 'project has one track');
 click("btnKeep"); await sleep(150);
+ok('the button applies the original to the sound immediately',
+   !vocalGain || vocalGain.value > 0.95,
+   vocalGain ? String(vocalGain.value) : 'no separate vocal in this fixture');
 ok('the line is marked', doc.querySelectorAll('#scroll .ln')[1].classList.contains('keep'));
 ok('it shows on the timeline too',
    doc.querySelectorAll('#blocks .blk')[1].classList.contains('keep'));
@@ -100,7 +116,11 @@ click("btnKeep"); await sleep(900);
 const soft = (await proj()).lines[1];
 ok('a second press holds the original back to a guide',
    soft.keep === true && soft.keepSoft === true, JSON.stringify(soft.keep) + '/' + JSON.stringify(soft.keepSoft));
+ok('the quiet-original state reaches the mixer immediately',
+   !vocalGain || (vocalGain.value > 0.3 && vocalGain.value < 0.4),
+   vocalGain ? String(vocalGain.value) : 'no separate vocal in this fixture');
 click("btnKeep"); await sleep(900);
+click('btnPlay');
 ok('and a third takes it off', !(await proj()).lines[1].keep);
 ok('the mark left the text',
    !/поёт оригинал/.test(doc.querySelectorAll('#scroll .ln')[1].textContent));

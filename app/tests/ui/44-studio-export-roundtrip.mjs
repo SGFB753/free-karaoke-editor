@@ -45,11 +45,19 @@ await sleep(1400);
 console.log('--- setting the song up in the window ---');
 doc.querySelectorAll('#scroll .ln')[1].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(120);
-$("btnVoice").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));   // the second voice
+if (before.lines[1].voice !== 2)
+  $("btnVoice").dispatchEvent(new w.MouseEvent('click',{bubbles:true})); // the second voice
 await sleep(100);
 doc.querySelectorAll('#scroll .ln')[2].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(120);
-$("btnKeep").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));    // the original sings
+// Walk the three-state button only as far as full original. The suite shares
+// one project, so an earlier check may have left this line in another state.
+if (!before.lines[2].keep)
+  $("btnKeep").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+else if (before.lines[2].keepSoft){
+  $("btnKeep").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+  $("btnKeep").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+}
 await sleep(100);
 $("col2").value = "#ee2288"; $("col2").dispatchEvent(new w.Event('input',{bubbles:true}));
 $("colBg").value = "#101018"; $("colBg").dispatchEvent(new w.Event('input',{bubbles:true}));
@@ -123,15 +131,16 @@ ok('the background is applied', root2.getPropertyValue('--bg').trim() === '#1010
 ok('the page has no JS errors', dom2.window.__errs.length === 0,
    dom2.window.__errs.slice(0,2).join(' | '));
 
-// put the stand back the way it was
-doc.querySelectorAll('#scroll .ln')[1].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
-await sleep(80); $("btnVoice").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
-doc.querySelectorAll('#scroll .ln')[2].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
-await sleep(80); $("btnKeep").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
-$("col2").value = "#ff8ad1"; $("col2").dispatchEvent(new w.Event('input',{bubbles:true}));
-$("colBg").value = "#0a0b14"; $("colBg").dispatchEvent(new w.Event('input',{bubbles:true}));
-$("colTx").value = "#e8ebf5"; $("colTx").dispatchEvent(new w.Event('input',{bubbles:true}));
-await sleep(900);
+// Put the shared fixture back exactly as it was, rather than guessing that it
+// still held the factory colours and voice flags.
+await fetch(API+'/api/project/'+encodeURIComponent(PID)+'/timings', {
+  method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+    lines: before.lines, colors: before.colors, theme: before.theme,
+    noText: before.noText, keepMarks: before.keepMarks,
+    checkOff: before.checkOff, title: before.title, artist: before.artist,
+    coverDark: before.coverDark
+  })
+});
 try { fs.unlinkSync(out.path); } catch(e){}
 
 ok('the window has no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));

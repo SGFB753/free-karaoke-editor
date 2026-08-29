@@ -32,6 +32,37 @@ await p.evaluate(i => document.querySelectorAll('#scroll .ln')[i].click(), LINE)
 await new Promise(r => setTimeout(r, 500));
 ok('found a line with words of decent width', true, 'line ' + (LINE+1));
 
+console.log('\n--- even a tiny word has reachable edges ---');
+const tiny = await p.evaluate(() => {
+  const e = document.querySelectorAll('.wrd')[0];
+  e.classList.add('tiny');
+  e.style.width = '12px';
+  const r = e.getBoundingClientRect(), y = r.top + r.height / 2;
+  const left = document.elementFromPoint(r.left + 2, y);
+  const right = document.elementFromPoint(r.right - 2, y);
+  return {
+    left: left ? left.className : 'nothing',
+    right: right ? right.className : 'nothing',
+    rightSpot: {x:r.right - 2, y},
+  };
+});
+ok('the left half of a tiny word changes its start',
+   /wgrip/.test(tiny.left) && /left/.test(tiny.left), tiny.left);
+ok('the right half of a tiny word changes its end',
+   /wgrip/.test(tiny.right) && /right/.test(tiny.right), tiny.right);
+const tinyBefore = await line(LINE);
+await p.mouse.move(tiny.rightSpot.x, tiny.rightSpot.y);
+await p.mouse.down();
+await p.mouse.move(tiny.rightSpot.x + 45, tiny.rightSpot.y, {steps:8});
+await p.mouse.up();
+await new Promise(r => setTimeout(r, 900));
+const tinyAfter = await line(LINE);
+ok('the tiny word can be made longer',
+   tinyAfter.words[0].d > tinyBefore.words[0].d + 0.03,
+   `${tinyBefore.words[0].d.toFixed(3)} → ${tinyAfter.words[0].d.toFixed(3)} s`);
+await p.evaluate(() => document.getElementById('btnUndo').click());
+await new Promise(r => setTimeout(r, 900));
+
 // Is the edge of the block free to grab: a neighbour may be covering it.
 async function freeEdge(side){
   return await p.evaluate((i, side) => {

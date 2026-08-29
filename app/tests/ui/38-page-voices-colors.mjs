@@ -7,13 +7,14 @@ import os from 'os';
 
 let fail=0; const ok=(n,c,e='')=>{console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c)fail++;};
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const PY = process.env.KARAOKE_PYTHON || 'python3';
 
 // A song of our own: a main line, a backing line, a main line again.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'voice_'));
 const txt = path.join(tmp, 'lyrics.txt');
 fs.writeFileSync(txt, 'title: Проба\n\nОсновная строка тут\n(подпевка звучит)\nСнова основная\n', 'utf8');
 const page = path.join(tmp, 'p.html');
-execFileSync('python3', ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', page,
+execFileSync(PY, ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', page,
   '--align','energy','--no-separate','--ui-lang','ru','--colors','#4de1ff,#ff5577']);
 
 const dom = new JSDOM(fs.readFileSync(page,'utf8'), {
@@ -53,7 +54,7 @@ ok('the styles carry a rule for the second voice',
 console.log('\n--- the look ---');
 {
   const eng = path.join(tmp,'t.html');
-  execFileSync('python3', ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', eng,
+  execFileSync(PY, ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', eng,
     '--align','energy','--no-separate','--ui-lang','ru','--theme','#fdf6e3,#3b3a34']);
   const d = new JSDOM(fs.readFileSync(eng,'utf8'), {
     runScripts:'dangerously', pretendToBeVisual:true, url:'https://local.test/t',
@@ -81,7 +82,7 @@ console.log('\n--- the look ---');
 console.log('\n--- the letters do not blend into the background ---');
 {
   const bad = path.join(tmp,'bad.html');
-  execFileSync('python3', ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', bad,
+  execFileSync(PY, ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', bad,
     '--align','energy','--no-separate','--theme','#fdf6e3,#f5efdc']);
   const raw2 = fs.readFileSync(bad,'utf8');
   const m2 = '<script id="payload" type="application/json">';

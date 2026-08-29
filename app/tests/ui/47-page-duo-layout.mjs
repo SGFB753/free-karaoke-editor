@@ -9,13 +9,14 @@ import { execFileSync } from 'child_process';
 let fail = 0;
 const ok = (n, c, e='') => { console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c) fail++; };
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const PY = process.env.KARAOKE_PYTHON || 'python3';
 
 // A song of our own: two lines, one in brackets (the second voice), overlapping.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'duo_'));
 const txt = path.join(tmp, 'lyrics.txt');
 fs.writeFileSync(txt, 'title: Дуэт\n\nПервый голос ведёт мелодию\n(а второй ему вторит)\nПотом снова один\n', 'utf8');
 const page = path.join(tmp, 'p.html');
-execFileSync('python3', ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', page,
+execFileSync(PY, ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', page,
   '--align','energy','--no-separate','--ui-lang','ru','--colors','#4de1ff,#ff5577']);
 
 // Shift the second line under the first — as in a real duet.

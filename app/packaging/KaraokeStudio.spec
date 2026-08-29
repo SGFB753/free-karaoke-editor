@@ -1,0 +1,77 @@
+# -*- mode: python ; coding: utf-8 -*-
+import os
+from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
+
+ROOT = os.path.abspath(os.path.join(SPECPATH, "..", ".."))
+APP = os.path.join(ROOT, "app")
+
+datas = [
+    (os.path.join(APP, "kstudio", "studio.html"), "kstudio"),
+    (os.path.join(APP, "kstudio", "player.html"), "kstudio"),
+    (os.path.join(APP, "kstudio", "ui.js"), "kstudio"),
+    (os.path.join(APP, "kstudio", "messages"), os.path.join("kstudio", "messages")),
+    (os.path.join(APP, "tools", "video.py"), "tools"),
+    (os.path.join(ROOT, "build", "build-info.json"), "."),
+]
+binaries = []
+hiddenimports = []
+
+# These libraries discover plugins, model descriptions or data files at
+# runtime.  PyInstaller cannot see those dynamic imports by reading studio.py.
+for package in ("demucs", "stable_whisper", "whisper", "yt_dlp", "imageio_ffmpeg"):
+    d, b, h = collect_all(package)
+    datas += d
+    binaries += b
+    hiddenimports += h
+
+for distribution in ("demucs", "stable-ts", "openai-whisper", "yt-dlp",
+                     "soundfile", "imageio-ffmpeg"):
+    try:
+        datas += copy_metadata(distribution, recursive=True)
+    except Exception:
+        pass
+
+hiddenimports += collect_submodules("demucs")
+hiddenimports += collect_submodules("yt_dlp")
+
+whisper_cache = os.path.join(os.path.expanduser("~"), ".cache", "whisper")
+small_model = os.path.join(whisper_cache, "small.pt")
+if os.path.isfile(small_model):
+    datas.append((small_model, os.path.join("models", "whisper")))
+
+torch_cache = os.path.join(os.path.expanduser("~"), ".cache", "torch")
+if os.path.isdir(torch_cache):
+    datas.append((torch_cache, os.path.join("models", "torch")))
+
+# Current Demucs releases fetch their weights through huggingface_hub rather
+# than torch.hub. Carry both the normal and the thorough (fine-tuned) model,
+# but not the rest of a developer's unrelated Hugging Face cache.
+hf_hub = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
+if os.path.isdir(hf_hub):
+    for name in os.listdir(hf_hub):
+        if name.startswith("models--adefossez--HTDemucs"):
+            datas.append((os.path.join(hf_hub, name),
+                          os.path.join("models", "huggingface", "hub", name)))
+
+a = Analysis(
+    [os.path.join(APP, "studio.py")],
+    pathex=[APP],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=["tkinter", "matplotlib.tests", "numpy.tests"],
+    noarchive=False,
+)
+pyz = PYZ(a.pure)
+exe = EXE(
+    pyz, a.scripts, [], exclude_binaries=True,
+    name="KaraokeStudio", debug=False, bootloader_ignore_signals=False,
+    strip=False, upx=False, console=False, disable_windowed_traceback=False,
+)
+coll = COLLECT(
+    exe, a.binaries, a.datas, strip=False, upx=False,
+    upx_exclude=[], name="KaraokeStudio",
+)

@@ -34,6 +34,16 @@ import time
 import urllib.error
 import urllib.request
 
+# Every child prints Russian diagnostics. A redirected Windows console can
+# otherwise make Python choose a legacy code page and fail before the actual
+# assertion is reached.
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except (AttributeError, OSError):
+    pass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UI_DIR = os.path.join(ROOT, "tests", "ui")
 
@@ -242,7 +252,8 @@ def make_project(api: str, song: str, text: str) -> bool:
 def run_suite(path: str, env: dict) -> tuple:
     try:
         r = subprocess.run(["node", path], cwd=ROOT, env=env,
-                           capture_output=True, text=True, timeout=600)
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", timeout=600)
     except subprocess.TimeoutExpired:
         return False, "did not finish within 10 minutes"
     out = (r.stdout or "") + (r.stderr or "")
@@ -264,11 +275,19 @@ def main() -> int:
     # --from 31: pick up the window suites at 31 and skip what already passed.
     # Re-running the whole thing after a fix in one suite costs ten minutes.
     start_at = ""
+    only = ""
     for i, a in enumerate(args):
         if a == "--from" and i + 1 < len(args):
             start_at = args[i + 1]
         elif a.startswith("--from="):
             start_at = a.split("=", 1)[1]
+        elif a == "--only" and i + 1 < len(args):
+            only = args[i + 1]
+        elif a.startswith("--only="):
+            only = a.split("=", 1)[1]
+
+    if only:
+        start_at = only
 
     if start_at:
         say(f"  --from {start_at}: the Python suites and the earlier window ones are skipped")
@@ -288,7 +307,8 @@ def main() -> int:
         return 1
 
     head("1c. Command line: options, errors, batch mode")
-    r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_cli.py")], cwd=ROOT)
+    r = (SKIPPED if start_at else
+         subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_cli.py")], cwd=ROOT))
     if r.returncode != 0:
         say("\nFAILED on the command-line checks.")
         return 1
@@ -310,8 +330,9 @@ def main() -> int:
             return 1
 
     head("1d. The finished video: voice colours and no overlapping text")
-    r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_video_colors.py")],
-                       cwd=ROOT)
+    r = (SKIPPED if start_at else
+         subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_video_colors.py")],
+                        cwd=ROOT))
     if r.returncode != 0:
         say("\nFAILED on the video checks.")
         return 1
@@ -367,13 +388,37 @@ def main() -> int:
                    KARAOKE_PAGE_STEMS=stems, KARAOKE_PAGE_EN=eng, PAGE=stems,
                    KARAOKE_PAGE_KEEPS=keeps,
                    KARAOKE_SONG=song, KARAOKE_TEXT=text,
-                   KARAOKE_LYRICS_API=lyrics_api)
+                   KARAOKE_LYRICS_API=lyrics_api,
+                   KARAOKE_PYTHON=sys.executable)
+        # Browser scenarios create small WAV/MP4 fixtures themselves. Point
+        # them at the same bundled/self-contained ffmpeg the application uses.
+        sys.path.insert(0, ROOT)
+        from kstudio import audio as _audio
+        ffmpeg_dir = os.path.dirname(_audio.ffmpeg())
+        env["PATH"] = ffmpeg_dir + os.pathsep + env.get("PATH", "")
+        env["KARAOKE_FFMPEG"] = _audio.ffmpeg()
+        # Puppeteer's bundled Chromium is intentionally not a runtime
+        # dependency. On Windows its tests can use the browser already there.
+        if os.name == "nt" and not env.get("PUPPETEER_EXECUTABLE_PATH"):
+            browser_candidates = [
+                os.path.join(os.environ.get("PROGRAMFILES(X86)", ""),
+                             "Microsoft", "Edge", "Application", "msedge.exe"),
+                os.path.join(os.environ.get("PROGRAMFILES", ""),
+                             "Microsoft", "Edge", "Application", "msedge.exe"),
+                os.path.join(os.environ.get("PROGRAMFILES", ""),
+                             "Google", "Chrome", "Application", "chrome.exe"),
+            ]
+            found_browser = next((p for p in browser_candidates if os.path.isfile(p)), None)
+            if found_browser:
+                env["PUPPETEER_EXECUTABLE_PATH"] = found_browser
 
         head("4. The window and the page (jsdom)")
         for name in sorted(os.listdir(UI_DIR)):
             if not name.endswith(".mjs") or NEEDS_BROWSER(name):
                 continue      # it needs a real browser, it goes in the next step
             if start_at and name < start_at:
+                continue
+            if only and not name.startswith(only):
                 continue
             ok, out = run_suite(os.path.join(UI_DIR, name), env)
             say(f"  {'ok   ' if ok else 'FAILED'}  {name}")
@@ -385,12 +430,16 @@ def main() -> int:
         head("5. A real browser")
         if have_module("puppeteer"):
             mouse = [os.path.join(UI_DIR, n) for n in sorted(os.listdir(UI_DIR))
-                     if NEEDS_BROWSER(n)]
-            for path in [os.path.join(ROOT, "tests", "test_browser.mjs")] + mouse:
+                     if NEEDS_BROWSER(n) and (not start_at or n >= start_at)
+                     and (not only or n.startswith(only))]
+            browser_paths = (mouse if start_at else
+                             [os.path.join(ROOT, "tests", "test_browser.mjs")] + mouse)
+            for path in browser_paths:
                 ok, out = run_suite(path, env)
                 say(f"  {'ok   ' if ok else 'FAILED'}  {os.path.basename(path)}")
                 if not ok:
                     failed.append(os.path.basename(path))
+                    say(out.strip())
                     for line in [l for l in out.strip().splitlines() if "✗" in l or "FAILED" in l][:12] or out.strip().splitlines()[-12:]:
                         say("        " + line)
         else:

@@ -1,10 +1,9 @@
-// The file browser must open where we were last time. Otherwise hunting for
-// the same lyrics across the whole disk every time is torture.
+// Ordinary files belong to the operating system's picker.  The Studio's own
+// dialog remains only where it adds something: pasted/found lyrics or a URL.
 const { JSDOM } = await import('jsdom');
 const API = process.env.KARAOKE_API;
 const html = await (await fetch(API + "/")).text();
 const js   = await (await fetch(API + "/ui.js")).text();
-import path from 'path';
 
 const dom = new JSDOM(html, { runScripts:"dangerously", pretendToBeVisual:true,
   url: API + "/",
@@ -29,79 +28,50 @@ w.eval(js);
 await sleep(900);
 
 let fail=0; const ok=(n,c,e='')=>{console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c)fail++;};
-const here = path.dirname(process.env.KARAOKE_SONG);   // where the test files live
-const close = () => $('brCancel').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+let nativeClicks = 0;
+$('nativeFile').addEventListener('click', () => nativeClicks++);
 
-console.log('--- walking the folders, the window remembers it ---');
+console.log('--- ordinary choices go straight to the native picker ---');
 $('btnAdd').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(200);
 doc.querySelector('[data-pick="audio"]').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
-await sleep(800);
-ok('the browser opened', !$('browser').classList.contains('hide'));
-const first = $('brPath').value;
-ok('some folder is shown', !!first, first);
+await sleep(100);
+ok('the audio button clicked the native file input', nativeClicks === 1, String(nativeClicks));
+ok('the home-grown directory window stayed closed', $('browser').classList.contains('hide'));
+ok('the native dialog filters to audio', /\.mp3/.test($('nativeFile').accept), $('nativeFile').accept);
 
-// go one level up — with the real button, the way a person would
-$('brUp').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
-await sleep(800);
-const upper = $('brPath').value;
-ok('we went one level up', upper !== first, `${first} → ${upper}`);
-close();
-
-console.log('\n--- closed and opened again ---');
-doc.querySelector('[data-pick="audio"]').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
-await sleep(800);
-ok('it opened where we left off, not from scratch',
-   $('brPath').value === upper, `${$('brPath').value} against ${upper}`);
-close();
-
-console.log('\n--- the lyrics have their own memory, not shared with audio ---');
-let stored = {};
-try {
-  stored = {audio: w.localStorage.getItem('karaoke.dir.audio'),
-            text: w.localStorage.getItem('karaoke.dir.text')};
-} catch(e){}
-ok('the audio folder is remembered', stored.audio === upper, String(stored.audio));
 doc.querySelector('[data-pick="lyrics"]').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
-await sleep(700);
-ok('the lyrics browser opened', !$('browser').classList.contains('hide'));
-close();
-try { stored.text = w.localStorage.getItem('karaoke.dir.text'); } catch(e){}
-ok('the lyrics folder is remembered separately', !!stored.text, String(stored.text));
+await sleep(100);
+ok('the lyrics button uses the same native picker', nativeClicks === 2, String(nativeClicks));
+ok('and filters to text files', $('nativeFile').accept === '.txt,.lrc', $('nativeFile').accept);
 
-console.log('\n--- in the editor it is not from scratch either ---');
+console.log('\n--- other lyrics keeps only its useful compact window ---');
 doc.querySelectorAll('.card')[0].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(1500);
 $('btnLyrics').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(700);
-ok('the browser opened from the editor', !$('browser').classList.contains('hide'));
-ok('and not in a void but in the remembered folder',
-   $('brPath').value && $('brPath').value !== '/',
-   $('brPath').value);
-close();
+ok('the compact dialog opened', !$('browser').classList.contains('hide') &&
+   $('browser').querySelector('.browser').classList.contains('compact'));
+ok('there is no fake path bar in the compact dialog',
+   w.getComputedStyle($('brPath').parentElement).display === 'none');
+ok('pasting is immediately available', !$('brPaste').classList.contains('hide'));
+$('brNative').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+await sleep(100);
+ok('its Choose button opens the native picker too', nativeClicks === 3, String(nativeClicks));
+ok('it asks for text files', $('nativeFile').accept === '.txt,.lrc', $('nativeFile').accept);
 
-console.log('\n--- the remembered folder is gone ---');
-try { w.localStorage.setItem('karaoke.dir.text', '/no/such/folder/vanished'); } catch(e){}
+console.log('\n--- dialogs close the ordinary desktop way ---');
+$('browser').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+ok('a click on the shade closes Other lyrics', $('browser').classList.contains('hide'));
 $('btnLyrics').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
-await sleep(900);
-ok('the browser still opened instead of crashing',
-   !$('browser').classList.contains('hide') && !!$('brPath').value,
-   $('brPath').value);
-ok('and it shows a folder that exists', /^\//.test($('brPath').value) &&
-   !$('brPath').value.includes('vanished'), $('brPath').value);
-ok('there was no error about “the project”', !w.__errs.some(e => /проект/i.test(e)),
-   w.__errs.slice(0,2).join(' | '));
-close();
-
-console.log('\n--- no memory: we take the folder of the song sources ---');
-try { w.localStorage.removeItem('karaoke.dir.text'); } catch(e){}
-$('btnLyrics').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
-await sleep(700);
-const p2 = $('brPath').value;
-ok('it opened next to the source lyrics of the song',
-   p2 && (p2 === here || here.startsWith(p2) || p2.startsWith(here)),
-   `${p2} with the sources in ${here}`);
-close();
+await sleep(400);
+$('brPasteText').dispatchEvent(new w.KeyboardEvent('keydown',
+  {key:'Escape',bubbles:true,cancelable:true}));
+ok('Escape closes it even from its textarea', $('browser').classList.contains('hide'));
+$('btnExportMp4').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+ok('the MP4 options opened', !$('expDlg').classList.contains('hide'));
+doc.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+ok('Escape closes the MP4 options too', $('expDlg').classList.contains('hide'));
 
 ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
