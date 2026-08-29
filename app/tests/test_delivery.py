@@ -60,6 +60,19 @@ def main():
     check("the checks badge is in both READMEs",
           "actions/workflows/tests.yml/badge.svg" in head and
           "actions/workflows/tests.yml/badge.svg" in ru_head)
+    english_doc = open(os.path.join(HOME, "README.md"), encoding="utf-8").read()
+    russian_doc = open(os.path.join(HOME, "README.ru.md"), encoding="utf-8").read()
+    check("the README says what this fork is for",
+          "About this fork" in english_doc and "Для чего этот форк" in russian_doc)
+    check("the fork documentation names its main practical fixes",
+          all(term in english_doc for term in
+              ("KaraokeStudio.exe", "original recording", "MP4", "user's cache"))
+          and all(term in russian_doc for term in
+                  ("KaraokeStudio.exe", "оригинальную запись", "MP4",
+                   "пользовательского кэша")))
+    check("the public links point at this fork",
+          "github.com/SGFB753/free-karaoke-editor" in english_doc
+          and "github.com/SGFB753/free-karaoke-editor" in russian_doc)
     wf = os.path.join(HOME, ".github", "workflows", "tests.yml")
     check("the workflow file itself is there", os.path.isfile(wf))
     if os.path.isfile(wf):

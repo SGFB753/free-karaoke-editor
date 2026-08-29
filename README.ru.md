@@ -1,6 +1,6 @@
 # Караоке из аудио и текста
 
-[![tests](https://github.com/frdm666/free-karaoke-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/frdm666/free-karaoke-editor/actions/workflows/tests.yml)
+[![tests](https://github.com/SGFB753/free-karaoke-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/SGFB753/free-karaoke-editor/actions/workflows/tests.yml)
 
 *In English: [README.md](README.md)* · *что менялось: [CHANGELOG.ru.md](CHANGELOG.ru.md)*
 
@@ -12,6 +12,32 @@
 Берёт аудиофайл песни и текстовый файл со словами — отдаёт **один HTML-файл**,
 который открывается двойным щелчком в любом браузере на Windows, macOS, Linux,
 Android и iOS. Интернет не нужен: звук, текст и тайминги лежат внутри файла.
+
+## Для чего этот форк
+
+Это пользовательский форк [исходного free-karaoke-editor](https://github.com/frdm666/free-karaoke-editor),
+сосредоточенный на цельном и предсказуемом рабочем процессе в Windows: открыть
+обычное приложение, загрузить песню и текст, поправить разметку и получить HTML
+или MP4 без ручной настройки Python. Исходный запуск на macOS/Linux сохранён.
+
+Основные доработки форка:
+
+- появилась автономная Windows-сборка с `KaraokeStudio.exe`, ffmpeg и всеми
+  библиотеками, проверкой обновлений, SHA-256 и откатом неудачного обновления;
+- Whisper размечает **оригинальную запись**, даже когда включено отделение
+  вокала: минусовка больше не сдвигает текст из-за задержки или артефактов
+  разделения;
+- редактор получил прокрутку и перетаскивание таймлайна, удобные ручки коротких
+  слов, нормальные горячие клавиши, вставку другого текста и системный Проводник;
+- исправлен вывод MP4 из EXE, наложения и смена строк, длинные строки, дуэты,
+  читаемость текста на картинке или клипе и лишняя пауза перед отсчётом `3–2–1`;
+- фоновые инструменты больше не мигают окнами терминала, а закрытие окна Студии
+  завершает и её процесс;
+- веса Whisper/Demucs не раздувают каждый релиз: выбранная модель скачивается
+  один раз при первом использовании и затем берётся из пользовательского кэша.
+
+Подробная история с объяснением каждой правки находится в
+[CHANGELOG.ru.md](CHANGELOG.ru.md).
 
 ```bash
 python app/karaoke.py песня.mp3 текст.txt
@@ -66,7 +92,7 @@ app/                            сама программа
 
 ## Готовый EXE для Windows — без установки Python и пакетов
 
-Откройте последний GitHub Release, скачайте
+Откройте [последний GitHub Release](https://github.com/SGFB753/free-karaoke-editor/releases/latest), скачайте
 `KaraokeStudio-windows-x64.zip`, распакуйте и запустите
 `KaraokeStudio.exe`. Релиз уже содержит Python, ffmpeg и все библиотеки. Веса
 Whisper/Demucs один раз скачиваются при первом использовании и затем берутся
@@ -112,7 +138,7 @@ Windows может показать SmartScreen: общественная сбо
 пришедшие через git, не помечаются — и обновления тоже:
 
 ```bash
-git clone https://github.com/frdm666/free-karaoke-editor.git
+git clone https://github.com/SGFB753/free-karaoke-editor.git
 ```
 
 ## Установка

@@ -1,13 +1,40 @@
 # Karaoke Studio
 
-[![tests](https://github.com/frdm666/free-karaoke-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/frdm666/free-karaoke-editor/actions/workflows/tests.yml)
+[![tests](https://github.com/SGFB753/free-karaoke-editor/actions/workflows/tests.yml/badge.svg)](https://github.com/SGFB753/free-karaoke-editor/actions/workflows/tests.yml)
+
+*По-русски: [README.ru.md](README.ru.md)* · *what changed: [CHANGELOG.md](CHANGELOG.md)*
 
 **A song + its lyrics → one offline HTML page.** The lyrics scroll, every word
 lights up as it is sung, a slider brings the original voice back, and the whole
 thing is a single file you can open by double-clicking — no internet, no
 account, no subscription.
 
-*По-русски: [README.ru.md](README.ru.md)* · *what changed: [CHANGELOG.md](CHANGELOG.md)*
+## About this fork
+
+This is a user-focused fork of the
+[original free-karaoke-editor](https://github.com/frdm666/free-karaoke-editor).
+Its goal is a dependable end-to-end Windows workflow: open a normal desktop
+application, add a song and lyrics, correct the timing, and produce HTML or MP4
+without configuring Python by hand. The source workflow for macOS and Linux is
+still supported.
+
+The main improvements in this fork are:
+
+- a self-contained Windows release with `KaraokeStudio.exe`, ffmpeg and all
+  libraries, verified updates, SHA-256 checks and rollback on update failure;
+- Whisper always times the **original recording**, even when vocal separation
+  is enabled, so Demucs latency and separation artefacts do not shift lyrics;
+- timeline wheel scrolling and dragging, usable handles for tiny word segments,
+  working keyboard shortcuts, direct lyrics pasting and native file dialogs;
+- reliable MP4 export from the packaged EXE, better line transitions, overlaps,
+  long lines, duets and readability over image or video backdrops, with no empty
+  delay before the `3–2–1` count-in;
+- hidden background tool windows and proper process shutdown when the Studio
+  window is closed;
+- smaller releases: Whisper/Demucs weights download once on first use and are
+  then reused from the user's cache.
+
+See [CHANGELOG.md](CHANGELOG.md) for the detailed history and rationale.
 
 ![Karaoke Studio: the editor with the lyrics stage, the summary and the timeline](app/docs/studio.png)
 
@@ -22,7 +49,8 @@ account, no subscription.
 
 ## Windows EXE (no Python or package installation)
 
-Open the newest GitHub Release, download `KaraokeStudio-windows-x64.zip`,
+Open the [newest GitHub Release](https://github.com/SGFB753/free-karaoke-editor/releases/latest),
+download `KaraokeStudio-windows-x64.zip`,
 unpack it and run `KaraokeStudio.exe`. The release contains Python, ffmpeg and
 all Python libraries. Whisper/Demucs model weights download once when first
 used and are then reused from the user's cache.
@@ -108,7 +136,7 @@ Cloning instead of downloading the ZIP avoids all of it — files that arrive
 through git are never marked, updates included:
 
 ```bash
-git clone https://github.com/frdm666/free-karaoke-editor.git
+git clone https://github.com/SGFB753/free-karaoke-editor.git
 ```
 
 ## Updating
