@@ -31,8 +31,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: app/package-lock.json
       - name: Create build environment
         shell: pwsh
         run: |
@@ -46,7 +44,7 @@ jobs:
           KARAOKE_REQUIRE_BROWSER: "1"
         run: |
           Push-Location app
-          npm ci
+          npm install --no-audit --no-fund
           Pop-Location
           .\.venv\Scripts\python.exe app\tests\run_all.py
       - name: Build self-contained application
