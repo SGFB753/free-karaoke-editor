@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, for example v4.46.1"
+        description: "Release tag, for example v4.46.2"
         required: true
         type: string
   push:
@@ -44,7 +44,8 @@ jobs:
           KARAOKE_REQUIRE_BROWSER: "1"
         run: |
           $PSNativeCommandUseErrorActionPreference = $false
-          New-Item -ItemType Directory -Force -Path test-results | Out-Null
+          $testLogDir = Join-Path $env:RUNNER_TEMP "karaoke-test-results"
+          New-Item -ItemType Directory -Force -Path $testLogDir | Out-Null
           Push-Location app
           npm install --no-audit --no-fund
           Pop-Location
@@ -53,12 +54,12 @@ jobs:
           # Keep the first complete log and retry the identical suite once;
           # a repeatable failure still stops the release.
           .\.venv\Scripts\python.exe app\tests\run_all.py 2>&1 |
-            Tee-Object -FilePath test-results\first-run.txt
+            Tee-Object -FilePath (Join-Path $testLogDir "first-run.txt")
           $firstExit = $LASTEXITCODE
           if ($firstExit -ne 0) {
             Write-Warning "The first full test run failed; retrying once."
             .\.venv\Scripts\python.exe app\tests\run_all.py 2>&1 |
-              Tee-Object -FilePath test-results\retry.txt
+              Tee-Object -FilePath (Join-Path $testLogDir "retry.txt")
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
       - name: Upload test logs
@@ -66,7 +67,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-logs-${{ github.run_attempt }}
-          path: test-results/*.txt
+          path: ${{ runner.temp }}/karaoke-test-results/*.txt
           if-no-files-found: warn
       - name: Build self-contained application
         shell: pwsh

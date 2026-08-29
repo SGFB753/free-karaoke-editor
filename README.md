@@ -182,7 +182,7 @@ Two things people trip over:
 ### Building a Windows release in your fork
 
 Run the **Windows release** workflow and give it a tag matching the application
-version, for example `v4.46.1`. GitHub Actions builds the Windows ZIP,
+version, for example `v4.46.2`. GitHub Actions builds the Windows ZIP,
 creates the checksum and publishes both to Releases. The build embeds
 `${{ github.repository }}`, so a fork automatically updates from its own
 Releases, not from upstream.

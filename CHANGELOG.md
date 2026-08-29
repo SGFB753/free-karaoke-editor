@@ -7,6 +7,12 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.46.2
+
+**Release test logs no longer alter the checkout they are testing.** They are
+written to the runner's temporary directory, so the root-layout check sees the
+same repository a user receives. MP3 export itself is unchanged from 4.46.0.
+
 ## 4.46.1
 
 **Windows releases tolerate a one-off browser-test hiccup without hiding the

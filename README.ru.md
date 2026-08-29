@@ -219,7 +219,7 @@ cp ~/Downloads/karaoke/app/settings.ini ~/Documents/karaoke/app/settings.ini
 ### Сборка EXE в своём форке
 
 Запустите workflow **Windows release** и передайте тег, совпадающий с версией
-программы, например `v4.46.1`. GitHub Actions соберёт Windows-ZIP,
+программы, например `v4.46.2`. GitHub Actions соберёт Windows-ZIP,
 посчитает SHA-256 и положит оба файла в Releases. В сборку автоматически
 записывается `${{ github.repository }}`, поэтому форк обновляется из своих
 Releases, а не из исходного репозитория.
