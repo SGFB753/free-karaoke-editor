@@ -46,6 +46,35 @@ def main():
     check("a source checkout cannot overwrite itself", not update.supported())
     check("versions compare numerically",
           update._version_tuple("v4.10.0") > update._version_tuple("4.9.9"))
+
+    class RedirectResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def geturl(self):
+            return "https://github.com/owner/fork/releases/tag/v9.9.9"
+
+    requested = []
+    old_urlopen = update.urllib.request.urlopen
+    try:
+        def fake_urlopen(request, timeout=0):
+            requested.append((request.full_url, timeout))
+            return RedirectResponse()
+        update.urllib.request.urlopen = fake_urlopen
+        release = update._latest_release("owner/fork")
+    finally:
+        update.urllib.request.urlopen = old_urlopen
+    check("update checks do not spend the anonymous GitHub API quota",
+          requested == [("https://github.com/owner/fork/releases/latest", 12)])
+    check("the redirect supplies the latest version",
+          release["tag_name"] == "v9.9.9")
+    check("public asset links are built from the published tag",
+          release["assets"][update.ASSET] ==
+          "https://github.com/owner/fork/releases/download/v9.9.9/" +
+          update.ASSET)
     with tempfile.TemporaryDirectory() as tmp:
         info = {"repository": "owner/fork", "version": "9.9.9"}
         with open(os.path.join(tmp, "build-info.json"), "w",

@@ -144,7 +144,8 @@ git clone https://github.com/SGFB753/free-karaoke-editor.git
 The Windows EXE checks for releases itself. Press the update button that
 appears in the song-list header; it downloads the ZIP, verifies SHA-256,
 restarts and keeps songs/settings. Source checkouts are never rewritten by
-this updater.
+this updater. The check follows the public GitHub Releases page and does not
+depend on the small anonymous GitHub API quota shared by an internet address.
 
 Taken with `git clone` once, the program updates with one command afterwards:
 
@@ -182,7 +183,7 @@ Two things people trip over:
 ### Building a Windows release in your fork
 
 Run the **Windows release** workflow and give it a tag matching the application
-version, for example `v4.46.2`. GitHub Actions builds the Windows ZIP,
+version, for example `v4.46.3`. GitHub Actions builds the Windows ZIP,
 creates the checksum and publishes both to Releases. The build embeds
 `${{ github.repository }}`, so a fork automatically updates from its own
 Releases, not from upstream.

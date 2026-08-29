@@ -7,6 +7,14 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.46.3
+
+**Checking for updates no longer fails with HTTP 403 when GitHub's anonymous
+API quota is exhausted.** The packaged application follows the ordinary public
+`releases/latest` redirect and constructs the two fixed release-asset URLs from
+the published tag. Download integrity is still verified with the separately
+published SHA-256 file; no token or GitHub account is required.
+
 ## 4.46.2
 
 **Release test logs no longer alter the checkout they are testing.** They are

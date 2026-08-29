@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 import urllib.request
 from typing import Callable, Dict, Optional
 
@@ -61,12 +62,48 @@ def _version_tuple(value: str):
     return tuple(int(n) for n in nums[:4]) or (0,)
 
 
-def _request(url: str):
-    return urllib.request.Request(url, headers={
-        "Accept": "application/vnd.github+json",
-        "User-Agent": f"KaraokeStudio/{__version__}",
-        "X-GitHub-Api-Version": "2022-11-28",
-    })
+def _request(url: str, accept: str = ""):
+    headers = {"User-Agent": f"KaraokeStudio/{__version__}"}
+    if accept:
+        headers["Accept"] = accept
+    return urllib.request.Request(url, headers=headers)
+
+
+def _latest_release(repo: str) -> Dict:
+    """Find the public release without spending the GitHub API quota.
+
+    GitHub's ordinary ``/releases/latest`` page redirects to the latest
+    published tag.  Release asset names are part of our packaging contract,
+    so their public URLs can be built without a second metadata request.
+    This matters on shared connections where the anonymous API quota may
+    already have been exhausted by another program or computer.
+    """
+    latest_url = f"https://github.com/{repo}/releases/latest"
+    with urllib.request.urlopen(
+            _request(latest_url, "text/html,application/xhtml+xml"),
+            timeout=12) as response:
+        final_url = response.geturl()
+    final = urllib.parse.urlsplit(final_url)
+    path = final.path
+    marker = f"/{repo}/releases/tag/"
+    if (final.scheme != "https" or final.netloc.lower() != "github.com"
+            or not path.lower().startswith(marker.lower())):
+        raise RuntimeError(tr("could not find the latest published release",
+                              "не удалось найти последний опубликованный релиз"))
+    tag = urllib.parse.unquote(path[len(marker):]).strip("/")
+    if not tag:
+        raise RuntimeError(tr("the latest release has no tag",
+                              "у последнего релиза нет тега"))
+    encoded_tag = urllib.parse.quote(tag, safe="")
+    asset_base = f"https://github.com/{repo}/releases/download/{encoded_tag}"
+    return {
+        "tag_name": tag,
+        "html_url": final_url,
+        "assets": {
+            ASSET: f"{asset_base}/{urllib.parse.quote(ASSET, safe='')}",
+            CHECKSUM: f"{asset_base}/{urllib.parse.quote(CHECKSUM, safe='')}",
+        },
+    }
 
 
 def latest() -> Dict:
@@ -74,11 +111,8 @@ def latest() -> Dict:
     if not supported():
         return {"supported": False, "current": __version__}
     repo = repository()
-    url = f"https://api.github.com/repos/{repo}/releases/latest"
-    with urllib.request.urlopen(_request(url), timeout=12) as response:
-        release = json.load(response)
-    assets = {a.get("name"): a.get("browser_download_url")
-              for a in release.get("assets") or []}
+    release = _latest_release(repo)
+    assets = release["assets"]
     version = str(release.get("tag_name") or "").lstrip("vV")
     available = (_version_tuple(version) > _version_tuple(__version__)
                  and bool(assets.get(ASSET)) and bool(assets.get(CHECKSUM)))
