@@ -1992,6 +1992,26 @@ def main(argv=None) -> int:
     if args[:1] == ["--internal-ytdlp"]:
         import yt_dlp
         return int(yt_dlp.main(args[1:]) or 0)
+    if args[:1] == ["--internal-package-smoke"]:
+        try:
+            from PIL import (Image, ImageDraw, ImageEnhance, ImageFilter,
+                             ImageFont, ImageStat)
+            image = Image.new("RGB", (4, 4), "white")
+            ImageDraw.Draw(image).point((1, 1), fill="black")
+            ImageEnhance.Brightness(image).enhance(0.8).filter(ImageFilter.BLUR)
+            ImageFont.load_default()
+            ImageStat.Stat(image).mean
+            _video_module()
+            return 0
+        except Exception:
+            path = os.path.join(os.path.dirname(os.path.abspath(sys.executable)),
+                                "package-smoke-error.txt")
+            try:
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(traceback.format_exc())
+            except OSError:
+                pass
+            return 5
     want, no_browser, host = parse_args(args)
     DESKTOP_SESSION = not no_browser and host in ("127.0.0.1", "localhost", "::1")
     with WINDOW_LINK_LOCK:

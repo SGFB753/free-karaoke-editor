@@ -23,8 +23,9 @@ account, no subscription.
 ## Windows EXE (no Python or package installation)
 
 Open the newest GitHub Release, download `KaraokeStudio-windows-x64.zip`,
-unpack it and run `KaraokeStudio.exe`. The full release contains Python,
-ffmpeg, all Python libraries and the default Whisper/Demucs model weights.
+unpack it and run `KaraokeStudio.exe`. The release contains Python, ffmpeg and
+all Python libraries. Whisper/Demucs model weights download once when first
+used and are then reused from the user's cache.
 Windows may show SmartScreen because community builds are not code-signed;
 the accompanying `.sha256` and the updater both verify the downloaded ZIP.
 
@@ -153,7 +154,7 @@ Two things people trip over:
 ### Building a Windows release in your fork
 
 Run the **Windows release** workflow and give it a tag matching the application
-version, for example `v4.45.2`. GitHub Actions builds the full offline ZIP,
+version, for example `v4.45.3`. GitHub Actions builds the Windows ZIP,
 creates the checksum and publishes both to Releases. The build embeds
 `${{ github.repository }}`, so a fork automatically updates from its own
 Releases, not from upstream.
@@ -161,11 +162,13 @@ Releases, not from upstream.
 For a local build after `Install.bat`:
 
 ```powershell
-.\app\packaging\build-windows.bat -Repository owner/repository -WithModels
+.\app\packaging\build-windows.bat -Repository owner/repository
 ```
 
-The result is `dist\KaraokeStudio-windows-x64.zip`. Omit `-WithModels` only
-for a smaller developer build whose model weights may download on first use.
+The result is `dist\KaraokeStudio-windows-x64.zip`. Whisper and Demucs model
+weights download once when first selected and are then reused from the user's
+cache. Add `-WithModels` only when deliberately making a much larger fully
+offline build.
 
 ## What is in the folder
 

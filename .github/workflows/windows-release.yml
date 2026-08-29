@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Release tag, for example v4.45.0"
+        description: "Release tag, for example v4.45.3"
         required: true
         type: string
   push:
@@ -52,7 +52,10 @@ jobs:
         run: |
           $version = (.\.venv\Scripts\python.exe -c "import sys; sys.path.insert(0, 'app'); import kstudio; print(kstudio.__version__)").Trim()
           if ($env:RELEASE_TAG -ne "v$version") { throw "Tag must be v$version" }
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\app\packaging\build-windows.ps1 -Repository '${{ github.repository }}' -WithModels -SkipTests
+          # Libraries and ffmpeg stay self-contained. Model weights download
+          # once on first use and then live in the user's cache; carrying them
+          # in every GitHub release only makes uploads slower and less reliable.
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\app\packaging\build-windows.ps1 -Repository '${{ github.repository }}' -SkipTests
       - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

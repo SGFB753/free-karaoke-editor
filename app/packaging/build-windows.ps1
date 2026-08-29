@@ -46,6 +46,7 @@ if ($WithModels) {
         if ($LASTEXITCODE) { throw "Could not cache the Demucs model $Separator." }
     }
 }
+$env:KARAOKE_BUNDLE_MODELS = if ($WithModels) { '1' } else { '0' }
 
 $Version = (& $Python -c "import sys; sys.path.insert(0, r'$RepoRoot\app'); import kstudio; print(kstudio.__version__)").Trim()
 $BuildDir = Join-Path $RepoRoot 'build'
@@ -69,6 +70,17 @@ Copy-Item -LiteralPath (Join-Path $BuildDir 'updater-dist\KaraokeUpdater.exe') -
 Copy-Item -LiteralPath (Join-Path $RepoRoot 'LICENSE') -Destination $Dist -Force
 Copy-Item -LiteralPath (Join-Path $RepoRoot 'README.ru.md') -Destination $Dist -Force
 Copy-Item -LiteralPath (Join-Path $BuildDir 'build-info.json') -Destination $Dist -Force
+
+# The video renderer is loaded dynamically from tools/video.py. A normal
+# PyInstaller analysis cannot prove that its inner Pillow imports exist, so
+# exercise those imports inside the finished EXE before publishing anything.
+$SmokeError = Join-Path $Dist 'package-smoke-error.txt'
+if (Test-Path -LiteralPath $SmokeError) { Remove-Item -LiteralPath $SmokeError -Force }
+$PackageSmoke = Start-Process -FilePath (Join-Path $Dist 'KaraokeStudio.exe') -ArgumentList '--internal-package-smoke' -Wait -PassThru -WindowStyle Hidden
+if ($PackageSmoke.ExitCode) {
+    if (Test-Path -LiteralPath $SmokeError) { Get-Content -LiteralPath $SmokeError }
+    throw 'Packaged video dependencies are incomplete.'
+}
 
 # A smoke launch catches missing dynamic imports without opening a browser.
 $Smoke = Start-Process -FilePath (Join-Path $Dist 'KaraokeStudio.exe') -ArgumentList '--no-browser','--port','18770' -PassThru -WindowStyle Hidden

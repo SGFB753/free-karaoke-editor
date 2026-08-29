@@ -33,25 +33,33 @@ for distribution in ("demucs", "stable-ts", "openai-whisper", "yt-dlp",
 
 hiddenimports += collect_submodules("demucs")
 hiddenimports += collect_submodules("yt_dlp")
+# tools/video.py is loaded from its file at runtime, so Analysis cannot see
+# the PIL modules imported inside its rendering functions.  Keep the whole
+# small Pillow module family; otherwise the EXE builds successfully and only
+# fails later on ImageEnhance/ImageDraw when a person asks for an MP4.
+hiddenimports += collect_submodules("PIL")
 
-whisper_cache = os.path.join(os.path.expanduser("~"), ".cache", "whisper")
-small_model = os.path.join(whisper_cache, "small.pt")
-if os.path.isfile(small_model):
-    datas.append((small_model, os.path.join("models", "whisper")))
+# Model weights are deliberately not part of a normal release.  Whisper and
+# Demucs already download the selected weight once into the user's cache and
+# reuse it afterwards.  A maintainer may still request a fully offline build;
+# the explicit environment flag prevents a populated CI/developer cache from
+# accidentally making every ordinary ZIP a gigabyte larger.
+if os.environ.get("KARAOKE_BUNDLE_MODELS") == "1":
+    whisper_cache = os.path.join(os.path.expanduser("~"), ".cache", "whisper")
+    small_model = os.path.join(whisper_cache, "small.pt")
+    if os.path.isfile(small_model):
+        datas.append((small_model, os.path.join("models", "whisper")))
 
-torch_cache = os.path.join(os.path.expanduser("~"), ".cache", "torch")
-if os.path.isdir(torch_cache):
-    datas.append((torch_cache, os.path.join("models", "torch")))
+    torch_cache = os.path.join(os.path.expanduser("~"), ".cache", "torch")
+    if os.path.isdir(torch_cache):
+        datas.append((torch_cache, os.path.join("models", "torch")))
 
-# Current Demucs releases fetch their weights through huggingface_hub rather
-# than torch.hub. Carry both the normal and the thorough (fine-tuned) model,
-# but not the rest of a developer's unrelated Hugging Face cache.
-hf_hub = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
-if os.path.isdir(hf_hub):
-    for name in os.listdir(hf_hub):
-        if name.startswith("models--adefossez--HTDemucs"):
-            datas.append((os.path.join(hf_hub, name),
-                          os.path.join("models", "huggingface", "hub", name)))
+    hf_hub = os.path.join(os.path.expanduser("~"), ".cache", "huggingface", "hub")
+    if os.path.isdir(hf_hub):
+        for name in os.listdir(hf_hub):
+            if name.startswith("models--adefossez--HTDemucs"):
+                datas.append((os.path.join(hf_hub, name),
+                              os.path.join("models", "huggingface", "hub", name)))
 
 a = Analysis(
     [os.path.join(APP, "studio.py")],

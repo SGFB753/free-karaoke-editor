@@ -22,6 +22,27 @@ def check(name, yes):
 
 
 def main():
+    spec_path = os.path.join(ROOT, "packaging", "KaraokeStudio.spec")
+    with open(spec_path, encoding="utf-8") as f:
+        spec = f.read()
+    check("packaged renderer carries dynamic Pillow imports",
+          'collect_submodules("PIL")' in spec)
+    check("model weights are opt-in for release archives",
+          'KARAOKE_BUNDLE_MODELS") == "1"' in spec)
+
+    build_path = os.path.join(ROOT, "packaging", "build-windows.ps1")
+    with open(build_path, encoding="utf-8-sig") as f:
+        build_script = f.read()
+    check("finished EXE gets a video dependency smoke test",
+          "--internal-package-smoke" in build_script)
+
+    workflow_path = os.path.join(os.path.dirname(ROOT), ".github", "workflows",
+                                 "windows-release.yml")
+    with open(workflow_path, encoding="utf-8") as f:
+        release_workflow = f.read()
+    check("normal GitHub releases leave model weights in the user cache",
+          "-WithModels" not in release_workflow)
+
     check("a source checkout cannot overwrite itself", not update.supported())
     check("versions compare numerically",
           update._version_tuple("v4.10.0") > update._version_tuple("4.9.9"))

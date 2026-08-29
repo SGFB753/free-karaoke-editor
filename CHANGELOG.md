@@ -7,6 +7,20 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.45.3
+
+**MP4 rendering works in the packaged Windows application.** `tools/video.py`
+is loaded dynamically, so PyInstaller previously missed its inner Pillow
+imports and the released EXE failed on `PIL.ImageEnhance`. Every Pillow module
+is now collected, and the finished EXE imports and exercises the video
+dependencies before a release can be created.
+
+**Normal GitHub releases no longer carry neural-network weights.** Whisper and
+Demucs download the selected model once into the user's cache, as the source
+installation already did. Libraries and ffmpeg remain bundled, so no Python
+or pip installation is needed. A maintainer can still request an explicitly
+large fully offline build with `-WithModels`.
+
 ## 4.45.2
 
 **Closing the Studio window now closes its EXE process too.** The browser app
