@@ -295,7 +295,9 @@ console.log('\n--- a clip can stand behind the lyrics ---');
     ok('and the song remembers it', rec.backdrop === 'backdrop.mp4', rec.backdrop);
     // the frame preview must draw with it and not fall over
     const shot = await fetch(API + `/api/project/${encodeURIComponent(pid)}/still?at=2`);
-    ok('a frame still draws with the clip behind', shot.ok, shot.status);
+    const shotBody = Buffer.from(await shot.arrayBuffer());
+    ok('a frame still draws with the clip behind', shot.ok && shotBody.length > 5000,
+       shot.status + ' ' + shotBody.length);
     const off = await post(`/api/project/${encodeURIComponent(pid)}/backdrop`,
                            {off: true});
     ok('and it can be taken away again',
