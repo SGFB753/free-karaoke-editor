@@ -7,6 +7,25 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.46.6
+
+**Projects are self-contained and `_incoming` no longer accumulates a second
+copy of the work.** A new song keeps its original recording as `original.<ext>`
+and its lyrics as `lyrics.txt` in its own folder. Uploads live in a system
+temporary directory until a build succeeds and are then consumed; a failed
+build no longer leaves a partial project behind either.
+
+**Finished results have a clear separate `output/` folder.** MP4 and MP3 keep
+the readable source title, including non-Latin text, the artist and characters
+such as `&`, for example `Bumble Beezy & BaseFace - Мой рок-н-ролл.mp4`. The
+updater preserves `output/` alongside `projects/` and settings.
+
+**The old `_incoming` is cleaned without losing completed work.** On first
+launch, referenced sources move into their projects, finished
+MP4/MP3/HTML/ASS/ZIP files move into `output/`, and only then are leftover
+download copies, thumbnails and drafts removed. If any project cannot be read
+safely, the old folder is left in place.
+
 ## 4.46.5
 
 **The Windows updater can replace the running application.** It now waits for
