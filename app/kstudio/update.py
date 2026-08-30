@@ -187,14 +187,18 @@ def launch(archive: str) -> None:
     if not supported() or not os.path.isfile(archive):
         raise RuntimeError(tr("the downloaded update is gone",
                               "скачанное обновление пропало"))
-    source = os.path.join(_bundle_root(), "KaraokeUpdater.exe")
+    source_dir = os.path.join(_bundle_root(), "updater")
+    source = os.path.join(source_dir, "KaraokeUpdater.exe")
     if not os.path.isfile(source):
         raise RuntimeError(tr("KaraokeUpdater.exe is missing from the installation",
                               "в установленной программе нет KaraokeUpdater.exe"))
     temp_dir = tempfile.mkdtemp(prefix="karaoke-updater-")
-    updater = os.path.join(temp_dir, "KaraokeUpdater.exe")
-    shutil.copy2(source, updater)
+    updater_dir = os.path.join(temp_dir, "updater")
+    shutil.copytree(source_dir, updater_dir)
+    updater = os.path.join(updater_dir, "KaraokeUpdater.exe")
+    env = os.environ.copy()
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     subprocess.Popen([updater, "--pid", str(os.getpid()), "--archive", archive,
                       "--install", _bundle_root(), "--exe", "KaraokeStudio.exe"],
                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                     close_fds=True)
+                     close_fds=True, env=env)

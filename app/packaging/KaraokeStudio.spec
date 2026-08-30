@@ -10,6 +10,8 @@ datas = [
     (os.path.join(APP, "kstudio", "player.html"), "kstudio"),
     (os.path.join(APP, "kstudio", "ui.js"), "kstudio"),
     (os.path.join(APP, "kstudio", "icon.png"), "kstudio"),
+    (os.path.join(APP, "kstudio", "icon-32.png"), "kstudio"),
+    (os.path.join(APP, "kstudio", "favicon.ico"), "kstudio"),
     (os.path.join(APP, "kstudio", "messages"), os.path.join("kstudio", "messages")),
     (os.path.join(APP, "tools", "video.py"), "tools"),
     (os.path.join(ROOT, "build", "build-info.json"), "."),

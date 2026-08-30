@@ -325,6 +325,43 @@ def main():
           _ST.parse_args(["--host", "0.0.0.0", "--port", "8770"])[2] == "0.0.0.0")
     check("by default we listen to ourselves only", _ST.parse_args([])[2] == "127.0.0.1")
 
+    print("\nFast key changes")
+    with tempfile.TemporaryDirectory() as pitch_tmp:
+        pitch_data = {"tracks": {"vocals": "vocals.mp3",
+                                  "instrumental": "instrumental.mp3"}}
+        for name in pitch_data["tracks"].values():
+            open(os.path.join(pitch_tmp, name), "wb").write(b"source")
+        real_pitch_shift = _ST.AU.pitch_shift
+        pitch_guard = threading.Lock()
+        pitch_active = [0, 0]
+
+        def fake_pitch_shift(src, dst, semitones):
+            with pitch_guard:
+                pitch_active[0] += 1
+                pitch_active[1] = max(pitch_active)
+            time.sleep(0.06)
+            open(dst, "wb").write(str(semitones).encode("ascii"))
+            with pitch_guard:
+                pitch_active[0] -= 1
+
+        _ST.AU.pitch_shift = fake_pitch_shift
+        try:
+            _ST.pitched_tracks(pitch_tmp, pitch_data, 1)
+            check("the vocal and instrumental are transposed in parallel",
+                  pitch_active[1] == 2, pitch_active[1])
+            for key in (2, 3, 4):
+                _ST.pitched_tracks(pitch_tmp, pitch_data, key)
+            cached = {re.match(r"^_pitch-([pm]\d+)-", name).group(1)
+                      for name in os.listdir(pitch_tmp)
+                      if re.match(r"^_pitch-([pm]\d+)-", name)}
+            check("only three recently used keys stay cached",
+                  cached == {"p2", "p3", "p4"}, cached)
+            _ST.pitched_tracks(pitch_tmp, pitch_data, 0)
+            check("returning to zero does not throw the useful cache away",
+                  any(name.startswith("_pitch-") for name in os.listdir(pitch_tmp)))
+        finally:
+            _ST.AU.pitch_shift = real_pitch_shift
+
     print("\nThe video keeps the original where the marks say so")
     # The page says keepSpans; the MP4 is made from the page, and a vocalise
     # muted in the video is a hole exactly where the song is loudest.

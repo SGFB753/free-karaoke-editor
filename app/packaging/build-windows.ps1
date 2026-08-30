@@ -66,7 +66,9 @@ $ReleaseRoot = Join-Path $BuildDir 'release-dist'
 if ($LASTEXITCODE) { throw 'Studio build failed.' }
 
 $Dist = Join-Path $ReleaseRoot 'KaraokeStudio'
-Copy-Item -LiteralPath (Join-Path $BuildDir 'updater-dist\KaraokeUpdater.exe') -Destination $Dist -Force
+$UpdaterDist = Join-Path $BuildDir 'updater-dist\KaraokeUpdater'
+$UpdaterTarget = Join-Path $Dist 'updater'
+Copy-Item -LiteralPath $UpdaterDist -Destination $UpdaterTarget -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $RepoRoot 'LICENSE') -Destination $Dist -Force
 Copy-Item -LiteralPath (Join-Path $RepoRoot 'README.ru.md') -Destination $Dist -Force
 Copy-Item -LiteralPath (Join-Path $BuildDir 'build-info.json') -Destination $Dist -Force

@@ -7,6 +7,25 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.46.9
+
+**Windows updates no longer stall after the archive has been verified.** The
+external updater now ships as a one-folder runtime instead of a large
+self-extracting executable. It starts outside the installation, replaces the
+program in place and restarts Studio in a clean PyInstaller environment. The
+complete path was exercised against the real 4.46.8 release archive while
+preserving projects, finished exports and settings.
+
+**Changing key is faster and stepping back to a recent key is instant.** The
+vocal and instrumental stems are transposed in parallel, and the three most
+recent semitone choices remain in a bounded cache. Returning to the original
+key no longer throws that useful cache away.
+
+**The microphone fills the taskbar slot instead of looking miniature.** The
+artwork was simplified for small sizes, every Windows icon size from 16 to 256
+pixels is generated from one source, and Chromium receives dedicated 32-pixel
+PNG and ICO favicons.
+
 ## 4.46.8
 
 **Video sources now become moving karaoke backdrops automatically.** Studio

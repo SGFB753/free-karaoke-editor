@@ -37,12 +37,22 @@ def main():
           'icon=os.path.join(APP, "packaging", "KaraokeStudio.ico")' in spec
           and icon_header[:4] == b"\x00\x00\x01\x00"
           and int.from_bytes(icon_header[4:6], "little") >= 6)
+    check("the packaged browser window carries taskbar-size icons",
+          '"icon-32.png"' in spec and '"favicon.ico"' in spec
+          and os.path.isfile(os.path.join(ROOT, "kstudio", "icon-32.png"))
+          and os.path.isfile(os.path.join(ROOT, "kstudio", "favicon.ico")))
 
     build_path = os.path.join(ROOT, "packaging", "build-windows.ps1")
     with open(build_path, encoding="utf-8-sig") as f:
         build_script = f.read()
     check("finished EXE gets a media dependency smoke test",
           "--internal-package-smoke" in build_script)
+    updater_spec_path = os.path.join(ROOT, "packaging", "KaraokeUpdater.spec")
+    with open(updater_spec_path, encoding="utf-8") as f:
+        updater_spec = f.read()
+    check("the updater starts from a one-folder runtime",
+          "exclude_binaries=True" in updater_spec and "COLLECT(" in updater_spec
+          and "updater-dist\\KaraokeUpdater" in build_script)
 
     workflow_path = os.path.join(os.path.dirname(ROOT), ".github", "workflows",
                                  "windows-release.yml")

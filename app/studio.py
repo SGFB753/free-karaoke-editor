@@ -29,6 +29,7 @@ import time
 import traceback
 import uuid
 import webbrowser
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 from urllib.parse import parse_qs, unquote, urlparse
@@ -490,6 +491,14 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/icon.png":
                 with open(os.path.join(ROOT, "kstudio", "icon.png"), "rb") as f:
                     return self._send(200, f.read(), "image/png")
+
+            if path == "/icon-32.png":
+                with open(os.path.join(ROOT, "kstudio", "icon-32.png"), "rb") as f:
+                    return self._send(200, f.read(), "image/png")
+
+            if path == "/favicon.ico":
+                with open(os.path.join(ROOT, "kstudio", "favicon.ico"), "rb") as f:
+                    return self._send(200, f.read(), "image/x-icon")
 
             if path == "/api/state":
                 return self._json({"projects": P.list_all(PROJECTS),
@@ -1668,47 +1677,65 @@ def replace_track(folder: str, src: str, kind: str, shift: bool, log) -> dict:
 
 
 _PITCH_LOCK = threading.Lock()
+_PITCH_CACHE_KEYS = 3
 
 
 def pitched_tracks(folder: str, data: dict, semitones: int = 0) -> dict:
     """Return project track names transposed without changing their length.
 
-    Only the currently selected key is cached, so trying several keys does not
-    quietly grow every project by another pair of audio files.
+    Both stems are independent, so FFmpeg can transpose them at the same time.
+    Keep the three most recently used keys: stepping back and forth in the
+    editor is then instant without letting every project grow indefinitely.
     """
     semitones = max(-6, min(6, int(semitones or 0)))
     tracks = dict(data.get("tracks") or {})
     if not semitones:
-        for old in os.listdir(folder):
-            if old.startswith("_pitch-"):
-                try:
-                    os.remove(os.path.join(folder, old))
-                except OSError:
-                    pass
         return tracks
     tag = ("p" if semitones > 0 else "m") + str(abs(semitones))
-    made = {}
+    made = {kind: f"_pitch-{tag}-{kind}.mp3" for kind in tracks}
+
+    def build_one(item) -> None:
+        kind, name = item
+        src = os.path.join(folder, name)
+        dst = os.path.join(folder, made[kind])
+        fresh = (os.path.isfile(dst) and os.path.getsize(dst) > 0
+                 and os.path.getmtime(dst) >= os.path.getmtime(src))
+        if fresh:
+            os.utime(dst, None)
+            return
+        tmp = os.path.join(folder, f"_pitch-{tag}-{kind}.tmp.mp3")
+        try:
+            AU.pitch_shift(src, tmp, semitones)
+            os.replace(tmp, dst)
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
     with _PITCH_LOCK:
-        for kind, name in tracks.items():
-            src = os.path.join(folder, name)
-            dst_name = f"_pitch-{tag}-{kind}.mp3"
-            dst = os.path.join(folder, dst_name)
-            fresh = (os.path.isfile(dst) and os.path.getsize(dst) > 0
-                     and os.path.getmtime(dst) >= os.path.getmtime(src))
-            if not fresh:
-                tmp = os.path.join(folder, f"_pitch-{tag}-{kind}.tmp.mp3")
-                try:
-                    AU.pitch_shift(src, tmp, semitones)
-                    os.replace(tmp, dst)
-                finally:
-                    try:
-                        os.remove(tmp)
-                    except OSError:
-                        pass
-            made[kind] = dst_name
-        keep = set(made.values())
+        items = list(tracks.items())
+        if len(items) > 1:
+            with ThreadPoolExecutor(max_workers=min(2, len(items)),
+                                    thread_name_prefix="pitch") as pool:
+                list(pool.map(build_one, items))
+        else:
+            for item in items:
+                build_one(item)
+
+        cache = {}
         for old in os.listdir(folder):
-            if old.startswith("_pitch-") and old not in keep:
+            match = re.match(r"^_pitch-([pm]\d+)-.+\.mp3$", old)
+            if match:
+                path = os.path.join(folder, old)
+                cache[match.group(1)] = max(cache.get(match.group(1), 0),
+                                            os.path.getmtime(path))
+        keep_tags = {name for name, _ in sorted(cache.items(),
+                                                key=lambda item: item[1],
+                                                reverse=True)[:_PITCH_CACHE_KEYS]}
+        for old in os.listdir(folder):
+            match = re.match(r"^_pitch-([pm]\d+)-.+\.mp3$", old)
+            if match and match.group(1) not in keep_tags:
                 try:
                     os.remove(os.path.join(folder, old))
                 except OSError:

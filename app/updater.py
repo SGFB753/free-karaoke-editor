@@ -152,7 +152,10 @@ def apply(archive: str, install: str, exe: str, pid: int) -> None:
         shutil.rmtree(backup, ignore_errors=True)
     try:
         replace_in_place(staged, install, backup)
-        subprocess.Popen([os.path.join(install, exe)], cwd=tempfile.gettempdir())
+        env = os.environ.copy()
+        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        subprocess.Popen([os.path.join(install, exe)], cwd=tempfile.gettempdir(),
+                         env=env)
     except Exception:
         raise
     finally:
