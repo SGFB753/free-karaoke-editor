@@ -99,7 +99,15 @@ click('btnPlay'); w.__now = 0.2; await sleep(80);
 const vocalGain = w.__gains[1] && w.__gains[1].gain;
 ok('the vocal is muted before the mark', !vocalGain || vocalGain.value < 0.01,
    vocalGain ? String(vocalGain.value) : 'project has one track');
+click('btnPlay');                           // reproduce the reported paused state
+$("btnKeep").focus();
 click("btnKeep"); await sleep(150);
+ok('a click on Original drops its button focus', doc.activeElement !== $("btnKeep"));
+const stoppedGlyph = $("btnPlay").textContent;
+doc.dispatchEvent(new w.KeyboardEvent('keydown', {key:' ', bubbles:true}));
+await sleep(30);
+ok('Space after Original starts playback', $("btnPlay").textContent !== stoppedGlyph,
+   $("btnPlay").textContent);
 ok('the button applies the original to the sound immediately',
    !vocalGain || vocalGain.value > 0.95,
    vocalGain ? String(vocalGain.value) : 'no separate vocal in this fixture');

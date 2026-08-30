@@ -3817,6 +3817,14 @@ function tick(){
 }
 
 /* ================= keyboard ================= */
+// A toolbar click must not turn the next Space into another press of that
+// button.  Space is the editor's play/pause key; dropping mouse focus here also
+// keeps the native button activation from racing the global shortcut.  A button
+// reached with Tab still keeps its normal keyboard behaviour until it is used.
+document.addEventListener("click", e => {
+  const button = e.target && e.target.closest && e.target.closest("button");
+  if (button) button.blur();
+});
 document.addEventListener("keydown", e => {
   if ($("scrEdit").classList.contains("hide")) return;
   // The editor's shortcuts belong to the stage, not to a field somebody is
@@ -3825,9 +3833,9 @@ document.addEventListener("keydown", e => {
   const field = e.target && e.target.closest &&
     e.target.closest("input, textarea, select, [contenteditable='true']");
   if (field) return;
-  // A click leaves focus on its toolbar button. Plain Space/Enter still belong
-  // to that button, but Ctrl+Z/C/V/D remain editor shortcuts; otherwise Undo
-  // mysteriously stops working immediately after the operation it should undo.
+  // A button deliberately reached with Tab still owns plain Space/Enter, but
+  // Ctrl+Z/C/V/D remain editor shortcuts; otherwise Undo mysteriously stops
+  // working immediately after the operation it should undo.
   const button = e.target && e.target.closest && e.target.closest("button");
   if (button && !e.ctrlKey && !e.metaKey) return;
   const nudge = (d) => { if (sel<0) return;
