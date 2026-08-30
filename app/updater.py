@@ -12,6 +12,9 @@ import time
 import zipfile
 
 
+PRESERVED = {"projects", "output", "settings.ini"}
+
+
 def safe_extract(archive: str, target: str) -> str:
     root = os.path.abspath(target)
     with zipfile.ZipFile(archive) as zf:
@@ -75,7 +78,7 @@ def wait_for(pid: int, seconds: int = 90) -> None:
 
 
 def preserve(old: str, new: str) -> None:
-    for name in ("projects", "output", "settings.ini"):
+    for name in PRESERVED:
         src, dst = os.path.join(old, name), os.path.join(new, name)
         if not os.path.exists(src):
             continue
@@ -85,6 +88,57 @@ def preserve(old: str, new: str) -> None:
             else:
                 os.remove(dst)
         shutil.move(src, dst)
+
+
+def _remove(path: str) -> None:
+    if os.path.isdir(path) and not os.path.islink(path):
+        shutil.rmtree(path)
+    elif os.path.exists(path):
+        os.remove(path)
+
+
+def _copy_entry(src: str, dst: str) -> None:
+    if os.path.isdir(src) and not os.path.islink(src):
+        shutil.copytree(src, dst)
+    else:
+        shutil.copy2(src, dst)
+
+
+def replace_in_place(staged: str, install: str, backup: str) -> None:
+    """Replace program entries without renaming the directory they live in.
+
+    Explorer, Chrome or a terminal may hold a directory handle to the install
+    root. Windows then refuses to rename that root even though Studio itself
+    has exited and every EXE/DLL can be replaced safely. Keep the root and the
+    user's three entries stationary; snapshot and replace everything else.
+    """
+    os.makedirs(install, exist_ok=True)
+    os.makedirs(backup)
+    old_names = [n for n in os.listdir(install) if n not in PRESERVED]
+    for name in old_names:
+        _copy_entry(os.path.join(install, name), os.path.join(backup, name))
+    try:
+        for name in old_names:
+            _remove(os.path.join(install, name))
+        for name in os.listdir(staged):
+            src, dst = os.path.join(staged, name), os.path.join(install, name)
+            if name in PRESERVED and os.path.exists(dst):
+                continue
+            if os.path.exists(dst):
+                _remove(dst)
+            _copy_entry(src, dst)
+    except Exception:
+        # Remove only program files. Projects, finished exports and settings
+        # never moved, so rollback cannot accidentally replace user data.
+        for name in os.listdir(install):
+            if name not in PRESERVED:
+                try:
+                    _remove(os.path.join(install, name))
+                except OSError:
+                    pass
+        for name in os.listdir(backup):
+            _copy_entry(os.path.join(backup, name), os.path.join(install, name))
+        raise
 
 
 def apply(archive: str, install: str, exe: str, pid: int) -> None:
@@ -97,20 +151,12 @@ def apply(archive: str, install: str, exe: str, pid: int) -> None:
     if os.path.exists(backup):
         shutil.rmtree(backup, ignore_errors=True)
     try:
-        os.replace(install, backup)
-        if staged == stage_root:
-            os.replace(stage_root, install)
-        else:
-            os.replace(staged, install)
-            shutil.rmtree(stage_root, ignore_errors=True)
-        preserve(backup, install)
+        replace_in_place(staged, install, backup)
+        subprocess.Popen([os.path.join(install, exe)], cwd=tempfile.gettempdir())
     except Exception:
-        if os.path.exists(install):
-            shutil.rmtree(install, ignore_errors=True)
-        if os.path.exists(backup):
-            os.replace(backup, install)
         raise
-    subprocess.Popen([os.path.join(install, exe)], cwd=install)
+    finally:
+        shutil.rmtree(stage_root, ignore_errors=True)
     shutil.rmtree(backup, ignore_errors=True)
     try:
         shutil.rmtree(os.path.dirname(archive), ignore_errors=True)

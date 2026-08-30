@@ -7,6 +7,20 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.46.7
+
+**Windows updates no longer rename the installation folder.** Explorer, a
+browser or a terminal can keep that folder open and make the old rename-based
+update fail after extraction. The updater now replaces only application files
+inside the existing folder, keeps `projects/`, `output/` and `settings.ini` in
+place throughout, and restores the previous application if copying fails.
+
+**Studio-launched Chrome and Edge no longer hold the installation folder as
+their working directory.** This removes another source of Windows directory
+locks. Versions 4.46.5 and 4.46.6 still contain the old updater, so a failed
+attempt from either version needs one manual recovery; later updates use the
+new in-place updater.
+
 ## 4.46.6
 
 **Projects are self-contained and `_incoming` no longer accumulates a second

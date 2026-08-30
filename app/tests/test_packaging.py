@@ -141,6 +141,64 @@ def main():
               os.path.isfile(os.path.join(new, "settings.ini")))
         check("updates preserve finished files",
               os.path.isfile(os.path.join(new, "output", "finished.mp4")))
+
+        # A browser or terminal may keep the install directory itself open.
+        # Replacing files inside it must still work, and user data must never
+        # move through the rollback area.
+        locked = os.path.join(tmp, "locked-install")
+        staged = os.path.join(tmp, "staged-app")
+        backup = os.path.join(tmp, "locked-backup")
+        os.makedirs(os.path.join(locked, "_internal"))
+        os.makedirs(os.path.join(locked, "projects"))
+        os.makedirs(os.path.join(locked, "output"))
+        os.makedirs(os.path.join(staged, "_internal"))
+        open(os.path.join(locked, "KaraokeStudio.exe"), "wb").write(b"old")
+        open(os.path.join(locked, "_internal", "obsolete.dll"), "wb").write(b"old")
+        open(os.path.join(locked, "projects", "song.json"), "wb").write(b"song")
+        open(os.path.join(locked, "output", "video.mp4"), "wb").write(b"video")
+        open(os.path.join(staged, "KaraokeStudio.exe"), "wb").write(b"new")
+        open(os.path.join(staged, "_internal", "current.dll"), "wb").write(b"new")
+        holder = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(10)"],
+                                  cwd=locked)
+        try:
+            updater.replace_in_place(staged, locked, backup)
+        finally:
+            holder.terminate(); holder.wait()
+        check("an open install root does not prevent an in-place update",
+              open(os.path.join(locked, "KaraokeStudio.exe"), "rb").read() == b"new")
+        check("obsolete application files are removed",
+              not os.path.exists(os.path.join(locked, "_internal", "obsolete.dll"))
+              and os.path.isfile(os.path.join(locked, "_internal", "current.dll")))
+        check("in-place updates never move projects or finished files",
+              os.path.isfile(os.path.join(locked, "projects", "song.json"))
+              and os.path.isfile(os.path.join(locked, "output", "video.mp4")))
+
+        # If copying the new application fails halfway, the old program comes
+        # back while projects/output remain where they were.
+        rollback = os.path.join(tmp, "rollback-install")
+        staged_bad = os.path.join(tmp, "staged-bad")
+        backup_bad = os.path.join(tmp, "rollback-backup")
+        os.makedirs(os.path.join(rollback, "projects")); os.makedirs(staged_bad)
+        open(os.path.join(rollback, "KaraokeStudio.exe"), "wb").write(b"old")
+        open(os.path.join(rollback, "projects", "keep.json"), "wb").write(b"keep")
+        open(os.path.join(staged_bad, "KaraokeStudio.exe"), "wb").write(b"new")
+        real_copy = updater._copy_entry
+        try:
+            def fail_new(src, dst):
+                if os.path.abspath(src).startswith(os.path.abspath(staged_bad)):
+                    raise OSError("simulated copy failure")
+                return real_copy(src, dst)
+            updater._copy_entry = fail_new
+            try:
+                updater.replace_in_place(staged_bad, rollback, backup_bad)
+            except OSError:
+                pass
+        finally:
+            updater._copy_entry = real_copy
+        check("a failed in-place update restores the old application",
+              open(os.path.join(rollback, "KaraokeStudio.exe"), "rb").read() == b"old")
+        check("rollback leaves project data untouched",
+              open(os.path.join(rollback, "projects", "keep.json"), "rb").read() == b"keep")
     return 0
 
 

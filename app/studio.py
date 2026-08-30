@@ -1980,7 +1980,8 @@ def open_window(url: str) -> None:
             if os.path.isfile(exe):
                 try:
                     subprocess.Popen([exe, f"--app={url}",
-                                      "--window-size=1280,860"])
+                                      "--window-size=1280,860"],
+                                     cwd=tempfile.gettempdir())
                     return
                 except Exception:
                     pass
