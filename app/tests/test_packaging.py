@@ -30,6 +30,13 @@ def main():
           'collect_submodules("PIL")' in spec)
     check("model weights are opt-in for release archives",
           'KARAOKE_BUNDLE_MODELS") == "1"' in spec)
+    icon_path = os.path.join(ROOT, "packaging", "KaraokeStudio.ico")
+    with open(icon_path, "rb") as f:
+        icon_header = f.read(6)
+    check("the Windows EXE has the branded multi-size icon",
+          'icon=os.path.join(APP, "packaging", "KaraokeStudio.ico")' in spec
+          and icon_header[:4] == b"\x00\x00\x01\x00"
+          and int.from_bytes(icon_header[4:6], "little") >= 6)
 
     build_path = os.path.join(ROOT, "packaging", "build-windows.ps1")
     with open(build_path, encoding="utf-8-sig") as f:

@@ -487,6 +487,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, f.read(),
                                       "application/javascript; charset=utf-8")
 
+            if path == "/icon.png":
+                with open(os.path.join(ROOT, "kstudio", "icon.png"), "rb") as f:
+                    return self._send(200, f.read(), "image/png")
+
             if path == "/api/state":
                 return self._json({"projects": P.list_all(PROJECTS),
                                    "uiLangs": extra_langs(),
@@ -575,7 +579,12 @@ class Handler(BaseHTTPRequestHandler):
             m = re.match(r"^/api/project/([^/]+)/audio/([a-z]+)$", path)
             if m:
                 folder = project_dir(m.group(1))
-                tracks = P.load(folder).get("tracks") or {}
+                data = P.load(folder)
+                try:
+                    pitch = int(q.get("pitch", [str(data.get("pitch") or 0)])[0])
+                except (TypeError, ValueError):
+                    pitch = 0
+                tracks = pitched_tracks(folder, data, pitch)
                 name = tracks.get(m.group(2))
                 if not name:
                     return self._err(404, tr("no such track", "нет такой дорожки"))
@@ -765,6 +774,33 @@ class Handler(BaseHTTPRequestHandler):
                             cover_bg=bool(body.get("coverBg")))
                 def build_project(log):
                     folder = P.create(audio, lyrics, PROJECTS, log=log, **opts)
+                    # A real video source is better than turning one thumbnail
+                    # into a motionless background.  Local MP4/WebM files can
+                    # be reduced directly; links downloaded as audio-only get
+                    # their smallest video stream in one extra lightweight
+                    # request.  Failure is only a missing luxury: the cover
+                    # remains a perfectly usable fallback.
+                    source_url = (body.get("sourceUrl") or "").strip()
+                    got_clip = None
+                    try:
+                        project_data = P.load(folder)
+                        source_video = project_data.get("source_audio") or audio
+                        try:
+                            backdrop = set_backdrop(folder, source_video)
+                        except Exception:
+                            if not source_url:
+                                raise
+                            got_clip = FE.clip(source_url, staging_dir(), log)
+                            backdrop = set_backdrop(folder, got_clip)
+                        project_data["backdrop"] = backdrop
+                        P.save(folder, project_data)
+                        log(tr("The source video will move behind the lyrics.",
+                               "Исходный видеоряд будет двигаться за текстом."))
+                    except Exception as e:
+                        log(tr(f"  no moving backdrop ({e}) — using the cover",
+                               f"  движущийся фон недоступен ({e}) — остаётся обложка"))
+                    finally:
+                        discard_staged(got_clip or "")
                     # Only after both copies and project.json are safely in the
                     # song can temporary uploads be consumed.
                     for src in (audio, lyrics, opts.get("cover") or ""):
@@ -787,8 +823,23 @@ class Handler(BaseHTTPRequestHandler):
                                     check_off=body.get("checkOff"),
                                     title=body.get("title"),
                                     artist=body.get("artist"),
-                                    cover_dark=body.get("coverDark"))
+                                    cover_dark=body.get("coverDark"),
+                                    pitch=body.get("pitch"))
                 return self._json({"ok": True, "problems": P.problems(data)})
+
+            m = re.match(r"^/api/project/([^/]+)/pitch$", path)
+            if m:
+                folder = project_dir(m.group(1))
+                data = P.load(folder)
+                try:
+                    pitch = max(-6, min(6, int(body.get("pitch") or 0)))
+                except (TypeError, ValueError):
+                    return self._err(400, tr("bad pitch", "неверная тональность"))
+                pitched_tracks(folder, data, pitch)
+                data["pitch"] = pitch
+                data["edited"] = time.time()
+                P.save(folder, data)
+                return self._json({"ok": True, "pitch": pitch})
 
             m = re.match(r"^/api/project/([^/]+)/cover$", path)
             if m:
@@ -1616,12 +1667,64 @@ def replace_track(folder: str, src: str, kind: str, shift: bool, log) -> dict:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+_PITCH_LOCK = threading.Lock()
+
+
+def pitched_tracks(folder: str, data: dict, semitones: int = 0) -> dict:
+    """Return project track names transposed without changing their length.
+
+    Only the currently selected key is cached, so trying several keys does not
+    quietly grow every project by another pair of audio files.
+    """
+    semitones = max(-6, min(6, int(semitones or 0)))
+    tracks = dict(data.get("tracks") or {})
+    if not semitones:
+        for old in os.listdir(folder):
+            if old.startswith("_pitch-"):
+                try:
+                    os.remove(os.path.join(folder, old))
+                except OSError:
+                    pass
+        return tracks
+    tag = ("p" if semitones > 0 else "m") + str(abs(semitones))
+    made = {}
+    with _PITCH_LOCK:
+        for kind, name in tracks.items():
+            src = os.path.join(folder, name)
+            dst_name = f"_pitch-{tag}-{kind}.mp3"
+            dst = os.path.join(folder, dst_name)
+            fresh = (os.path.isfile(dst) and os.path.getsize(dst) > 0
+                     and os.path.getmtime(dst) >= os.path.getmtime(src))
+            if not fresh:
+                tmp = os.path.join(folder, f"_pitch-{tag}-{kind}.tmp.mp3")
+                try:
+                    AU.pitch_shift(src, tmp, semitones)
+                    os.replace(tmp, dst)
+                finally:
+                    try:
+                        os.remove(tmp)
+                    except OSError:
+                        pass
+            made[kind] = dst_name
+        keep = set(made.values())
+        for old in os.listdir(folder):
+            if old.startswith("_pitch-") and old not in keep:
+                try:
+                    os.remove(os.path.join(folder, old))
+                except OSError:
+                    pass
+    return made
+
+
 def export(folder: str, kind: str, opts: dict, log) -> dict:
     """Export a page, karaoke audio, video, or an interchange file."""
     data = P.load(folder)
     lyr = _lyrics_from(data)
+    track_names = (pitched_tracks(folder, data, data.get("pitch") or 0)
+                   if kind in ("html", "mp3", "mp4")
+                   else dict(data.get("tracks") or {}))
     tracks = {}
-    for name, fname in (data.get("tracks") or {}).items():
+    for name, fname in track_names.items():
         path = os.path.join(folder, fname)
         mime = mimetypes.guess_type(path)[0] or "audio/mpeg"
         tracks[name] = (path, mime)
@@ -1855,21 +1958,34 @@ def set_backdrop(folder: str, src: str) -> str:
     song, small enough to travel inside a packed one.
     """
     import subprocess as sp
+    source = os.path.abspath(src)
     for old in os.listdir(folder):
-        if old.startswith("backdrop.") :
+        old_path = os.path.abspath(os.path.join(folder, old))
+        if old.startswith("backdrop.") and old_path != source:
             try:
-                os.remove(os.path.join(folder, old))
+                os.remove(old_path)
             except OSError:
                 pass
     dst = os.path.join(folder, "backdrop.mp4")
+    # FE.clip may already have named the downloaded source backdrop.mp4. Do
+    # not ask ffmpeg to overwrite the file it is reading; use a sibling and
+    # atomically put the reduced copy in place afterwards.
+    actual_dst = (os.path.join(folder, "backdrop-new.mp4")
+                  if os.path.abspath(dst) == source else dst)
     p = sp.run([AU.ffmpeg(), "-y", "-v", "error", "-i", src, "-an", "-sn",
                 "-vf", (f"fps={BACKDROP_FPS},scale={BACKDROP_W}:-2"),
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "32",
-                "-pix_fmt", "yuv420p", dst],
+                "-pix_fmt", "yuv420p", actual_dst],
                stdout=sp.PIPE, stderr=sp.PIPE)
-    if p.returncode != 0 or not os.path.isfile(dst):
+    if p.returncode != 0 or not os.path.isfile(actual_dst):
+        try:
+            os.remove(actual_dst)
+        except OSError:
+            pass
         raise ValueError(p.stderr.decode(errors="replace")[-160:]
                          or tr("not a clip", "не клип"))
+    if actual_dst != dst:
+        os.replace(actual_dst, dst)
     return "backdrop.mp4"
 
 

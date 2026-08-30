@@ -97,7 +97,10 @@ def main():
     root_items = sorted(n for n in os.listdir(HOME)
                         if not n.startswith(".") and n not in
                         ("node_modules", "__pycache__", "build", "dist"))
-    check("no more than 11 names in the root", len(root_items) <= 11,
+    # ``output`` is the intentionally separate home for finished renders; it
+    # may already exist in a working checkout even though it starts empty in a
+    # fresh clone.
+    check("no more than 12 names in the root", len(root_items) <= 12,
           f"{len(root_items)}: " + ", ".join(root_items))
     check("the history of changes is in plain sight",
           os.path.isfile(os.path.join(HOME, "CHANGELOG.md"))

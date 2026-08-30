@@ -7,6 +7,28 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.46.8
+
+**Video sources now become moving karaoke backdrops automatically.** Studio
+keeps a small, low-frame-rate copy of the source picture inside the project;
+the renderer blurs and darkens it behind the lyrics. A cover remains the safe
+fallback when a link does not allow the video stream to be fetched.
+
+**The key can be moved from −6 to +6 semitones without changing tempo or lyric
+timing.** The transport has −1, reset and +1 controls. Studio uses the
+high-quality Rubber Band pitch filter with preserved vocal formants and keeps
+only the currently selected transposed tracks, so trying keys does not fill the
+project with audio copies. Preview and MP3/MP4/HTML exports use the same key.
+
+**Mouse controls no longer capture Space, and overlapped lines trim directly.**
+After changing volume, pressing Space controls playback immediately. A selected
+timeline block rises above overlapping neighbours, exposing both trim handles
+without first moving the lines apart.
+
+**The Windows application has a real high-resolution icon.** Explorer,
+shortcuts, the taskbar, the updater and Studio's browser tab now use the new
+microphone mark instead of the generic PyInstaller icon.
+
 ## 4.46.7
 
 **Windows updates no longer rename the installation folder.** Explorer, a

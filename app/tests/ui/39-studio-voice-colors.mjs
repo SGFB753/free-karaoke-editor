@@ -112,6 +112,18 @@ doc.dispatchEvent(new w.KeyboardEvent('keydown', {key:' ', bubbles:true}));
 await sleep(30);
 ok('Space after Original starts playback', $("btnPlay").textContent !== stoppedGlyph,
    $("btnPlay").textContent);
+click('btnPlay');
+console.log('\n--- volume never captures Space ---');
+$("rVoice").focus();
+$("rVoice").value = '37';
+$("rVoice").dispatchEvent(new w.Event('input', {bubbles:true}));
+w.dispatchEvent(new w.MouseEvent('pointerup', {bubbles:true}));
+ok('a mouse-operated volume slider drops focus', doc.activeElement !== $("rVoice"));
+const stoppedAfterVolume = $("btnPlay").textContent;
+doc.dispatchEvent(new w.KeyboardEvent('keydown', {key:' ', bubbles:true}));
+await sleep(30);
+ok('Space after changing volume starts playback',
+   $("btnPlay").textContent !== stoppedAfterVolume, $("btnPlay").textContent);
 ok('the button applies the original to the sound immediately',
    !vocalGain || vocalGain.value > 0.95,
    vocalGain ? String(vocalGain.value) : 'no separate vocal in this fixture');

@@ -46,6 +46,23 @@ const pid = built.result;
 ok('and it is called what was typed for it',
    (await get('/api/project/' + encodeURIComponent(pid))).title === 'Packed Song');
 
+console.log('\n--- the key moves by semitones without new timings ---');
+const beforePitch = await get('/api/project/' + encodeURIComponent(pid));
+const trackKind = Object.keys(beforePitch.tracks || {})[0];
+const raised = await post(`/api/project/${encodeURIComponent(pid)}/pitch`, {pitch: 1});
+const raisedAudio = await fetch(API + `/api/project/${encodeURIComponent(pid)}/audio/${trackKind}?pitch=1`);
+const raisedBytes = Buffer.from(await raisedAudio.arrayBuffer());
+const afterPitch = await get('/api/project/' + encodeURIComponent(pid));
+ok('one press stores one semitone', raised.ok && afterPitch.pitch === 1,
+   JSON.stringify(raised));
+ok('the editor receives a real transposed track', raisedAudio.ok && raisedBytes.length > 1000,
+   `${raisedAudio.status} / ${raisedBytes.length}`);
+ok('changing key leaves every lyric timestamp alone',
+   JSON.stringify(afterPitch.lines) === JSON.stringify(beforePitch.lines));
+const resetPitch = await post(`/api/project/${encodeURIComponent(pid)}/pitch`, {pitch: 0});
+ok('zero returns to the original key', resetPitch.ok &&
+   (await get('/api/project/' + encodeURIComponent(pid))).pitch === 0);
+
 console.log('\n--- a frame of the clip, without rendering one ---');
 const shot = await fetch(`${API}/api/project/${encodeURIComponent(pid)}/still?at=1`);
 const png = Buffer.from(await shot.arrayBuffer());
@@ -321,6 +338,36 @@ console.log('\n--- a clip can stand behind the lyrics ---');
   const bad = await post(`/api/project/${encodeURIComponent(pid)}/backdrop`,
                          {path: '/nowhere/at/all.mp4'});
   ok('a path to nothing is refused, not swallowed', !!bad.error, JSON.stringify(bad));
+}
+
+console.log('\n--- a video source becomes the moving backdrop by itself ---');
+{
+  const fsx = await import('fs');
+  const os = await import('os');
+  const pathx = await import('path');
+  const { execFileSync } = await import('child_process');
+  const sourceVideo = pathx.join(os.tmpdir(), 'karaoke-source-video-' + process.pid + '.mp4');
+  let made = true;
+  try{
+    execFileSync(process.env.KARAOKE_FFMPEG || 'ffmpeg', ['-y', '-v', 'error',
+      '-f', 'lavfi', '-i', 'color=c=0x502030:s=320x180:r=8:d=26',
+      '-i', process.env.KARAOKE_SONG, '-shortest', '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p', '-c:a', 'aac', sourceVideo]);
+  }catch(e){ made = false; }
+  ok('the local source video is ready', made);
+  if (made){
+    const auto = await finish((await post('/api/new', {
+      audio: sourceVideo, lyrics: process.env.KARAOKE_TEXT, align: 'energy',
+      separate: false, title: 'Moving Backdrop', titleSet: true})).job);
+    ok('a project from that video builds', auto.ok, (auto.log || []).slice(-2).join(' | '));
+    if (auto.ok){
+      const rec = await get('/api/project/' + encodeURIComponent(auto.result));
+      ok('its source video was reduced into a moving backdrop automatically',
+         rec.backdrop === 'backdrop.mp4', rec.backdrop);
+      await post(`/api/project/${encodeURIComponent(auto.result)}/delete`, {});
+    }
+    try{ fsx.unlinkSync(sourceVideo); }catch(e){}
+  }
 }
 
 ok('nothing in the window went wrong', errs.length === 0, errs.slice(0, 2).join(' | '));

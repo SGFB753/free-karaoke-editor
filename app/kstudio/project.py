@@ -332,6 +332,10 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             # the clip's cover, and whether the karaoke stands on it
             "cover": "cover.jpg" if cover and os.path.isfile(cover) else None,
             "coverBg": bool(cover_bg and cover and os.path.isfile(cover)),
+            # Karaoke keys are conventionally moved one semitone at a time.
+            # The audio is transposed lazily; timing stays in the original
+            # clock because pitch shifting compensates the playback speed.
+            "pitch": 0,
             # a stretch with nothing to sing keeps the original sound on it,
             # or the karaoke has a hole where the vocalise was
             "keepMarks": True,
@@ -461,7 +465,7 @@ def unpack(zip_path: str, root: str) -> str:
 
 def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,
                no_text=None, keep_marks=None, check_off=None,
-               title=None, artist=None, cover_dark=None) -> Dict:
+               title=None, artist=None, cover_dark=None, pitch=None) -> Dict:
     data = load(folder)
     data["lines"] = lines
     if colors:
@@ -483,6 +487,11 @@ def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,
         # field must not fail the whole save the words travel in.
         try:
             data["coverDark"] = max(0, min(95, int(cover_dark)))
+        except (TypeError, ValueError):
+            pass
+    if pitch is not None:
+        try:
+            data["pitch"] = max(-6, min(6, int(pitch)))
         except (TypeError, ValueError):
             pass
     # A name given by hand. It stands in the corner of the video and on its

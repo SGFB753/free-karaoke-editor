@@ -308,6 +308,31 @@ console.log('\n--- overlapping blocks: the one underneath can be reached ---');
   const second = await selNow();
   ok('a still second click dives to the line underneath',
      second >= 0 && second !== first, `${first} → ${second}`);
+  // Selection must also bring that lower block above the pile. Otherwise its
+  // edge is still covered and trimming requires moving the lines apart first.
+  const cut = await p.evaluate(i => {
+    const side = i === 0 ? 'right' : 'left';
+    const grip = document.querySelector(`#blocks .blk[data-i="${i}"] .grip.${side}`);
+    const r = grip.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return {side, x:r.left+r.width/2, y:r.top+r.height/2,
+            hit: hit && hit.closest('.blk') && +hit.closest('.blk').dataset.i};
+  }, second);
+  ok('the selected overlapping block rises above its neighbour',
+     cut.hit === second, `${cut.hit} / wanted ${second}`);
+  const beforeCut = (await proj()).lines;
+  await p.mouse.move(cut.x, cut.y); await p.mouse.down();
+  await p.mouse.move(cut.x + (cut.side === 'left' ? 38 : -38), cut.y);
+  await p.mouse.up(); await sleep(900);
+  const afterCut = (await proj()).lines;
+  ok('its covered edge trims directly without moving it aside',
+     afterCut[second].end - afterCut[second].start <
+       beforeCut[second].end - beforeCut[second].start - 0.05,
+     `${beforeCut[second].start.toFixed(2)}–${beforeCut[second].end.toFixed(2)} → `+
+     `${afterCut[second].start.toFixed(2)}–${afterCut[second].end.toFixed(2)}`);
+  ok('the overlapping neighbour stays untouched',
+     Math.abs(afterCut[first].start-beforeCut[first].start)<0.002 &&
+       Math.abs(afterCut[first].end-beforeCut[first].end)<0.002);
 }
 
 console.log('\n--- the control bar holds its edges ---');

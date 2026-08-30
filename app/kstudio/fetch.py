@@ -586,7 +586,10 @@ def download(url: str, dest_dir: str, log: Optional[Callable] = None) -> dict:
         track = info["track"]
     return {"path": dst, "name": os.path.basename(dst),
             "title": clean_title(shown), "track": track, "artist": artist,
-            "cover": cover, "duration": info.get("duration") or 0}
+            "cover": cover, "duration": info.get("duration") or 0,
+            # Kept only until the project is built: it lets Studio fetch the
+            # smallest video stream for a moving blurred backdrop.
+            "url": url}
 
 
 def clip(url: str, dest_dir: str, log: Optional[Callable] = None) -> str:

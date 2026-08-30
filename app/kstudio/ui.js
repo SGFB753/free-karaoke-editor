@@ -71,7 +71,12 @@ const STR = {
       + "End jump to the ends. Press and drag across the lines to pick "
       + "several — or Shift+click, Ctrl+click to add one. Voice, “original”, "
       + "delete and paste then work on all of them at once.",
-    voice: "Voice", cancel: "Cancel", dropBig: "Drop the files here",
+    voice: "Voice", pitch: "Key",
+    pitchHint: "Transpose in semitones without changing tempo or lyric timing",
+    pitchDown: "One semitone down", pitchUp: "One semitone up",
+    pitchReset: "Original key", pitchBusy: "Changing the key…",
+    pitchChanged: n => n ? `Key: ${n > 0 ? "+" : ""}${n} semitones` : "Original key",
+    cancel: "Cancel", dropBig: "Drop the files here",
     dropSub: "the song and the lyrics — or one at a time",
     langUi: "Interface language",
     langMissing: code => `No translation file for “${code}” yet`,
@@ -490,7 +495,12 @@ const STR = {
       + "проведите по строкам — выделятся все, по которым провели. Иначе "
       + "Shift+щелчок или Ctrl+щелчок. Голос, «оригинал», удаление и вставка "
       + "работают сразу по всем выделенным.",
-    voice: "Голос", cancel: "Отмена", dropBig: "Отпустите файлы здесь",
+    voice: "Голос", pitch: "Тональность",
+    pitchHint: "Транспонировать по полутонам без изменения темпа и таймингов",
+    pitchDown: "На полутон ниже", pitchUp: "На полутон выше",
+    pitchReset: "Исходная тональность", pitchBusy: "Меняю тональность…",
+    pitchChanged: n => n ? `Тональность: ${n > 0 ? "+" : ""}${n} полутонов` : "Исходная тональность",
+    cancel: "Отмена", dropBig: "Отпустите файлы здесь",
     dropSub: "песня и текст — или каждый по отдельности",
     langUi: "Язык надписей",
     langMissing: code => `Для «${code}» перевода пока нет`,
@@ -1717,6 +1727,7 @@ $("btnBuild").addEventListener("click", async () => {
       // Keep the exact name shown at the source for finished MP4/MP3 files.
       // The editable title may be only the track part, or come from lyrics.
       sourceTitle: (lastSong && lastSong.title) || fileStem(audio),
+      sourceUrl: (lastSong && lastSong.url) || "",
       // Whether the name was typed or merely offered: a name of one's own
       // outranks the “title:” inside a lyrics file, an offered one does not.
       titleSet: nameTyped,
@@ -1757,30 +1768,35 @@ window.addEventListener("beforeunload", () => {
   if (!dirty) return;
   clearTimeout(saveT);
   navigator.sendBeacon(`/api/project/${encodeURIComponent(pid)}/timings`,
-    new Blob([JSON.stringify({lines, colors, theme})], {type:"application/json"}));
+    new Blob([JSON.stringify({lines, colors, theme, pitch})], {type:"application/json"}));
 });
 
 /* ================= audio ================= */
 let ctx=null, bufs=null, gains=null, srcs=null, audioNames=["mix"];
 let waStart=0, waOffset=0, playing=false, dur=0, voiceLevel=0, hasStems=false;
+let pitch=0, pitchBusy=false;
 /* ---------- sound ---------- */
 function mediaTime(){
   // While paused, waOffset is the truth: a seek moves it at once.
   return playing ? Math.min(Math.max(waOffset + (ctx.currentTime - waStart), waOffset), dur)
                  : waOffset;
 }
-async function loadAudio(pid, tracks){
+async function loadAudio(pid, tracks, semitones=0){
+  const keptVoice = voiceLevel;
+  stopSrcs();
+  if (ctx && ctx.state !== "closed") try { await ctx.close(); } catch(e){}
   ctx = new (window.AudioContext||window.webkitAudioContext)();
   hasStems = !!(tracks.instrumental && tracks.vocals);
   const names = hasStems ? ["instrumental","vocals"] : [Object.keys(tracks)[0]];
   audioNames = names;
   const raw = await Promise.all(names.map(n =>
-    fetch(`/api/project/${encodeURIComponent(pid)}/audio/${n}`).then(r => r.arrayBuffer())));
+    fetch(`/api/project/${encodeURIComponent(pid)}/audio/${n}?pitch=${semitones}`)
+      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.arrayBuffer(); })));
   bufs = await Promise.all(raw.map(b => ctx.decodeAudioData(b)));
   gains = bufs.map(() => { const g = ctx.createGain(); g.connect(ctx.destination); return g; });
   dur = bufs[0].duration;
   $("grpVoice").classList.toggle("hide", !hasStems);
-  setVoice(0);
+  setVoice(keptVoice);
 }
 function stopSrcs(){ if(!srcs) return;
   srcs.forEach(s => { try{ s.onended=null; s.stop(); }catch(e){} }); srcs=null; }
@@ -1855,6 +1871,44 @@ function setVoice(v){ voiceLevel = clamp(v,0,1);
 $("btnPlay").addEventListener("click", () => playing ? stop() : play());
 $("rVoice").addEventListener("input", e => setVoice(e.target.value/100));
 
+function refreshPitch(){
+  $("vPitch").textContent = pitch > 0 ? "+" + pitch : String(pitch);
+  $("btnPitchDown").disabled = pitchBusy || pitch <= -6;
+  $("btnPitchReset").disabled = pitchBusy || pitch === 0;
+  $("btnPitchUp").disabled = pitchBusy || pitch >= 6;
+}
+async function changePitch(next){
+  next = clamp(Math.round(next), -6, 6);
+  if (pitchBusy || next === pitch) return;
+  const old = pitch, at = mediaTime(), wasPlaying = playing;
+  if (playing) stop();
+  pitchBusy = true; refreshPitch(); toast(T.pitchBusy);
+  try{
+    // Prepare and decode the new sound before making the choice permanent. If
+    // decoding fails, project.json and the editor cannot disagree about the
+    // selected key.
+    await loadAudio(pid, data.tracks, next);
+    await api(`/api/project/${encodeURIComponent(pid)}/pitch`, {pitch: next});
+    pitch = next; data.pitch = next;
+    waOffset = clamp(at, 0, dur);
+    if (wasPlaying) play();
+    toast(T.pitchChanged(pitch));
+  }catch(e){
+    pitch = old;
+    try{
+      await loadAudio(pid, data.tracks, old);
+      waOffset = clamp(at, 0, dur);
+      if (wasPlaying) play();
+    }catch(_restoreError){}
+    toast(e.message);
+  }finally{
+    pitchBusy = false; refreshPitch();
+  }
+}
+$("btnPitchDown").addEventListener("click", () => changePitch(pitch - 1));
+$("btnPitchReset").addEventListener("click", () => changePitch(0));
+$("btnPitchUp").addEventListener("click", () => changePitch(pitch + 1));
+
 /* ================= the project and its timing ================= */
 let pid=null, data=null, lines=[], envelope=[], envHop=0.02, onsets=[];
 let sel=-1, curLine=-1, curDuo=-1, loopSel=false, saveT=0;
@@ -1862,6 +1916,8 @@ let sel=-1, curLine=-1, curDuo=-1, loopSel=false, saveT=0;
 async function openProject(id){
   pid = id;
   data = await api("/api/project/"+encodeURIComponent(id));
+  pitch = clamp(parseInt(data.pitch || 0, 10) || 0, -6, 6);
+  refreshPitch();
   lines = data.lines;
   envelope = decodeEnv(data.envelope);
   quiet = data.quiet || [];
@@ -1887,7 +1943,7 @@ async function openProject(id){
   makeBlocks();
   centerLine(0);                    // text in sight at once, not at the bottom edge
   showProblems(data.problems);
-  await loadAudio(id, data.tracks);
+  await loadAudio(id, data.tracks, pitch);
   lastData = data;
   $("zoomNote").textContent = Math.round(zoom) + T.sec;
   drawSummary(data);            // the length is known only after the audio loads
@@ -2596,7 +2652,8 @@ async function saveNow(){
        noText: ($("edNoText").value || "").trim(),
        keepMarks: true,
        checkOff, title: songName, artist: songArtist,
-       coverDark: (data && data.coverDark != null) ? data.coverDark : undefined});
+       coverDark: (data && data.coverDark != null) ? data.coverDark : undefined,
+       pitch});
     showProblems(r.problems);
     saveState("ok", T.savedOk);
   }catch(e){
@@ -3826,6 +3883,17 @@ function tick(){
 document.addEventListener("click", e => {
   const button = e.target && e.target.closest && e.target.closest("button");
   if (button) button.blur();
+});
+// Sliders and checkboxes keep focus after a mouse drag just like buttons do.
+// Timeline clicks land on a canvas/div and therefore do not take that focus
+// away; Space would remain trapped forever. Mouse-operated transport controls
+// release it on pointer-up, while controls reached with Tab retain ordinary
+// keyboard accessibility.
+window.addEventListener("pointerup", () => {
+  const control = document.activeElement;
+  if (control && control.matches &&
+      control.matches("button, input[type='range'], input[type='checkbox'], select"))
+    control.blur();
 });
 document.addEventListener("keydown", e => {
   if ($("scrEdit").classList.contains("hide")) return;

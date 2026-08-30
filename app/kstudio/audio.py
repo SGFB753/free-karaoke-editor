@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -200,6 +201,47 @@ def encode(src: str, dst_base: str, codec: str = "mp3", sample_rate: int = 44100
             f"ffmpeg не смог закодировать {src} в {codec}:\n"
             f"{p.stderr.decode(errors='replace')[-800:]}"))
     return dst, mime
+
+
+def pitch_shift(src: str, dst: str, semitones: int,
+                sample_rate: int = 44100) -> str:
+    """Transpose audio without changing its duration.
+
+    Rubber Band moves the musical key while preserving tempo and vocal
+    formants.  The bundled FFmpeg carries it; an ``asetrate``/``atempo`` chain
+    remains as a compatibility fallback for system FFmpeg builds without the
+    filter.  The editor deliberately limits the control to six semitones in
+    either direction and trims the result to the source clock, so every lyric
+    timestamp remains valid.
+    """
+    semitones = max(-6, min(6, int(semitones)))
+    if not semitones:
+        shutil.copyfile(src, dst)
+        return dst
+    factor = math.pow(2.0, semitones / 12.0)
+    length = duration(src)
+    filters = [
+        (f"rubberband=pitch={factor:.10f}:formant=preserved:pitchq=quality,"
+         f"apad,atrim=duration={length:.6f}"),
+        (f"asetrate={sample_rate}*{factor:.10f},aresample={sample_rate},"
+         f"atempo={1.0 / factor:.10f},apad,atrim=duration={length:.6f}"),
+    ]
+    ext = os.path.splitext(dst)[1].lower()
+    codec = (["-c:a", "pcm_s16le"] if ext == ".wav" else
+             ["-c:a", "libmp3lame", "-q:a", "3"])
+    p = None
+    for af in filters:
+        p = _run([ffmpeg(), "-y", "-v", "error", "-i", src, "-vn",
+                  "-af", af, "-ac", "2", "-ar", str(sample_rate), *codec, dst])
+        if p.returncode == 0:
+            break
+    if p.returncode != 0:
+        raise AudioError(tr(
+            f"ffmpeg could not transpose {src}:\n"
+            f"{p.stderr.decode(errors='replace')[-800:]}",
+            f"ffmpeg не смог изменить тональность {src}:\n"
+            f"{p.stderr.decode(errors='replace')[-800:]}"))
+    return dst
 
 
 # Levelling the voice before it is handed to the aligner. A screamed vocal is

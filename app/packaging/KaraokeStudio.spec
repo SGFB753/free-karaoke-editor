@@ -9,6 +9,7 @@ datas = [
     (os.path.join(APP, "kstudio", "studio.html"), "kstudio"),
     (os.path.join(APP, "kstudio", "player.html"), "kstudio"),
     (os.path.join(APP, "kstudio", "ui.js"), "kstudio"),
+    (os.path.join(APP, "kstudio", "icon.png"), "kstudio"),
     (os.path.join(APP, "kstudio", "messages"), os.path.join("kstudio", "messages")),
     (os.path.join(APP, "tools", "video.py"), "tools"),
     (os.path.join(ROOT, "build", "build-info.json"), "."),
@@ -78,6 +79,7 @@ exe = EXE(
     pyz, a.scripts, [], exclude_binaries=True,
     name="KaraokeStudio", debug=False, bootloader_ignore_signals=False,
     strip=False, upx=False, console=False, disable_windowed_traceback=False,
+    icon=os.path.join(APP, "packaging", "KaraokeStudio.ico"),
 )
 coll = COLLECT(
     exe, a.binaries, a.datas, strip=False, upx=False,

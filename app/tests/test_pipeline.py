@@ -476,6 +476,14 @@ def main():
     dur = AU.duration(song)
     check("the length is 26 s", abs(dur - 26.0) < 0.2, f"{dur:.2f}")
 
+    print("\nChanging key without changing tempo")
+    pitched = os.path.join(tmp, "song-up.wav")
+    AU.pitch_shift(song, pitched, 1)
+    pitch_dur = AU.duration(pitched)
+    check("one semitone keeps the original duration",
+          abs(pitch_dur - dur) < 0.08, f"{dur:.3f} → {pitch_dur:.3f}")
+    check("the transposed file contains audio", os.path.getsize(pitched) > 100_000)
+
     lyr = L.parse(TEXT)
     lyr, engine = A.align(lyr, song, dur, engine="energy")
     check("the energy engine", engine == "energy")

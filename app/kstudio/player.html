@@ -1321,6 +1321,12 @@ document.addEventListener("click", e => {
   const b = e.target && e.target.closest && e.target.closest("button");
   if (b) b.blur();
 });
+window.addEventListener("pointerup", () => {
+  const control = document.activeElement;
+  if (control && control.matches &&
+      control.matches("button, input[type='range'], input[type='checkbox'], select"))
+    control.blur();
+});
 
 /* ---------- start ---------- */
 $("mTitle").textContent = D.title || T.karaokeTitle;
