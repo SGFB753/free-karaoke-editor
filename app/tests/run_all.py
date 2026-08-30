@@ -388,6 +388,7 @@ def main() -> int:
                    KARAOKE_PAGE_STEMS=stems, KARAOKE_PAGE_EN=eng, PAGE=stems,
                    KARAOKE_PAGE_KEEPS=keeps,
                    KARAOKE_SONG=song, KARAOKE_TEXT=text,
+                   KARAOKE_PROJECTS=projects,
                    KARAOKE_LYRICS_API=lyrics_api,
                    KARAOKE_PYTHON=sys.executable)
         # Browser scenarios create small WAV/MP4 fixtures themselves. Point

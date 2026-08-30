@@ -18,9 +18,12 @@ import math
 import mimetypes
 import os
 import re
+import atexit
+import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
@@ -83,6 +86,8 @@ JOBS: dict = {}
 JOBS_LOCK = threading.Lock()
 PENDING_UPDATES: dict = {}
 DESKTOP_SESSION = False
+STAGING = tempfile.mkdtemp(prefix="KaraokeStudio-")
+atexit.register(lambda: shutil.rmtree(STAGING, ignore_errors=True))
 
 # The visible Chrome/Edge app window and this local server are separate
 # processes.  An EventSource held by the page tells us when the last window of
@@ -204,19 +209,42 @@ def project_dir(pid: str) -> str:
     return folder
 
 
-def incoming_dir() -> str:
-    """Where everything that has no folder of its own lands: files dropped into
-    the window, sound taken from a link, lyrics pasted by hand."""
-    # In Latin letters: Cyrillic folder names break on non-Russian systems.
-    inbox = os.path.join(PROJECTS, "_incoming")
-    old = os.path.join(PROJECTS, "_входящие")
-    if os.path.isdir(old) and not os.path.isdir(inbox):
+def staging_dir() -> str:
+    """Short-lived inputs before a project owns them."""
+    os.makedirs(STAGING, exist_ok=True)
+    return STAGING
+
+
+def ready_dir() -> str:
+    """Finished files people keep or send, clearly separate from project guts."""
+    folder = os.path.join(os.path.dirname(os.path.abspath(PROJECTS)), "output")
+    os.makedirs(folder, exist_ok=True)
+    return folder
+
+
+def discard_staged(path: str) -> None:
+    """Consume an uploaded input after it has safely landed in a project."""
+    if not path:
+        return
+    absolute = os.path.abspath(path)
+    parents = [os.path.abspath(STAGING), os.path.abspath(os.path.join(PROJECTS, "_incoming"))]
+    def inside(parent):
         try:
-            os.rename(old, inbox)                # an existing one moves by itself
+            return os.path.commonpath([absolute, parent]) == parent
+        except ValueError:                 # another drive on Windows
+            return False
+    if not any(inside(parent) for parent in parents):
+        return
+    try:
+        os.remove(absolute)
+    except OSError:
+        return
+    parent = os.path.dirname(absolute)
+    if parent != os.path.abspath(STAGING):
+        try:
+            os.rmdir(parent)
         except OSError:
-            inbox = old
-    os.makedirs(inbox, exist_ok=True)
-    return inbox
+            pass
 
 
 def capabilities() -> dict:
@@ -581,7 +609,7 @@ class Handler(BaseHTTPRequestHandler):
         if size > 600 * 1024 * 1024:
             return self._err(413, tr("the file is larger than 600 MB", "файл больше 600 МБ"))
 
-        inbox = incoming_dir()
+        inbox = staging_dir()
         dst = os.path.join(inbox, name)
         stem, ext = os.path.splitext(dst)
         n = 2
@@ -675,7 +703,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._err(400, FE.how_to_install())
                 jid = start_job(tr("Taking the sound from the link",
                                    "Достаю звук по ссылке"),
-                                lambda log: FE.download(url, incoming_dir(), log))
+                                lambda log: FE.download(url, staging_dir(), log))
                 return self._json({"job": jid})
 
             if path == "/api/lyrics/find":
@@ -701,7 +729,7 @@ class Handler(BaseHTTPRequestHandler):
                                              "для песни это слишком много текста"))
                 stem = re.sub(r'[<>:"|?*\\/\x00-\x1f]', "_",
                               (body.get("name") or "").strip())[:60].strip() or "lyrics"
-                dst = os.path.join(incoming_dir(), stem + ".txt")
+                dst = os.path.join(staging_dir(), stem + ".txt")
                 base, n = dst[:-4], 2
                 while os.path.exists(dst):
                     dst = f"{base}-{n}.txt"
@@ -729,13 +757,21 @@ class Handler(BaseHTTPRequestHandler):
                             # the file it landed in is called something safe
                             title=body.get("title") or "",
                             artist=body.get("artist") or "",
+                            source_title=body.get("sourceTitle") or "",
                             # typed into the field, not taken from a file name
                             title_set=bool(body.get("titleSet")),
                             # the clip's cover as the backdrop, if asked for
                             cover=body.get("cover") or None,
                             cover_bg=bool(body.get("coverBg")))
-                jid = start_job(tr("Building the song", "Собираю песню"), lambda log: os.path.basename(
-                    P.create(audio, lyrics, PROJECTS, log=log, **opts)))
+                def build_project(log):
+                    folder = P.create(audio, lyrics, PROJECTS, log=log, **opts)
+                    # Only after both copies and project.json are safely in the
+                    # song can temporary uploads be consumed.
+                    for src in (audio, lyrics, opts.get("cover") or ""):
+                        discard_staged(src)
+                    return os.path.basename(folder)
+
+                jid = start_job(tr("Building the song", "Собираю песню"), build_project)
                 return self._json({"job": jid})
 
             m = re.match(r"^/api/project/([^/]+)/timings$", path)
@@ -803,6 +839,7 @@ class Handler(BaseHTTPRequestHandler):
                 # slideshow; a single picture stays a single picture
                 data["coverSet"] = names if len(names) > 1 else None
                 P.save(folder, data)
+                discard_staged(src)
                 return self._json({"ok": True, "cover": True,
                                    "frames": len(names)})
 
@@ -848,18 +885,14 @@ class Handler(BaseHTTPRequestHandler):
                 data = P.load(folder)
                 data["backdrop"] = name
                 P.save(folder, data)
+                discard_staged(src)
                 return self._json({"ok": True, "backdrop": True})
 
             m = re.match(r"^/api/project/([^/]+)/pack$", path)
             if m:
                 folder = project_dir(m.group(1))
-                data = P.load(folder)
-                # Next to the audio it came from, where a person will find it.
-                out_dir = os.path.dirname(data.get("source_audio") or "") or PROJECTS
-                if not os.path.isdir(out_dir):
-                    out_dir = PROJECTS
                 try:
-                    return self._json({"path": P.pack(folder, out_dir)})
+                    return self._json({"path": P.pack(folder, ready_dir())})
                 except (OSError, ValueError) as e:
                     return self._err(400, str(e))
 
@@ -873,6 +906,7 @@ class Handler(BaseHTTPRequestHandler):
                     # a corrupt zip raises its own kind — the answer is the
                     # same calm sentence, not a stack trace
                     return self._err(400, str(e))
+                discard_staged(src)
                 return self._json({"id": os.path.basename(folder)})
 
             m = re.match(r"^/api/project/([^/]+)/delete$", path)
@@ -889,8 +923,12 @@ class Handler(BaseHTTPRequestHandler):
                 if not src or not os.path.isfile(src):
                     return self._err(400, tr("no such audio file",
                                              "нет такого аудиофайла"))
-                jid = start_job(tr("Swapping the track", "Меняю дорожку"),
-                                lambda log: replace_track(folder, src, kind, shift, log))
+                def swap_track(log):
+                    result = replace_track(folder, src, kind, shift, log)
+                    discard_staged(src)
+                    return result
+
+                jid = start_job(tr("Swapping the track", "Меняю дорожку"), swap_track)
                 return self._json({"job": jid})
 
             m = re.match(r"^/api/project/([^/]+)/realign-part$", path)
@@ -1156,7 +1194,11 @@ def realign(folder: str, opts: dict, log) -> dict:
     data["noText"] = ", ".join(f"{a:.1f}-{b:.1f}" for a, b in holes)
     data["keepSpans"] = P.keep_spans(data)
     data["model"] = model
-    data["source_lyrics"] = os.path.abspath(src)
+    if fresh:
+        data["source_lyrics"] = P.store_source(folder, src, "lyrics")
+        discard_staged(src)
+    else:
+        data["source_lyrics"] = os.path.abspath(src)
     # A name typed by hand outlives a re-timing: the header of a lyrics file
     # does not get to rename a song its owner has already named.
     if not data.get("titleSet"):
@@ -1584,12 +1626,10 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
         mime = mimetypes.guess_type(path)[0] or "audio/mpeg"
         tracks[name] = (path, mime)
 
-    out_dir = os.path.dirname(data.get("source_audio") or folder) or folder
-    base = P.slugify(data.get("title") or "karaoke")
+    out_dir = ready_dir()
+    base = P.export_stem(data)
 
     if kind == "html":
-        # A Latin name: the file travels to people where Cyrillic in file names
-        # turns into mojibake.
         out = os.path.join(out_dir, base + "_karaoke.html")
         log(tr("Building the standalone page…", "Собираю автономную страницу…"))
         B.build_html(out, lyr, data["duration"], tracks, data.get("engine", ""),
@@ -1662,7 +1702,7 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
             wav = video.extract_audio(payload, tmp_html, tmpdir,
                                       opts.get("audio", "minus"))
             if kind == "mp3":
-                out_base = os.path.join(out_dir, base + "_karaoke")
+                out_base = os.path.join(out_dir, base)
                 log(tr("Encoding MP3 at 320 kbit/s…",
                        "Кодирую MP3 в 320 кбит/с…"))
                 out, _mime = AU.encode(wav, out_base, "mp3",
@@ -2032,6 +2072,9 @@ def main(argv=None) -> int:
                 pass
             return 5
     want, no_browser, host = parse_args(args)
+    # Versions before 4.46.6 kept uploads in a second, hidden-looking store.
+    # Fold anything a real project uses into that project before serving it.
+    P.migrate_legacy_incoming(PROJECTS, ready_dir())
     DESKTOP_SESSION = not no_browser and host in ("127.0.0.1", "localhost", "::1")
     with WINDOW_LINK_LOCK:
         WINDOW_LINKS = 0

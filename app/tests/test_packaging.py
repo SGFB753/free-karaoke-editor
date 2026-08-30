@@ -126,16 +126,21 @@ def main():
         check("an update archive cannot escape its staging folder", not escaped)
 
         old, new = os.path.join(tmp, "old"), os.path.join(tmp, "new")
-        os.makedirs(os.path.join(old, "projects")); os.makedirs(new)
+        os.makedirs(os.path.join(old, "projects"))
+        os.makedirs(os.path.join(old, "output")); os.makedirs(new)
         with open(os.path.join(old, "projects", "song.json"), "w") as f:
             f.write("song")
         with open(os.path.join(old, "settings.ini"), "w") as f:
             f.write("settings")
+        with open(os.path.join(old, "output", "finished.mp4"), "wb") as f:
+            f.write(b"video")
         updater.preserve(old, new)
         check("updates preserve songs",
               os.path.isfile(os.path.join(new, "projects", "song.json")))
         check("updates preserve settings",
               os.path.isfile(os.path.join(new, "settings.ini")))
+        check("updates preserve finished files",
+              os.path.isfile(os.path.join(new, "output", "finished.mp4")))
     return 0
 
 

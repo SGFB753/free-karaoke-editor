@@ -207,18 +207,20 @@ Studio.bat   studio.command     open the program window
 README.md    README.ru.md       this text (English / Russian)
 CHANGELOG.md CHANGELOG.ru.md    what changed, newest first
 projects/                       your songs
+output/                         MP4, MP3, HTML and packs to share
 app/                            the program itself
 ```
 
 Nothing else sits in the root. Inside `app/`: the code, `settings.example.ini`,
 `START-HERE.txt`, the server notes, the tests, and `Make-karaoke.bat` /
 `Make-video.bat` for people who like dragging files from the file manager.
-Songs live in `projects/` and are left alone by updates — only the `app` folder
-is replaced.
+Every song folder in `projects/` is self-contained: it owns the original
+recording, lyrics, tracks, cover and `project.json`. Finished results go to
+`output/`. Updates leave both alone and replace only `app`.
 
-Song folders are named in plain Latin letters — a name in any other alphabet
-is transliterated — so they open the same way on any system. The finished HTML
-and MP4 follow the same rule.
+Song folders are named in plain Latin letters so they open the same way on any
+system. Finished files keep the readable source title, for example
+`Bumble Beezy & BaseFace - Мой рок-н-ролл.mp4`.
 
 ## A song from a link
 
@@ -310,8 +312,8 @@ The lyrics have three ways in, and all three end in the same place:
 * **a file** — the `Choose…` button, an ordinary `.txt`;
 * **a suggestion** — `Take it` next to one of the texts that were found;
 * **by hand** — `Paste the text`, type or paste it into the box, `Use this
-  text`. What you paste is written into `projects/_incoming` as a `.txt`, so
-  everything downstream works exactly as it does with a file of your own.
+  text`. It stays in a system temporary folder until the build succeeds, then
+  becomes `lyrics.txt` inside the self-contained project.
 
 Whether you may download a particular recording, and what you may do with the
 words, is yours to judge: the program runs `yt-dlp` and asks an open library,
@@ -537,7 +539,8 @@ whether the opening runs. What you choose is remembered for the next song.
 **`MP3 320`** writes the same karaoke backing used by the video as a CBR
 320 kbit/s file: the instrumental, with the original voice restored only on
 lines and wordless stretches marked for it. The separate
-`name_karaoke.mp3` sits beside the source song, which is never overwritten.
+The file keeps the source title and lands in `output/`. The
+original recording stays separately inside its project as `original.<ext>`.
 
 ## Tune one line, reuse it
 

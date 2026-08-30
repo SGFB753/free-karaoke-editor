@@ -125,7 +125,7 @@ const STR = {
       + "instrumental and voice stem come out cleaner; timing still uses the "
       + "original. "
       + "About four times longer, and 300 MB more to download the first time.",
-    askRemove: t => `Remove “${t}” from the studio?\n\nThe original song and lyrics stay where they are.`,
+    askRemove: t => `Remove “${t}” and all of its project files?\n\nFinished exports in “output” will stay.`,
     lookingAt: "Looking at what this song is…",
     badFiles: "Could not make sense of the files: ",
     allGood: "Nothing suspicious.<br>The lines sit where the singing is.",
@@ -544,7 +544,7 @@ const STR = {
       + "и минусовка выходят чище; разметка по-прежнему считается по оригиналу. "
       + "Примерно вчетверо "
       + "дольше, и при первом запуске качается ещё 300 МБ.",
-    askRemove: t => `Убрать «${t}» из студии?\n\nИсходная песня и текст останутся на месте.`,
+    askRemove: t => `Удалить «${t}» вместе со всеми файлами проекта?\n\nГотовые файлы из папки «output» останутся.`,
     lookingAt: "Смотрю, что за песня…",
     badFiles: "Не вышло разобрать файлы: ",
     allGood: "Ничего подозрительного.<br>Строки стоят там, где поётся.",
@@ -1714,6 +1714,9 @@ $("btnBuild").addEventListener("click", async () => {
       // system is not the name anybody wants to read on a video.
       title: $("inTitle").value.trim(),
       artist: $("inArtist").value.trim(),
+      // Keep the exact name shown at the source for finished MP4/MP3 files.
+      // The editable title may be only the track part, or come from lyrics.
+      sourceTitle: (lastSong && lastSong.title) || fileStem(audio),
       // Whether the name was typed or merely offered: a name of one's own
       // outranks the “title:” inside a lyrics file, an offered one does not.
       titleSet: nameTyped,
@@ -3965,8 +3968,8 @@ $("btnRealign").addEventListener("click", async () => {
   realign("");
 });
 
-// The finished file sits next to the original song and is not easy to find
-// without a hint. Show the path and open the folder with one press.
+// Finished files share one obvious folder; show the exact path and open it
+// with one press as well.
 let madeFile = "";
 function showMade(path){
   madeFile = path || "";

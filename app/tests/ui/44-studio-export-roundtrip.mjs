@@ -116,8 +116,12 @@ for (let i = 0; i < 120; i++){
   await sleep(500);
 }
 ok('the MP3 export finished', !!audioOut && !!audioOut.path, JSON.stringify(audioOut));
-ok('it has a separate karaoke name and cannot overwrite the source',
-   audioOut && /_karaoke\.mp3$/i.test(audioOut.path), audioOut && audioOut.path);
+ok('it keeps the readable source name in the finished-files folder',
+   audioOut && path.basename(audioOut.path) === 'song.mp3'
+   && path.resolve(path.dirname(audioOut.path)) ===
+      path.resolve(path.dirname(process.env.KARAOKE_PROJECTS), 'output')
+   && path.resolve(audioOut.path) !== path.resolve(saved.source_audio),
+   audioOut && audioOut.path);
 ok('the server records the requested 320 kbit/s rate',
    audioOut && audioOut.bitrate === 320, JSON.stringify(audioOut));
 ok('the MP3 file is on disk', audioOut && fs.existsSync(audioOut.path));

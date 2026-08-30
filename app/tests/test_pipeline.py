@@ -1931,6 +1931,41 @@ def main():
     check("and the artist comes with it", rec2["artist"] == "Lorna Shore", rec2["artist"])
     check("the folder is named after the real title, in Latin letters",
           os.path.basename(named).startswith("forevermore"), os.path.basename(named))
+    check("the original audio and lyrics live inside the project",
+          all(os.path.dirname(rec2[k]) == named and os.path.isfile(rec2[k])
+              for k in ("source_audio", "source_lyrics")),
+          [rec2.get("source_audio"), rec2.get("source_lyrics")])
+    exact_source = "Bumble Beezy & BaseFace - Мой рок-н-ролл"
+    check("a finished file keeps the source's readable name",
+          P.export_stem(dict(rec2, source_title=exact_source)) == exact_source,
+          P.export_stem(dict(rec2, source_title=exact_source)))
+    check("characters forbidden by Windows are replaced, not transliterated",
+          P.file_stem('Артист: песня?') == 'Артист_ песня_')
+
+    legacy_root = os.path.join(tmp, "legacy-projects")
+    legacy_in = os.path.join(legacy_root, "_incoming")
+    legacy_song = os.path.join(legacy_root, "old-song")
+    os.makedirs(legacy_in); os.makedirs(legacy_song)
+    legacy_audio = os.path.join(legacy_in, "old.wav")
+    legacy_text = os.path.join(legacy_in, "old.txt")
+    import shutil as _shutil
+    _shutil.copy2(song_for_build, legacy_audio)
+    _shutil.copy2(text_for_build, legacy_text)
+    legacy_output = os.path.join(tmp, "legacy-output")
+    open(os.path.join(legacy_in, "finished.mp4"), "wb").write(b"video")
+    P.save(legacy_song, {"title": "Old", "source_audio": legacy_audio,
+                         "source_lyrics": legacy_text, "tracks": {}})
+    check("old _incoming sources are folded into their project",
+          P.migrate_legacy_incoming(legacy_root, legacy_output) == 2)
+    legacy_rec = P.load(legacy_song)
+    check("the migrated project is self-contained",
+          all(os.path.dirname(legacy_rec[k]) == legacy_song
+              and os.path.isfile(legacy_rec[k])
+              for k in ("source_audio", "source_lyrics")), legacy_rec)
+    check("the obsolete _incoming folder is removed after a safe migration",
+          not os.path.exists(legacy_in))
+    check("finished files from the old mixed folder are rescued to output",
+          os.path.isfile(os.path.join(legacy_output, "finished.mp4")))
 
     # what the lyrics file says still wins: it is the most deliberate of the three
     titled = P.create(song_for_build, text_for_build, os.path.join(tmp, "titled"),

@@ -66,13 +66,14 @@ ok('the words are laid out inside their lines', outside.length === 0,
 ok('the tracks were not touched',
    JSON.stringify(after.tracks) === JSON.stringify(before.tracks),
    JSON.stringify(after.tracks));
-ok('the new file is remembered as the source', /per-line\.txt$/.test(after.source_lyrics || ''),
+ok('the new lyrics are copied into the self-contained project',
+   /lyrics\.txt$/.test(after.source_lyrics || '') && fs.existsSync(after.source_lyrics),
    String(after.source_lyrics));
 
 console.log('\n--- the same file, just edited ---');
 // The commonest case: the source txt is edited and the timing is rebuilt
 // without picking anything again.
-fs.writeFileSync(fine, 'title: Тестовая песня\n\n' +
+fs.writeFileSync(after.source_lyrics, 'title: Тестовая песня\n\n' +
   split.slice(0, split.length - 1).join('\n') + '\n', 'utf8');
 const jSame = await (await fetch(API+'/api/project/'+encodeURIComponent(PID)+'/realign', {
   method:'POST', headers:{'Content-Type':'application/json'},

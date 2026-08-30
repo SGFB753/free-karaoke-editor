@@ -64,6 +64,39 @@ def slugify(name: str) -> str:
     return s[:60].lower() or "song"
 
 
+def file_stem(name: str) -> str:
+    """A readable file name, with only characters forbidden by filesystems removed."""
+    s = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(name or "")).strip(" .")
+    s = re.sub(r"\s+", " ", s)[:150].strip(" .")
+    # Windows reserves these names even when an extension follows them.
+    if s.upper() in {"CON", "PRN", "AUX", "NUL",
+                      *(f"COM{i}" for i in range(1, 10)),
+                      *(f"LPT{i}" for i in range(1, 10))}:
+        s = "_" + s
+    return s or "Karaoke"
+
+
+def export_stem(data: Dict) -> str:
+    """The name people knew the source by, rather than a transliterated folder id."""
+    source = (data.get("source_title") or "").strip()
+    if source:
+        return file_stem(source)
+    title = (data.get("title") or "").strip()
+    artist = (data.get("artist") or "").strip()
+    if artist and title and artist.lower() not in title.lower():
+        return file_stem(f"{artist} - {title}")
+    return file_stem(title or "Karaoke")
+
+
+def store_source(folder: str, src: str, stem: str) -> str:
+    """Copy a source into its project and return the absolute local path."""
+    ext = os.path.splitext(src)[1].lower()
+    dst = os.path.join(folder, file_stem(stem) + ext)
+    if os.path.abspath(src) != os.path.abspath(dst):
+        shutil.copy2(src, dst)
+    return os.path.abspath(dst)
+
+
 def projects_root(base: Optional[str] = None) -> str:
     # KARAOKE_PROJECTS keeps songs outside the program folder: the tests need
     # that so they never touch real projects, and it is handy when songs live on
@@ -80,6 +113,78 @@ def projects_root(base: Optional[str] = None) -> str:
             root = old_ru
     os.makedirs(root, exist_ok=True)
     return root
+
+
+def migrate_legacy_incoming(root: str, output_dir: Optional[str] = None) -> int:
+    """Move sources used by old projects out of `_incoming` into each song.
+
+    Loose files in that folder were never visible as projects and cannot be
+    resumed after a restart. The folder is removed only if every project
+    record was readable and every referenced source was copied successfully.
+    """
+    inbox = os.path.abspath(os.path.join(root, "_incoming"))
+    if not os.path.isdir(inbox):
+        return 0
+    moved, safe_to_remove, migrated_sources = 0, True, set()
+    for name in os.listdir(root):
+        folder = os.path.join(root, name)
+        if folder == inbox or not os.path.isfile(os.path.join(folder, PROJECT_FILE)):
+            continue
+        try:
+            data = load(folder)
+        except Exception:
+            safe_to_remove = False
+            continue
+        changed = False
+        for key, stem in (("source_audio", "original"), ("source_lyrics", "lyrics")):
+            src = os.path.abspath(data.get(key) or "")
+            try:
+                managed = os.path.commonpath([src, inbox]) == inbox
+            except ValueError:
+                managed = False
+            if not managed or not os.path.isfile(src):
+                continue
+            try:
+                data[key] = store_source(folder, src, stem)
+                changed = True
+                moved += 1
+                migrated_sources.add(src)
+            except OSError:
+                safe_to_remove = False
+        if changed:
+            try:
+                save(folder, data)
+            except OSError:
+                safe_to_remove = False
+    if safe_to_remove:
+        for src in migrated_sources:
+            try:
+                os.remove(src)
+            except OSError:
+                pass
+    if safe_to_remove and output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+        # Old Studio rendered beside its inputs, so completed work is mixed
+        # into this cache. Rescue deliverables before thumbnails, downloads
+        # and abandoned pasted drafts are removed with the obsolete folder.
+        deliverables = (".mp4", ".mp3", ".html", ".ass", ".karaoke.zip")
+        for name in os.listdir(inbox):
+            src = os.path.join(inbox, name)
+            if not os.path.isfile(src) or not name.lower().endswith(deliverables):
+                continue
+            dst = os.path.join(output_dir, name)
+            stem, ext = os.path.splitext(dst)
+            n = 2
+            while os.path.exists(dst):
+                dst = f"{stem}-{n}{ext}"
+                n += 1
+            try:
+                shutil.move(src, dst)
+            except OSError:
+                safe_to_remove = False
+    if safe_to_remove:
+        shutil.rmtree(inbox, ignore_errors=True)
+    return moved
 
 
 # --------------------------------------------------------------------------- #
@@ -108,6 +213,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
            device: Optional[str] = None, codec: str = "mp3",
            skip=None, separator: str = "htdemucs",
            title: Optional[str] = None, artist: Optional[str] = None,
+           source_title: Optional[str] = None,
            cover: Optional[str] = None, cover_bg: bool = False,
            title_set: bool = False,
            log: Log = _noop) -> str:
@@ -196,6 +302,13 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             tracks["mix"] = os.path.basename(
                 AU.encode(work, os.path.join(folder, "mix"), codec)[0])
 
+        # A project must not depend on a download cache or on a file beside it.
+        # The original recording is kept even when stems were made: re-timing
+        # needs the complete voice, and packing/deleting the folder then has an
+        # honest, obvious meaning.
+        local_audio = store_source(folder, audio_path, "original")
+        local_lyrics = store_source(folder, lyrics_path, "lyrics")
+
         data = {
             "version": __version__,
             "title": title,
@@ -207,8 +320,10 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             "engine": engine,
             # which model timed it: a re-time must not quietly drop to another
             "model": whisper_model,
-            "source_audio": os.path.abspath(audio_path),
-            "source_lyrics": os.path.abspath(lyrics_path),
+            "source_audio": local_audio,
+            "source_lyrics": local_lyrics,
+            "source_title": (source_title or "").strip()
+                            or os.path.splitext(os.path.basename(audio_path))[0],
             "created": time.time(),
             "tracks": tracks,
             # what was said to hold no words: the editor shows it again, and a
@@ -229,6 +344,11 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
         save(folder, data)
         log(tr("The song is ready.", "Проект готов."))
         return folder
+    except Exception:
+        # A failed Demucs/Whisper run is not a project. Leaving its encoded
+        # fragments behind made the projects directory grow invisibly.
+        shutil.rmtree(folder, ignore_errors=True)
+        raise
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -270,7 +390,7 @@ def pack(folder: str, out_dir: str) -> str:
     """
     import zipfile
     data = load(folder)
-    name = slugify(data.get("title") or os.path.basename(folder))
+    name = export_stem(data)
     out = os.path.join(out_dir, name + ".karaoke.zip")
     stem, n = out[:-len(".zip")], 2
     while os.path.exists(out):
@@ -283,7 +403,7 @@ def pack(folder: str, out_dir: str) -> str:
             # one press, and weighs more than everything else together. The
             # backdrop is the exception — it is an .mp4 the song was given,
             # not one it produced, and nothing could make it again.
-            made_here = (entry.lower().endswith((".mp4", ".html"))
+            made_here = (entry.lower().endswith((".mp4", ".html", ".karaoke.zip"))
                          and not entry.startswith("backdrop."))
             if os.path.isfile(path) and not entry.startswith("_") \
                     and not made_here:
@@ -321,6 +441,21 @@ def unpack(zip_path: str, root: str) -> str:
                 continue
             with z.open(entry) as src, open(os.path.join(folder, entry), "wb") as dst:
                 shutil.copyfileobj(src, dst)
+        # New projects carry their original inputs. Absolute paths from the
+        # computer that packed the song must point at the copies just unpacked.
+        try:
+            data = load(folder)
+            changed = False
+            for key in ("source_audio", "source_lyrics"):
+                old = data.get(key) or ""
+                local = os.path.join(folder, os.path.basename(old))
+                if old and os.path.isfile(local):
+                    data[key] = os.path.abspath(local)
+                    changed = True
+            if changed:
+                save(folder, data)
+        except (OSError, ValueError, TypeError):
+            pass
     return folder
 
 

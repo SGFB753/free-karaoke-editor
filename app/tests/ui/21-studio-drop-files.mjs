@@ -1,6 +1,7 @@
 // Dropping files into the studio window.
 const { JSDOM } = await import('jsdom');
 import fs from 'fs';
+import path from 'path';
 const API = process.env.KARAOKE_API;
 const html = await (await fetch(API + "/")).text();
 const js   = await (await fetch(API + "/ui.js")).text();
@@ -68,6 +69,11 @@ ok('we moved to the add-a-song screen', !$('scrNew').classList.contains('hide'))
 ok('the path to the song was filled in', /Dropped(-\d+)?\.wav/.test($('inAudio').value), $('inAudio').value);
 ok('the path to the lyrics was filled in', /Dropped(-\d+)?\.txt/.test($('inLyrics').value), $('inLyrics').value);
 
+const droppedAudio = $('inAudio').value, droppedLyrics = $('inLyrics').value;
+const projectsRoot = path.resolve(process.env.KARAOKE_PROJECTS);
+ok('temporary uploads are not put in projects/_incoming',
+   !path.resolve(droppedAudio).startsWith(projectsRoot + path.sep), droppedAudio);
+
 const st = await (await fetch(API+"/api/state")).json();
 ok('the files really landed on disk', true, 'projects: '+st.projects.length);
 
@@ -78,6 +84,26 @@ console.log('\n--- a dropped pack opens itself ---');
 const postJson = async (path, body) => (await (await fetch(API + path,
   {method:'POST', headers:{'Content-Type':'application/json'},
    body: JSON.stringify(body)})).json());
+const droppedJob = (await postJson('/api/new', {audio: droppedAudio,
+  lyrics: droppedLyrics, align: 'energy', separate: false,
+  title: 'Dropped Self-contained', titleSet: true,
+  sourceTitle: 'Bumble Beezy & BaseFace - Мой рок-н-ролл'})).job;
+let droppedId = null;
+for (let i = 0; i < 240 && !droppedId; i++){
+  const j = await (await fetch(API + '/api/job?id=' + droppedJob)).json();
+  if (j.done) droppedId = j.result;
+  else await sleep(500);
+}
+const droppedFolder = path.join(projectsRoot, droppedId || 'missing');
+const droppedRecord = droppedId
+  ? JSON.parse(fs.readFileSync(path.join(droppedFolder, 'project.json'), 'utf8')) : {};
+ok('a built project owns its original audio and lyrics',
+   [droppedRecord.source_audio, droppedRecord.source_lyrics].every(p =>
+     p && path.dirname(path.resolve(p)) === path.resolve(droppedFolder) && fs.existsSync(p)),
+   JSON.stringify([droppedRecord.source_audio, droppedRecord.source_lyrics]));
+ok('the consumed temporary uploads are gone',
+   !fs.existsSync(droppedAudio) && !fs.existsSync(droppedLyrics));
+
 const builtJob = (await postJson('/api/new', {audio: process.env.KARAOKE_SONG,
   lyrics: process.env.KARAOKE_TEXT, align: 'energy', separate: false,
   title: 'Dropped Pack', titleSet: true})).job;
@@ -90,6 +116,9 @@ for (let i = 0; i < 240 && !packSrc; i++){
 ok('a song to pack is built', !!packSrc, String(packSrc));
 const packed = await postJson(`/api/project/${encodeURIComponent(packSrc)}/pack`, {});
 ok('and packed into one file', !!packed.path, JSON.stringify(packed));
+ok('finished files have a clearly named common folder',
+   path.resolve(path.dirname(packed.path || '')) ===
+     path.resolve(path.dirname(projectsRoot), 'output'), packed.path);
 const wasCount = (await (await fetch(API + '/api/state')).json()).projects.length;
 const packFile = new w.File([fs.readFileSync(packed.path)],
   "dropped.karaoke.zip", {type: "application/zip"});
@@ -104,7 +133,7 @@ for (let i = 0; i < 60 && !twin; i++){
 }
 ok('the dropped pack came back as a song in the list', !!twin,
    twin && twin.id);
-for (const id of [twin && twin.id, packSrc])
+for (const id of [twin && twin.id, packSrc, droppedId])
   if (id) await postJson(`/api/project/${encodeURIComponent(id)}/delete`, {});
 try{ fs.unlinkSync(packed.path); }catch(e){}
 

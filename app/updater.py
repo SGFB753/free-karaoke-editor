@@ -75,7 +75,7 @@ def wait_for(pid: int, seconds: int = 90) -> None:
 
 
 def preserve(old: str, new: str) -> None:
-    for name in ("projects", "settings.ini"):
+    for name in ("projects", "output", "settings.ini"):
         src, dst = os.path.join(old, name), os.path.join(new, name)
         if not os.path.exists(src):
             continue
