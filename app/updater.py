@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import os
 import shutil
 import subprocess
@@ -28,6 +29,42 @@ def safe_extract(archive: str, target: str) -> str:
 
 
 def wait_for(pid: int, seconds: int = 90) -> None:
+    if os.name == "nt":
+        # os.kill(pid, 0) is the usual POSIX liveness probe, but on Windows it
+        # goes through TerminateProcess.  In the frozen updater it can fail with
+        # “returned a result with an exception set” just after Studio exits.
+        # A process handle is both safer and more exact: Windows signals it when
+        # the old executable has released every DLL in the install directory.
+        from ctypes import wintypes
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL,
+                                         wintypes.DWORD)
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+        kernel32.WaitForSingleObject.restype = wintypes.DWORD
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel32.CloseHandle.restype = wintypes.BOOL
+
+        synchronize = 0x00100000
+        wait_object_0, wait_timeout, wait_failed = 0, 0x102, 0xFFFFFFFF
+        handle = kernel32.OpenProcess(synchronize, False, pid)
+        if not handle:
+            error = ctypes.get_last_error()
+            if error == 87:              # ERROR_INVALID_PARAMETER: already gone
+                return
+            raise ctypes.WinError(error)
+        try:
+            result = kernel32.WaitForSingleObject(handle, max(0, int(seconds * 1000)))
+            if result == wait_object_0:
+                return
+            if result == wait_timeout:
+                raise RuntimeError("Karaoke Studio did not close")
+            if result == wait_failed:
+                raise ctypes.WinError(ctypes.get_last_error())
+            raise RuntimeError(f"could not wait for Karaoke Studio ({result})")
+        finally:
+            kernel32.CloseHandle(handle)
+
     for _ in range(seconds * 5):
         try:
             os.kill(pid, 0)
@@ -88,12 +125,16 @@ def main() -> int:
     p.add_argument("--install", required=True)
     p.add_argument("--exe", default="KaraokeStudio.exe")
     a = p.parse_args()
+    error_path = os.path.join(tempfile.gettempdir(), "karaoke-update-error.txt")
+    try:
+        os.remove(error_path)
+    except (FileNotFoundError, OSError):
+        pass
     try:
         apply(a.archive, a.install, a.exe, a.pid)
         return 0
     except Exception as e:
-        path = os.path.join(tempfile.gettempdir(), "karaoke-update-error.txt")
-        with open(path, "w", encoding="utf-8") as f:
+        with open(error_path, "w", encoding="utf-8") as f:
             f.write(str(e))
         return 1
 

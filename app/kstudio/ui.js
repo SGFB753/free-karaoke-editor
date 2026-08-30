@@ -1832,9 +1832,8 @@ function inKeep(t){
   if (best >= 1) return 1;
   // A marked stretch has no words to sing, so the original voice stays there —
   // and the editor must sound like the finished page, not unlike it.
-  if ($("chkKeepMarks") && $("chkKeepMarks").checked)
-    for (let i = 0; i < marks.length; i++)
-      if (marks[i][0] - 0.12 <= t && t < marks[i][1] + 0.12) return 1;
+  for (let i = 0; i < marks.length; i++)
+    if (marks[i][0] - 0.12 <= t && t < marks[i][1] + 0.12) return 1;
   return best;
 }
 function applyVoice(){
@@ -2592,7 +2591,7 @@ async function saveNow(){
     const r = await api(`/api/project/${encodeURIComponent(pid)}/timings`,
       {lines, colors, theme,
        noText: ($("edNoText").value || "").trim(),
-       keepMarks: $("chkKeepMarks") ? $("chkKeepMarks").checked : true,
+       keepMarks: true,
        checkOff, title: songName, artist: songArtist,
        coverDark: (data && data.coverDark != null) ? data.coverDark : undefined});
     showProblems(r.problems);
@@ -3923,14 +3922,11 @@ function fillNoText(d){
   checkOff = (d && d.checkOff) ? d.checkOff.slice() : [];
   const el = $("edNoText");
   if (el) el.value = (d && d.noText) || "";
-  if ($("chkKeepMarks"))
-    $("chkKeepMarks").checked = !d || d.keepMarks !== false;
   marksFromField();
   if (marking) setMarking(false);
 }
 // Typed by hand, dragged with the mouse — one and the same thing underneath.
 $("edNoText").addEventListener("change", () => { marksFromField(); touched(); drawWave(); });
-$("chkKeepMarks").addEventListener("change", touched);
 function langOf(){
   // Re-timing has no picker of its own, and the language of a song belongs to
   // the song, not to the window: read it off the text again.

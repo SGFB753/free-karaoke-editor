@@ -283,6 +283,16 @@ yt-dlp-args = --cookies-from-browser chrome
 That line goes into `app/settings.ini`; `KARAOKE_YTDLP_ARGS` does the same from
 the environment. Everything in it is passed to `yt-dlp` as it is.
 
+HTTP 429, “Too Many Requests” and the YouTube bot check mean that the public IP
+has been temporarily limited, not that another player client should be tried.
+The Studio stops after the first such refusal instead of extending the block.
+Open YouTube through the same connection and complete its browser check, then
+use the cookies line above; otherwise wait, change connection, or pass a proxy:
+
+```ini
+yt-dlp-args = --proxy http://127.0.0.1:8080
+```
+
 The song keeps the name it had where it came from — the file it landed in is
 called something that survives every file system (`Forevermore_[kBjKqBvbbjM]`),
 and that is not what you see in the studio. A `title:` line in the lyrics file

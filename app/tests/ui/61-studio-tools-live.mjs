@@ -95,6 +95,18 @@ await p.evaluate(id => {
 await p.waitForSelector('#scrEdit:not(.hide)', {timeout:20000});
 await sleep(900);
 
+const originalLayout = await p.$eval('#btnKeep', e => {
+  const button = e.getBoundingClientRect();
+  const bar = e.parentElement.getBoundingClientRect();
+  return {rightGap: Math.round(bar.right - button.right),
+          last: e === e.parentElement.lastElementChild,
+          redundant: !!document.querySelector('#chkKeepMarks')};
+});
+ok('Original is the rightmost toolbar control',
+   originalLayout.last && originalLayout.rightGap < 30,
+   JSON.stringify(originalLayout));
+ok('there is no redundant keep-original checkbox', !originalLayout.redundant);
+
 // Start from no marks at all, whatever the song came with.
 await p.$eval('#edNoText', e => { e.value = ''; e.dispatchEvent(new Event('change', {bubbles:true})); });
 await sleep(200);

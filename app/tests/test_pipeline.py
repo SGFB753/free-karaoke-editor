@@ -1883,8 +1883,9 @@ def main():
     check("a marked stretch keeps the original voice",
           PP.keep_spans(marked_song) == [[10.0, 40.0], [180.0, 200.0]],
           PP.keep_spans(marked_song))
-    check("unless the person means to sing it themselves",
-          PP.keep_spans(dict(marked_song, keepMarks=False)) == [])
+    check("an old disabled switch no longer mutes a marked vocalise",
+          PP.keep_spans(dict(marked_song, keepMarks=False)) ==
+          [[10.0, 40.0], [180.0, 200.0]])
     check("with no marks there is nothing to keep",
           PP.keep_spans({"duration": 300.0}) == [])
     check("and a mark past the end of the song is clipped to it",
@@ -2345,6 +2346,10 @@ def main():
           can_extract is False)
     args = FE._base_args(["yt-dlp"], bin_dir)
     check("so the video comes down whole instead of failing", "-x" not in args)
+    check("requests to a site are paced instead of sent as a burst",
+          args[args.index("--sleep-requests") + 1] == "0.75")
+    check("HTTP retries wait progressively",
+          args[args.index("--retry-sleep") + 1] == "http:exp=1:20")
     check("and the folder handed over is the one with the right names",
           args[args.index("--ffmpeg-location") + 1] == where)
 
@@ -2396,6 +2401,23 @@ def main():
           os.path.isfile(again["path"]) and len(tried) == 2, len(tried))
     check("and the one that got through is the android player",
           "player_client=android" in tried[-1], tried[-1][-40:])
+    os.remove(attempts)
+
+    # An IP soft-block is not a client incompatibility. Four immediate attempts
+    # only make it worse; stop after one and explain the useful exits.
+    os.environ["KARAOKE_STUB_LOG"] = attempts
+    try:
+        FE.download("https://example.com/watch?v=limit", inbox)
+        check("an IP limit is reported instead of retried", False)
+    except FE.FetchError as e:
+        limited = str(e)
+        check("an IP limit is reported instead of retried",
+              "429" in limited and ("IP" in limited or "ип" in limited.lower()), limited)
+        check("the answer names cookies and another connection",
+              "cookies-from-browser" in limited and
+              ("connection" in limited or "подключ" in limited.lower()), limited)
+    check("an IP limit sends only one downloader request",
+          len(open(attempts, encoding="utf-8").read().splitlines()) == 1)
     os.remove(attempts)
 
     try:

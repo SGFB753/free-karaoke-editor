@@ -49,14 +49,20 @@ NOISE = re.compile(
 
 # YouTube answers a client it does not like with a refusal that says nothing
 # about the video: “The page needs to be reloaded”, a format list with nothing
-# in it, a bot check. Another client walks straight in, so it is worth asking
-# again as a different one instead of handing that to a person as the answer.
+# in it. Another client may walk straight in, so it is worth asking again as a
+# different one instead of handing that to a person as the answer.
 CLIENTS = ("", "android", "ios", "tv")
 
 TRY_AGAIN = re.compile(
-    r"page needs to be reloaded|sign in to confirm|not a bot|"
+    r"page needs to be reloaded|"
     r"format is not available|unable to extract|player response|"
     r"precondition check failed|sabr|failed to extract any player response", re.I)
+
+# An IP soft-block is not a broken player client. Cycling through every client
+# immediately only sends more requests from the address YouTube has limited.
+RATE_LIMIT = re.compile(
+    r"HTTP Error\s+(?:402|429)|Too Many Requests|sign in to confirm|not a bot|"
+    r"unusual traffic|IP(?: address)? (?:has been |is )?blocked", re.I)
 
 # What is left to try when every client was refused: almost always the
 # downloader itself is older than the site it is talking to.
@@ -404,6 +410,8 @@ def _base_args(cmd: list, tmp: str) -> list:
         "--newline",              # progress in whole lines, not rewritten ones
         "--no-colors",
         "--retries", "3",
+        "--sleep-requests", "0.75",
+        "--retry-sleep", "http:exp=1:20",
         "--socket-timeout", "30",
         "--max-filesize", f"{MAX_MB}m",
         "--write-info-json",      # the name and the artist, for looking the lyrics up
@@ -509,7 +517,22 @@ def download(url: str, dest_dir: str, log: Optional[Callable] = None) -> dict:
             if code == 0:
                 break
             reason = _reason(lines, code)
-            again = bool(TRY_AGAIN.search("\n".join(lines[-8:])))
+            tail = "\n".join(lines[-12:])
+            if RATE_LIMIT.search(tail):
+                raise FetchError(reason + tr(
+                    " — YouTube has temporarily limited this IP. Repeating the "
+                    "download now only extends the block. Open YouTube in a "
+                    "browser on the same connection and complete its check, then "
+                    "pass that browser's cookies with “yt-dlp-args = "
+                    "--cookies-from-browser chrome” in settings.ini. Otherwise "
+                    "wait and try later, or use another connection/proxy.",
+                    " — YouTube временно ограничил этот IP. Повторять загрузку "
+                    "сейчас не стоит: блокировка лишь продлится. Откройте YouTube "
+                    "в браузере через то же подключение, пройдите его проверку и "
+                    "передайте куки строкой «yt-dlp-args = "
+                    "--cookies-from-browser chrome» в settings.ini. Либо "
+                    "подождите и попробуйте позже, либо смените подключение/прокси."))
+            again = bool(TRY_AGAIN.search(tail))
             if again and i + 1 < len(CLIENTS):
                 say(tr(f"The site turned this client away ({reason}) — "
                        f"asking again as “{CLIENTS[i + 1]}”…",

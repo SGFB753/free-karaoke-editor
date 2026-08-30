@@ -10,6 +10,7 @@ A link with “fail” in it does the same thing, so that both endings can be
 walked through against one running studio. A link with “reload” in it plays
 the refusal YouTube gives a client it does not like: it fails for everyone
 except the android player, exactly as the real site does.
+A link with “limit” returns YouTube's IP-level HTTP 429 refusal.
 """
 
 import json
@@ -36,6 +37,12 @@ def main() -> int:
     if "reload" in url and "player_client=android" not in " ".join(args):
         print("[youtube] zzz123: Downloading webpage")
         print("ERROR: [youtube] zzz123: The page needs to be reloaded.",
+              file=sys.stderr)
+        return 1
+
+    if "limit" in url:
+        print("[youtube] zzz123: Downloading webpage")
+        print("ERROR: [youtube] zzz123: HTTP Error 429: Too Many Requests",
               file=sys.stderr)
         return 1
 

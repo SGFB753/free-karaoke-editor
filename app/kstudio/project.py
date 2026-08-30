@@ -252,11 +252,10 @@ def keep_spans(data: Dict) -> List[List[float]]:
 
     A stretch with no words in it is a stretch with nothing to sing: mute the
     voice there and the karaoke has a hole where a vocalise or a scream was.
-    So the marks that keep the timing off a stretch also keep the original
-    sound on it — unless a person says otherwise, meaning to sing it themselves.
+    The marks that keep the timing off a stretch also keep the original sound
+    on it. There is no separate switch: silence in a place explicitly marked as
+    holding no words is never a useful karaoke backing.
     """
-    if not data.get("keepMarks", True):
-        return []
     from . import align as A
     return [[round(a, 3), round(b, 3)]
             for a, b in A.spans(data.get("noText") or "", data.get("duration") or 0)]

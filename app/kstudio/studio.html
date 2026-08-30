@@ -395,6 +395,7 @@
   .tlhead{display:flex; align-items:center; gap:10px; padding:0 14px 7px;
     font-size:0.8125rem; color:var(--muted); flex-wrap:wrap}
   .tlhead button{padding:5px 10px; font-size:0.75rem}
+  .tlhead #btnKeep{margin-left:auto}
   .chk{display:inline-flex; align-items:center; gap:6px; cursor:pointer}
   .howto{padding:0 14px 9px; font-size:0.8438rem; color:var(--muted); line-height:1.6}
   .howto b{color:var(--text)}
@@ -727,8 +728,6 @@
               title="Re-lay the words of the selected lines by syllables — the edges stay">≡ Even words</button>
       <button id="btnLock" data-tt="lockHint" data-t="lockLine"
               title="Leave this line alone when the timing is redone">🔒 Lock</button>
-      <button id="btnKeep" data-tt="keepHint" data-t="keep"
-              title="Keep the original voice on this line: backing vocals, speech, a bit that matters to the story. You are not meant to sing it">♪ Original</button>
       <span class="pick" data-tt="colorsHint"
             title="What the singing is lit with: first colour is the main voice, second is the second voice">
         <b data-t="voices">voices</b>
@@ -762,10 +761,10 @@
               title="Cut the line spans back out of the marked stretches">↹ Trim by the marks</button>
       <button id="btnMark" data-tt="markHint" data-t="markMode"
               title="Mark on the waveform the stretches that hold no words">✂ No words here</button>
-      <label class="chk" data-tt="keepMarksHint"><input type="checkbox" id="chkKeepMarks" checked>
-        <span data-t="keepMarks">original on the marks</span></label>
       <input id="edNoText" class="notext" data-tp="noTextPh" data-tt="noTextLabel"
              placeholder="0:00-0:42, 3:10-3:50 — an intro, a vocalise, a solo">
+      <button id="btnKeep" data-tt="keepHint" data-t="keep"
+              title="Keep the original voice on this line: backing vocals, speech, a bit that matters to the story. You are not meant to sing it">♪ Original</button>
     </div>
     <div class="howto"><span data-t="howtoShort"></span>
       <i class="q" data-tt="howtoMore">?</i></div>

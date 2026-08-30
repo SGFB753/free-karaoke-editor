@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import json
+import subprocess
 import sys
 import tempfile
 import zipfile
@@ -46,6 +47,20 @@ def main():
     check("a source checkout cannot overwrite itself", not update.supported())
     check("versions compare numerically",
           update._version_tuple("v4.10.0") > update._version_tuple("4.9.9"))
+
+    # The external updater must wait until the old executable releases its DLLs.
+    # os.kill(pid, 0), while useful on POSIX, is not a harmless liveness probe on
+    # Windows and used to crash the frozen updater at this exact point.
+    sleeper = subprocess.Popen([sys.executable, "-c",
+                                "import time; time.sleep(0.2)"])
+    try:
+        updater.wait_for(sleeper.pid, seconds=3)
+        check("the updater waits safely for the old Windows process",
+              sleeper.poll() is not None)
+    finally:
+        if sleeper.poll() is None:
+            sleeper.kill()
+        sleeper.wait()
 
     class RedirectResponse:
         def __enter__(self):
