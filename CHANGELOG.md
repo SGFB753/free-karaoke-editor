@@ -7,6 +7,13 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.46.4
+
+**Space starts playback immediately after a Studio toolbar click.** Clicking
+“Original” or another toolbar button no longer leaves keyboard focus on that
+button, so the next Space plays or pauses the track instead of changing the
+button's value again.
+
 ## 4.46.3
 
 **Checking for updates no longer fails with HTTP 403 when GitHub's anonymous
