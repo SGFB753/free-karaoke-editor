@@ -7,6 +7,26 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.46.5
+
+**The Windows updater can replace the running application.** It now waits for
+the old process through the Windows process API instead of the POSIX-style
+`os.kill(pid, 0)` probe that crashed the packaged updater. Because that broken
+updater is already inside 4.46.4, moving from 4.46.4 to this release requires
+one manual ZIP install; updates after that work in place. Songs and settings are
+still preserved.
+
+**YouTube limits are not made worse by a burst of retries.** Extraction
+requests are paced, HTTP retries back off, and an HTTP 429, CAPTCHA or explicit
+bot/IP refusal stops after the first downloader attempt. The error explains the
+useful choices: complete YouTube's browser check and pass cookies, wait, or use
+another connection/proxy.
+
+**“Original” is back at the right edge of the Studio toolbar.** The redundant
+“original on the marks” checkbox is gone: a stretch explicitly marked as
+holding no words always keeps its original sound, including in older projects
+where that switch had once been disabled.
+
 ## 4.46.4
 
 **Space starts playback immediately after a Studio toolbar click.** Clicking
