@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import os
+import ctypes
 import json
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -157,6 +160,13 @@ def main():
             else:
                 sys._MEIPASS = old_meipass
 
+        broken_root = os.path.join(tmp, "half-rolled-back")
+        previous_updater = os.path.join(broken_root + ".previous", "updater")
+        os.makedirs(previous_updater)
+        open(os.path.join(previous_updater, "KaraokeUpdater.exe"), "wb").write(b"updater")
+        check("a half-rollback can recover its updater from the complete snapshot",
+              update._updater_source(broken_root) == previous_updater)
+
         good = os.path.join(tmp, "good.zip")
         with zipfile.ZipFile(good, "w") as z:
             z.writestr("KaraokeStudio/KaraokeStudio.exe", b"exe")
@@ -223,6 +233,89 @@ def main():
         check("in-place updates never move projects or finished files",
               os.path.isfile(os.path.join(locked, "projects", "song.json"))
               and os.path.isfile(os.path.join(locked, "output", "video.mp4")))
+
+        # Defender and Explorer can retain an image/DLL for a fraction of a
+        # second after the process exits.  One temporary denial must not turn
+        # a sound update into a broken rollback.
+        retry_install = os.path.join(tmp, "retry-install")
+        retry_stage = os.path.join(tmp, "retry-stage")
+        retry_backup = os.path.join(tmp, "retry-backup")
+        os.makedirs(retry_install); os.makedirs(retry_stage)
+        retry_exe = os.path.join(retry_install, "KaraokeStudio.exe")
+        open(retry_exe, "wb").write(b"old")
+        open(os.path.join(retry_stage, "KaraokeStudio.exe"), "wb").write(b"new")
+        real_remove = updater._remove
+        denied = [False]
+        try:
+            def deny_once(path):
+                if path == retry_exe and not denied[0]:
+                    denied[0] = True
+                    raise PermissionError(13, "temporarily locked", path)
+                return real_remove(path)
+            updater._remove = deny_once
+            updater.replace_in_place(retry_stage, retry_install, retry_backup)
+        finally:
+            updater._remove = real_remove
+        check("a temporary executable lock is retried",
+              denied[0] and open(retry_exe, "rb").read() == b"new")
+
+        if os.name == "nt":
+            # Use a real Windows no-sharing handle, the same kind of lock an
+            # EXE image or an antivirus scan leaves behind after shutdown.
+            from ctypes import wintypes
+            probe = os.path.join(tmp, "windows-lock-probe.exe")
+            open(probe, "wb").write(b"probe")
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.CreateFileW.argtypes = (
+                wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD,
+                wintypes.HANDLE)
+            kernel32.CreateFileW.restype = wintypes.HANDLE
+            kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+            kernel32.CloseHandle.restype = wintypes.BOOL
+            handle = kernel32.CreateFileW(probe, 0x80000000, 0, None,
+                                          3, 0, None)
+            if handle == wintypes.HANDLE(-1).value:
+                raise ctypes.WinError(ctypes.get_last_error())
+            released = threading.Timer(0.6, kernel32.CloseHandle,
+                                       args=(handle,))
+            released.start()
+            started = time.monotonic()
+            updater._remove_retry(probe)
+            elapsed = time.monotonic() - started
+            released.join()
+            check("a real Windows sharing lock is waited out",
+                  not os.path.exists(probe) and elapsed >= 0.4)
+
+        # Even a persistent lock must not stop rollback before updater/other
+        # entries have been restored.  This is the exact shape of the damaged
+        # 4.47.0 installation reported in the field.
+        partial = os.path.join(tmp, "partial-install")
+        partial_stage = os.path.join(tmp, "partial-stage")
+        partial_backup = os.path.join(tmp, "partial-backup")
+        os.makedirs(os.path.join(partial, "updater")); os.makedirs(partial_stage)
+        partial_exe = os.path.join(partial, "KaraokeStudio.exe")
+        open(os.path.join(partial, "updater", "KaraokeUpdater.exe"), "wb").write(b"old-updater")
+        open(partial_exe, "wb").write(b"old")
+        open(os.path.join(partial_stage, "KaraokeStudio.exe"), "wb").write(b"new")
+        real_seconds = updater.RETRY_SECONDS
+        try:
+            updater.RETRY_SECONDS = 0
+            def keep_exe_locked(path):
+                if path == partial_exe:
+                    raise PermissionError(13, "still locked", path)
+                return real_remove(path)
+            updater._remove = keep_exe_locked
+            try:
+                updater.replace_in_place(partial_stage, partial, partial_backup)
+            except PermissionError:
+                pass
+        finally:
+            updater._remove = real_remove
+            updater.RETRY_SECONDS = real_seconds
+        check("a locked executable does not prevent restoring the updater",
+              open(os.path.join(partial, "updater", "KaraokeUpdater.exe"), "rb").read()
+              == b"old-updater")
 
         # If copying the new application fails halfway, the old program comes
         # back while projects/output remain where they were.

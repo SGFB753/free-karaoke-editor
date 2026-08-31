@@ -7,6 +7,16 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.47.2
+
+**Windows updates survive temporary executable locks and incomplete rollbacks.**
+The external updater now waits out short locks left by Windows or antivirus
+scans instead of abandoning the replacement immediately. If replacement still
+fails, rollback restores every possible application entry rather than stopping
+at the first locked file. A partially restored installation can also recover
+its updater from the complete `.previous` snapshot, and failure logs now carry
+the full traceback.
+
 ## 4.47.1
 
 **Lyric changes are smooth and keep a consistent layout.** Main and backing

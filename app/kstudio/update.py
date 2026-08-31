@@ -182,13 +182,26 @@ def download(log: Callable[[str], None]) -> Dict:
         raise
 
 
+def _updater_source(root: str) -> str:
+    current = os.path.join(root, "updater", "KaraokeUpdater.exe")
+    if os.path.isfile(current):
+        return os.path.dirname(current)
+    previous = os.path.join(root + ".previous", "updater",
+                            "KaraokeUpdater.exe")
+    return os.path.dirname(previous) if os.path.isfile(previous) else ""
+
+
 def launch(archive: str) -> None:
     """Run a copy of the updater outside the directory it will replace."""
     if not supported() or not os.path.isfile(archive):
         raise RuntimeError(tr("the downloaded update is gone",
                               "скачанное обновление пропало"))
-    source_dir = os.path.join(_bundle_root(), "updater")
-    source = os.path.join(source_dir, "KaraokeUpdater.exe")
+    source_dir = _updater_source(_bundle_root())
+    source = (os.path.join(source_dir, "KaraokeUpdater.exe")
+              if source_dir else "")
+    # A failed replacement can leave the main folder partly rolled back while
+    # the complete snapshot still sits beside it.  Let the next launch recover
+    # from that snapshot instead of claiming the updater vanished forever.
     if not os.path.isfile(source):
         raise RuntimeError(tr("KaraokeUpdater.exe is missing from the installation",
                               "в установленной программе нет KaraokeUpdater.exe"))

@@ -4,15 +4,19 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import errno
 import os
 import shutil
 import subprocess
 import tempfile
 import time
+import traceback
 import zipfile
 
 
 PRESERVED = {"projects", "output", "settings.ini"}
+RETRY_SECONDS = 20.0
+RETRY_DELAY = 0.25
 
 
 def safe_extract(archive: str, target: str) -> str:
@@ -104,6 +108,56 @@ def _copy_entry(src: str, dst: str) -> None:
         shutil.copy2(src, dst)
 
 
+def _temporary_windows_lock(error: OSError) -> bool:
+    """True for the short-lived locks left by Windows/virus scanners."""
+    return (getattr(error, "winerror", None) in (5, 32, 33)
+            or getattr(error, "errno", None) in (errno.EACCES, errno.EPERM))
+
+
+def _retry(action, seconds=None) -> None:
+    if seconds is None:
+        seconds = RETRY_SECONDS
+    deadline = time.monotonic() + max(0.0, seconds)
+    while True:
+        try:
+            action()
+            return
+        except OSError as error:
+            if not _temporary_windows_lock(error) or time.monotonic() >= deadline:
+                raise
+            time.sleep(RETRY_DELAY)
+
+
+def _remove_retry(path: str) -> None:
+    _retry(lambda: _remove(path))
+
+
+def _copy_retry(src: str, dst: str) -> None:
+    def copy_fresh():
+        if os.path.exists(dst):
+            _remove(dst)
+        _copy_entry(src, dst)
+    _retry(copy_fresh)
+
+
+def _same_file(src: str, dst: str) -> bool:
+    """Cheap proof that a locked destination is already the backup copy."""
+    if not os.path.isfile(src) or not os.path.isfile(dst):
+        return False
+    try:
+        if os.path.getsize(src) != os.path.getsize(dst):
+            return False
+        with open(src, "rb") as left, open(dst, "rb") as right:
+            while True:
+                a, b = left.read(1024 * 1024), right.read(1024 * 1024)
+                if a != b:
+                    return False
+                if not a:
+                    return True
+    except OSError:
+        return False
+
+
 def replace_in_place(staged: str, install: str, backup: str) -> None:
     """Replace program entries without renaming the directory they live in.
 
@@ -119,26 +173,37 @@ def replace_in_place(staged: str, install: str, backup: str) -> None:
         _copy_entry(os.path.join(install, name), os.path.join(backup, name))
     try:
         for name in old_names:
-            _remove(os.path.join(install, name))
+            _remove_retry(os.path.join(install, name))
         for name in os.listdir(staged):
             src, dst = os.path.join(staged, name), os.path.join(install, name)
             if name in PRESERVED and os.path.exists(dst):
                 continue
-            if os.path.exists(dst):
-                _remove(dst)
-            _copy_entry(src, dst)
-    except Exception:
+            _copy_retry(src, dst)
+    except Exception as original:
         # Remove only program files. Projects, finished exports and settings
         # never moved, so rollback cannot accidentally replace user data.
+        rollback_errors = []
         for name in os.listdir(install):
             if name not in PRESERVED:
                 try:
-                    _remove(os.path.join(install, name))
-                except OSError:
-                    pass
+                    _remove_retry(os.path.join(install, name))
+                except OSError as error:
+                    rollback_errors.append(f"remove {name}: {error}")
         for name in os.listdir(backup):
-            _copy_entry(os.path.join(backup, name), os.path.join(install, name))
-        raise
+            src, dst = os.path.join(backup, name), os.path.join(install, name)
+            if _same_file(src, dst):
+                continue
+            try:
+                _copy_retry(src, dst)
+            except OSError as error:
+                rollback_errors.append(f"restore {name}: {error}")
+        if rollback_errors:
+            note = "rollback: " + "; ".join(rollback_errors)
+            if hasattr(original, "add_note"):
+                original.add_note(note)
+            else:  # Python 3.8–3.10, still supported by the source edition.
+                original.args = (*original.args, note)
+        raise original
 
 
 def apply(archive: str, install: str, exe: str, pid: int) -> None:
@@ -182,9 +247,9 @@ def main() -> int:
     try:
         apply(a.archive, a.install, a.exe, a.pid)
         return 0
-    except Exception as e:
+    except Exception:
         with open(error_path, "w", encoding="utf-8") as f:
-            f.write(str(e))
+            f.write(traceback.format_exc())
         return 1
 
 
