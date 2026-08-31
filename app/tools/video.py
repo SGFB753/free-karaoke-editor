@@ -89,6 +89,7 @@ END_HOLD = 5.0
 # The opening is one immediate count of three. The title already remains in
 # the corner, so a separate title card only looked like a frozen delay.
 INTRO_COUNT = 3.0
+INTRO_CARD = 3.0
 
 # Imported/hand-made timings commonly touch with a frame or two of rounding
 # overlap. That is a line boundary, not simultaneous singing. Only a visible
@@ -205,11 +206,16 @@ def next_sung(lines, i: int) -> int:
     return j
 
 
-def intro_lead(args, _name: str) -> float:
-    """Seconds that run before the music: one immediate count of three."""
-    if not getattr(args, "intro", True):
-        return 0.0
-    return INTRO_COUNT
+def next_any(lines, i: int) -> int:
+    """The next line in order, whether backing or lead."""
+    return min(i + 1, len(lines))
+
+
+def intro_lead(args, name: str) -> float:
+    """Seconds before the music: optional title card and optional count."""
+    card = INTRO_CARD if getattr(args, "card", False) and name else 0.0
+    count = INTRO_COUNT if getattr(args, "intro", True) else 0.0
+    return card + count
 
 
 def is_runover_pair(older: dict, newer: dict) -> bool:
@@ -671,6 +677,19 @@ def _lay_scrim(img):
                            mask.resize((W, H), Image.BILINEAR))
 
 
+def _cover_image(cover_uri: str):
+    """Decode an embedded cover, or return None without breaking export."""
+    if not str(cover_uri or "").startswith("data:image"):
+        return None
+    try:
+        import io
+        from PIL import Image, ImageOps
+        raw = base64.b64decode(cover_uri.partition(",")[2])
+        return ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).convert("RGB")
+    except Exception:
+        return None
+
+
 def _draw_background(W, H, cover_uri: str = "", dark: int = 66):
     from PIL import Image, ImageEnhance, ImageFilter
 
@@ -680,10 +699,9 @@ def _draw_background(W, H, cover_uri: str = "", dark: int = 66):
         # be read falls back to the woven gradient without a word — a broken
         # image must not stop a render.
         try:
-            import base64
-            import io
-            raw = base64.b64decode(cover_uri.partition(",")[2])
-            img = Image.open(io.BytesIO(raw)).convert("RGB")
+            img = _cover_image(cover_uri)
+            if img is None:
+                raise ValueError("broken cover")
             k = max(W / img.width, H / img.height)
             img = img.resize((max(int(img.width * k), W), max(int(img.height * k), H)))
             x0 = (img.width - W) // 2
@@ -704,6 +722,62 @@ def _draw_background(W, H, cover_uri: str = "", dark: int = 66):
         px[0, y] = tuple(int(BG_TOP[i] + (BG_BOTTOM[i] - BG_TOP[i]) * f)
                          for i in range(3))
     return col.resize((W, H), Image.NEAREST)
+
+
+def title_card_image(payload, W=1920, H=1080, font_path=None):
+    """The optional opening and the standalone YouTube cover share one art."""
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
+    apply_colors(payload)
+    D = payload.get("data") or {}
+    title = str(D.get("title") or "").strip()
+    artist = str(D.get("artist") or "").strip()
+    cover_uri = payload.get("cardCover") or payload.get("cover") or ""
+    frame = make_background(W, H, cover_uri, 58).copy()
+    # A little extra shade keeps long white titles readable on pale artwork.
+    shade = Image.new("RGBA", (W, H), (0, 0, 0, 42))
+    frame = Image.alpha_composite(frame.convert("RGBA"), shade).convert("RGB")
+    d = ImageDraw.Draw(frame)
+    font_path = find_font(font_path)
+    margin = int(W * 0.07)
+
+    def fit(text, size, max_w, floor=24):
+        f = ImageFont.truetype(font_path, size)
+        while size > floor and f.getlength(text) > max_w:
+            size -= 2
+            f = ImageFont.truetype(font_path, size)
+        return f
+
+    cover = _cover_image(cover_uri)
+    if cover is not None:
+        max_w, max_h = int(W * 0.34), int(H * 0.50)
+        cover.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
+        # Soft shadow and a restrained border make portrait and square covers
+        # sit cleanly on the 16:9 field without pretending they fill it.
+        x = (W - cover.width) // 2
+        y = int(H * 0.08) + (max_h - cover.height) // 2
+        shadow = Image.new("RGBA", (cover.width + 28, cover.height + 28), (0, 0, 0, 0))
+        ImageDraw.Draw(shadow).rounded_rectangle(
+            (8, 8, cover.width + 20, cover.height + 20), radius=18,
+            fill=(0, 0, 0, 175))
+        shadow = shadow.filter(ImageFilter.GaussianBlur(max(5, H // 120)))
+        frame.paste(shadow, (x - 14, y - 14), shadow)
+        frame.paste(cover, (x, y))
+        title_y = int(H * 0.68)
+    else:
+        title_y = int(H * 0.43)
+
+    if title:
+        title_font = fit(title, int(H * 0.082), W - 2 * margin)
+        d.text((W // 2, title_y), title, font=title_font,
+               fill=_mix(COL_HOT, (255, 255, 255), 0.30), anchor="mm",
+               **edged(title_font))
+    if artist:
+        artist_font = fit(artist, int(H * 0.042), W - 2 * margin)
+        d.text((W // 2, title_y + int(H * 0.105)), artist,
+               font=artist_font, fill=COL_DIM, anchor="mm",
+               **edged(artist_font))
+    return frame
 
 
 # ---------------------------------------------------------------- render
@@ -810,6 +884,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     y_main = int(H * 0.44)
     y_next = int(H * 0.60)
     y_next2 = int(H * 0.72)
+    line_gap = int(H * 0.014)
 
     # Which line each seat held last, and since when — so a newcomer can fade
     # in. The film walks time forward frame by frame, which makes this honest;
@@ -817,7 +892,10 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     # The lines do not swap places, they ride: when the singing moves on, the
     # whole column slides up by one step and the line at the top leaves the
     # frame as it goes. Standing still they sit exactly where they always sat.
-    slide = [None, None, 0.0]  # who holds the main seat, who held it, since when
+    # current, previous, since when, and the exact distance from the place the
+    # current line occupied in the queue. The distance varies with wrapping:
+    # using one fixed step made a tall line jump and made short-line gaps wide.
+    slide = [None, None, 0.0, y_next - y_main]
     STEP = y_next - y_main     # one line of the column
     SLIDE = 0.32               # how long the ride takes
     fading = getattr(args, "still", None) is None
@@ -829,22 +907,59 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         mask = img.getchannel("A").point(lambda v: int(v * alpha))
         frame.paste(img, pos, mask)
 
-    def draw_queue(frame, n1, duo=-1, off=0, alpha=1.0, floor=0):
+    def slide_ease(k):
+        """Smooth seat movement with no first- or last-frame kick."""
+        k = min(max(k, 0.0), 1.0)
+        return k * k * (3.0 - 2.0 * k)
+
+    def draw_queue(frame, n1, duo=-1, off=0, alpha=1.0, floor=0,
+                   skip_back=-1):
         """The line coming next, and the one after it fainter still — the
         singer reads forward, never back. The count-in shows the same queue,
         so nothing jumps when the music finally starts."""
-        # The waiting line uses exactly the typography it will have when it
-        # becomes current. Otherwise a long line fits in the preview and then
-        # suddenly wraps or grows as the singer reaches it.
-        nx = get(n1, True)
-        gap_px = int(H * 0.014)
-        ny = max(y_next - nx.h // 2 + off, floor + gap_px)
+        # Backing lines (text in parentheses) are shown too, so the singer
+        # sees everything that is coming — not only the lines they sing.
+        # *skip_back* is an index already drawn elsewhere (upcoming_back)
+        # so it is not duplicated in the queue.
+        if n1 == skip_back:
+            n1 = next_any(lines, n1)
+            if n1 >= len(lines) or n1 == duo:
+                return
+        nx = get(n1, main=True)
+        ny = (floor + line_gap if floor > 0
+              else y_next - nx.h // 2 + off)
         paste_faded(frame, nx.dim, (0, ny), alpha)
-        n2i = next_sung(lines, n1)
-        if n2i < len(lines) and n2i != duo:
-            n2 = get(n2i, True)
-            n2y = max(y_next2 - n2.h // 2 + off, ny + nx.h + gap_px)
+        n2i = next_any(lines, n1)
+        while n2i < len(lines) and (n2i == duo or n2i == skip_back):
+            n2i = next_any(lines, n2i)
+        if n2i < len(lines):
+            n2 = get(n2i, main=True)
+            n2y = ny + nx.h + line_gap
             paste_faded(frame, n2.faint, (0, n2y), alpha)
+
+    def backing_anchor(i):
+        """Lead whose row a backing line answers, if they overlap.
+
+        The anchor is based on the timings, not on which line bisect happens
+        to call current.  Consequently the backing keeps the exact same seat
+        before it starts, while both voices sing, and after the lead ends.
+        """
+        j = i - 1
+        while j >= 0 and lines[j].get("backing"):
+            j -= 1
+        if j >= 0 and lines[i]["start"] < lines[j]["end"]:
+            return j
+        return -1
+
+    def backing_top(i, off=0):
+        """Stable top edge of a backing row, with the common line gap."""
+        anchor = backing_anchor(i)
+        if anchor < 0:
+            pic = get(i, main=True, duo_side=True)
+            return y_main - pic.h // 2 + off
+        lead_pic = get(anchor, main=True)
+        lead_top = y_main - lead_pic.h // 2 + off
+        return lead_top + lead_pic.h + line_gap
 
     t_start = args.start
     if t_start >= duration:
@@ -860,6 +975,8 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     # song's own beginning: a piece cut from the middle is a preview, and a
     # opening countdown in front of it would only be in the way.
     card_name = str(D.get("title") or "").strip()
+    card_time = (INTRO_CARD if getattr(args, "card", False) and card_name
+                 else 0.0)
     lead = intro_lead(args, card_name) if t_start <= 0 else 0.0
     lead_frames = int(lead * args.fps)
 
@@ -980,18 +1097,23 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             return Image.blend(bgs[i], bgs[i + 1], min(max(k, 0.0), 1.0))
         return bgs[i].copy()
 
+    opening_card = (title_card_image(payload, W, H, font_path)
+                    if card_time else None)
+
     def intro_frame(tt):
         """A frame of the opening, `tt` seconds into it."""
+        if opening_card is not None and tt < card_time:
+            return opening_card.copy()
         # The opening stands on the clip's first field, not on a still it
         # would then jump away from when the music starts.
         frame = clip_bg(0.0) if fields else bg.copy()
         d = ImageDraw.Draw(frame)
-        # Start immediately with the useful count-in. The title already
-        # remains visible in the corner throughout the video.
-        left = max(lead - tt, 0.0)
+        # The count starts after the optional title card. The first lyrics are
+        # already visible, so the singer can prepare while 3-2-1 runs.
+        left = max(INTRO_COUNT - (tt - card_time), 0.0)
         d.text((W // 2, y_main), str(int(math.ceil(left)) or 1),
                font=num_font, fill=COL_HOT, anchor="mm", **edged(num_font))
-        first = next_sung(lines, -1)
+        first = next_any(lines, -1)
         if first < len(lines):
             draw_queue(frame, first)
         furniture(d, 0.0)
@@ -1051,10 +1173,19 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             occ = {}
             if not over and idx >= 0:
                 if lines[idx].get("backing") and duo < 0:
-                    occ["side"] = idx
+                    # A backing that overlaps its lead keeps the side row.
+                    # A sequential backing is simply the next current line:
+                    # it must ride from the queue to the main row just like
+                    # any lead, rather than teleporting there at its start.
+                    if backing_anchor(idx) >= 0:
+                        occ["side"] = idx
+                    else:
+                        occ["main"] = idx
                 else:
                     pair0 = [idx] if duo < 0 else sorted(
-                        [idx, duo], key=lambda j: lines[j].get("voice") == 2)
+                        [idx, duo], key=lambda j: (
+                            bool(lines[j].get("backing")),
+                            lines[j].get("voice") == 2))
                     occ["main"] = pair0[0]
                     if len(pair0) > 1:
                         occ["side"] = pair0[1]
@@ -1071,14 +1202,28 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 slide[1] = slide[0]
                 slide[0] = occ.get("main")
                 slide[2] = t
-            ride = (min(1.0, (t - slide[2]) / SLIDE)
-                    if slide[0] is not None else 1.0)
-            ride = 1.0 - (1.0 - ride) ** 3            # eased: quick, then settling
-            off = int(round((1.0 - ride) * STEP))
+                if slide[0] is not None and slide[1] is not None:
+                    old_pic = get(slide[1], main=True)
+                    new_pic = get(slide[0], main=True)
+                    old_bottom = y_main - old_pic.h // 2 + old_pic.h
+                    new_top = y_main - new_pic.h // 2
+                    slide[3] = old_bottom + line_gap - new_top
+                else:
+                    slide[3] = STEP
+            if slide[0] is not None:
+                ride = slide_ease((t - slide[2]) / SLIDE)
+                off = int(round((1.0 - ride) * slide[3]))
+            else:
+                # Backing takes the side seat and keeps its stable anchor, so
+                # main has no incoming offset. Keep ride animating only so
+                # the ghost of the previous lead fades out smoothly instead
+                # of vanishing in one frame.
+                ride = slide_ease((t - slide[2]) / SLIDE)
+                off = 0
             # the line that left the main seat, riding up and out
             if slide[1] is not None and ride < 1.0 and not over:
                 gpic = get(slide[1], main=True)
-                gy = y_main - gpic.h // 2 - int(round(ride * STEP))
+                gy = y_main - gpic.h // 2 - int(round(ride * slide[3]))
                 galpha = (1.0 - ride) * scene_alpha
                 paste_faded(frame, gpic.dim, (0, gy), galpha)
                 if gpic.hot is not None:
@@ -1093,13 +1238,13 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
         duo_bottom = 0
         if not over and idx >= 0 and lines[idx].get("backing") and duo < 0:
-            # The backing singing alone — the lead has ended, the na-na-na
-            # carries on. It used to be promoted to the main seat, full
-            # size, in the lead's way. It keeps its side seat instead: the
-            # main seat stays empty, and the queue below points at the next
-            # lead line as always.
-            pic = get(idx, main=False, duo_side=True)
-            y_b = y_main + int(H * 0.036) + off
+            pic = get(idx, main=True, duo_side=True)
+            anchor = backing_anchor(idx)
+            # A backing which began under a lead stays in that reserved row
+            # after the lead ends. A sequential backing has no such anchor:
+            # it uses the ordinary main-seat ride from the queue instead.
+            y_b = (backing_top(idx) if anchor >= 0
+                   else y_main - pic.h // 2 + off)
             a_b = scene_alpha
             paste_faded(frame, pic.dim, (0, y_b), a_b)
             for bx in pic.hot_boxes(lines[idx], t):
@@ -1107,21 +1252,22 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 paste_faded(frame, piece, (bx[0], y_b + bx[1]), a_b)
             duo_bottom = y_b + pic.h
         elif not over and idx >= 0:
-            # The lead stays exactly where a solo line sits; the backing is
-            # smaller and centred under it. Moving it sideways only when it
-            # starts made it appear to fly in from outside the preview.
+            # The lead stays exactly where a solo line sits; the backing
+            # uses the same font size and sits centred under it.
             pair = [idx] if duo < 0 else sorted(
-                [idx, duo], key=lambda j: lines[j].get("voice") == 2)
+                [idx, duo], key=lambda j: (
+                    bool(lines[j].get("backing")),
+                    lines[j].get("voice") == 2))
             y_j = 0
             for k, j in enumerate(pair):
                 is_back = k == 1
-                pic = get(j, main=not is_back, duo_side=is_back)
+                pic = get(j, main=True, duo_side=is_back)
                 if not is_back:
                     y_j = y_main - pic.h // 2 + off
                     # a wrapped line is taller: everything below must yield
                     duo_bottom = max(duo_bottom, y_j + pic.h)
                 else:
-                    y_j = y_j + get(pair[0]).h + int(H * 0.002)
+                    y_j = backing_top(j, off)
                     duo_bottom = y_j + pic.h
                 a_j = scene_alpha
                 paste_faded(frame, pic.dim, (0, y_j), a_j)
@@ -1143,10 +1289,10 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                            anchor="ra", **edged(small))
 
         # A backing line that will enter over the current lead is shown dim in
-        # its eventual seat before its first word. It no longer materialises
-        # only at the instant it starts.
+        # its eventual seat before its first word.  Compute the index early
+        # so draw_queue can skip it (avoiding a visual duplicate).
+        upcoming_back = -1
         if not over and idx >= 0 and duo < 0 and not lines[idx].get("backing"):
-            upcoming_back = -1
             for j in range(idx + 1, min(len(lines), idx + 4)):
                 if not lines[j].get("backing"):
                     break
@@ -1154,10 +1300,12 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                     upcoming_back = j
                     break
             if upcoming_back >= 0:
-                pic = get(upcoming_back, main=False, duo_side=True)
-                y_b = max(duo_bottom + int(H * 0.008),
-                          y_main + int(H * 0.036) + off)
-                paste_faded(frame, pic.dim, (0, y_b), scene_alpha * 0.72)
+                pic = get(upcoming_back, main=True, duo_side=True)
+                # This is already its final active position and opacity.  At
+                # the first sung frame only the hot sweep begins; the glyphs
+                # themselves do not move, resize or suddenly brighten.
+                y_b = backing_top(upcoming_back, off)
+                paste_faded(frame, pic.dim, (0, y_b), scene_alpha)
                 duo_bottom = y_b + pic.h
 
         # Guide dots: a countdown, not decoration. On the page they are
@@ -1172,9 +1320,19 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                           fill=COL_HOT if k < lit else COL_PIP)
 
         n1 = next_sung(lines, idx)
-        if not over and n1 < len(lines) and n1 != duo:
-            draw_queue(frame, n1, duo, off, scene_alpha, duo_bottom)
+        if not over:
+            # The visual queue shows the next line in the song (including a
+            # final backing); it must not depend on another lead existing
+            # later. The countdown below still aims only at the next lead.
+            n1_visual = next_any(lines, idx)
+            if n1_visual < len(lines) and n1_visual != duo:
+                draw_queue(frame, n1_visual, duo, off, scene_alpha, duo_bottom,
+                           skip_back=upcoming_back)
+            elif n1 < len(lines) and n1 != duo:
+                draw_queue(frame, n1, duo, off, scene_alpha, duo_bottom,
+                           skip_back=upcoming_back)
 
+        if not over and n1 < len(lines) and n1 != duo:
             gap = lines[n1]["start"] - (lines[idx]["end"] if idx >= 0 else 0)
             left = lines[n1]["start"] - t
             if not singing and gap > PIP_MIN_GAP:
@@ -1396,6 +1554,8 @@ def main(argv=None) -> int:
     p.add_argument("--seconds", type=float, default=0.0, help="render only N seconds (a sample)")
     p.add_argument("--no-intro", dest="intro", action="store_false",
                    help="start with the song instead of a count of three")
+    p.add_argument("--title-card", dest="card", action="store_true",
+                   help="show the cover, song and artist before the count")
     args = p.parse_args(argv)
 
     try:
@@ -1462,6 +1622,11 @@ def video_report(payload, args, song: float, want: float) -> str:
                   "original": tr("the original", "оригинал")}.get(args.audio, args.audio)
     lead = intro_lead(args, str(D.get("title") or "").strip()) if not getattr(args, "start", 0) else 0.0
     fps, frames = args.fps, int((want + lead) * args.fps)
+    opening = []
+    if getattr(args, "card", False) and D.get("title"):
+        opening.append(tr("title card", "заставка"))
+    if getattr(args, "intro", True):
+        opening.append(tr("count of three", "счёт до трёх"))
     rows = [
         (tr("Song", "Песня"), (D.get("title") or "—") +
          ((" — " + D["artist"]) if D.get("artist") else "")),
@@ -1483,8 +1648,7 @@ def video_report(payload, args, song: float, want: float) -> str:
          else tr("default", "по умолчанию")),
         (tr("Audio", "Звук"), audio_name),
         (tr("Opening", "Заставка"),
-         tr(f"count of three — {mmss(lead)}",
-            f"счёт до трёх — {mmss(lead)}")
+         ", ".join(opening) + f" — {mmss(lead)}"
          if lead else tr("none, the song starts at once",
                          "нет, песня начинается сразу")),
         (tr("Frames", "Кадров"), f"{frames} ({fps} " + tr("fps", "к/с") + ")"),

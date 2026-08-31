@@ -166,8 +166,9 @@ def main():
     print("\nA duet frame: the backing is previewed and stays centred off the dots")
     # The second voice used to draw at full size and land on the countdown
     # dots. Now the lead sits where a solo line sits, and the backing is
-    # smaller and centred under it. It is already visible before its first
-    # word, so it does not fly in sideways when it becomes active.
+    # centred under it with the same typography and spacing as every other
+    # line. It is already in its final seat before its first word, so starting
+    # the colour sweep cannot make it jump, resize or brighten suddenly.
     duet_song = {"colors": ["#00ff00", "#ff00ff"],
                  "theme": {"bg": "#000000", "text": "#ffffff"},
                  "data": {"title": "T", "duration": 20.0, "lines": [
@@ -183,7 +184,7 @@ def main():
                                 {"w": "lead", "t": 13.0, "d": 1.0, "s": 1}]}]}}
     wavd = tone(os.path.join(tmp, "d.wav"), 220.0, 20.0)
     class AD:
-        width, height, fps, crf = 640, 360, 5, 30
+        width, height, fps, crf = 640, 360, 20, 30
         preset, font = "ultrafast", None
         intro = False
         start, seconds, audio, timings = 5.0, 5.7, "minus", None
@@ -206,9 +207,8 @@ def main():
     check("the lead is drawn where a solo line sits", lead_ink > 150, lead_ink)
     check("the backing is there, under it", back_left + back_right > 30,
           back_left + back_right)
-    check("and it stays centred, smaller than the lead",
-          abs(back_right - back_left) < (back_left + back_right) * 0.35
-          and (back_left + back_right) < lead_ink,
+    check("and it stays centred",
+          abs(back_right - back_left) < (back_left + back_right) * 0.35,
           f"left {back_left}, right {back_right}, lead {lead_ink}")
 
     png_waiting = os.path.join(tmp, "duet-waiting.png")
@@ -219,6 +219,25 @@ def main():
                        for x in range(0, Wd, 2)
                        if sum(imw.getpixel((x, y))) > 90)
     check("the backing is visible before it starts", waiting_back > 30, waiting_back)
+
+    # Compare the row immediately before and after its first word.  The colour
+    # may begin changing, but its occupied vertical pixels must not move.
+    edge_frames = []
+    for n, at in enumerate((0.45, 0.55)):
+        path = os.path.join(tmp, f"duet-edge-{n}.png")
+        subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", str(at),
+                        "-i", AD.output, "-frames:v", "1", path], check=True)
+        edge_frames.append(Image.open(path).convert("RGB"))
+
+    def backing_rows(im):
+        ys = [y for y in range(int(Hd * 0.50), int(Hd * 0.64))
+              if any(sum(im.getpixel((x, y))) > 90 for x in range(0, Wd, 2))]
+        return (min(ys), max(ys)) if ys else None
+
+    before_rows, after_rows = map(backing_rows, edge_frames)
+    check("the backing does not jump when it starts",
+          before_rows is not None and before_rows == after_rows,
+          f"before {before_rows}, after {after_rows}")
 
     # …and when the lead ends but the na-na-na carries on, the backing keeps
     # its side seat instead of being promoted to the main one, full size, in
@@ -239,7 +258,7 @@ def main():
     side_right = ink_a(0.46, 0.58, 0.5, 1.0)
     check("with the lead gone, the main seat stays empty",
           main_seat < 40, main_seat)
-    check("the lone backing still sits small and centred",
+    check("the lone backing keeps the same centred row",
           side_left + side_right > 30
           and abs(side_right - side_left) < (side_left + side_right) * 0.35,
           f"left {side_left}, right {side_right}")
@@ -729,8 +748,11 @@ def main():
         return sum(1 for c in px if sum(c) > 90)
 
     DOTS, SEAT = (0.50, 0.56), (0.38, 0.50)
-    check("no dots under a line being sung with the next one close behind",
-          band(2.0, *DOTS) == 0, band(2.0, *DOTS))
+    # With equal block spacing the queued text itself can now cross the old
+    # fixed "dots band". Check the countdown colour, not arbitrary text ink.
+    check("no countdown burns while a line is being sung",
+          band(2.0, *DOTS, lit=True) == 0,
+          band(2.0, *DOTS, lit=True))
     check("but the singing itself is there", band(2.0, *SEAT) > 150, band(2.0, *SEAT))
     check("in a real wait the dots come up", band(6.5, *DOTS) > 20, band(6.5, *DOTS))
     check("far from the line none of them burns yet",
@@ -862,6 +884,43 @@ def main():
           all(abs(top_row(at) - rest) <= 1 for at in (1.4, 1.8)),
           f"{rest} / {top_row(1.8)}")
 
+    # The real project exposed a separate path: a backing line began only a
+    # fraction of a millisecond after the lead ended. It was therefore not a
+    # duet and used to jump straight from the queue to the main seat. A
+    # sequential backing must ride through exactly the same positions as a
+    # sequential lead.
+    backing_fade = json.loads(json.dumps(fade_song))
+    backing_fade["data"]["lines"][0]["end"] = 12.0
+    backing_fade["data"]["lines"][0]["words"][0]["d"] = 7.0
+    backing_fade["data"]["lines"][1]["start"] = 12.000001
+    backing_fade["data"]["lines"][1]["voice"] = 2
+    backing_fade["data"]["lines"][1]["backing"] = True
+    backing_fade["data"]["lines"][1]["words"][0]["t"] = 12.000001
+    AF.output = os.path.join(tmp, "backing-fade.mp4")
+    AF.start, AF.seconds, AF.fps = 11.0, 2.0, 20
+    video.render(backing_fade, wavf, AF.output, AF())
+
+    def backing_top_row(at):
+        shot = os.path.join(tmp, f"backing-ride-{at}.png")
+        subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", str(at),
+                        "-i", AF.output, "-frames:v", "1", shot], check=True)
+        imr = Image.open(shot).convert("RGB")
+        for y in range(int(imr.height * 0.50), int(imr.height * 0.80)):
+            if any(sum(imr.getpixel((x, y))) > 90
+                   for x in range(0, imr.width, 2)):
+                return y
+        return -1
+
+    waiting = backing_top_row(0.95)
+    arriving = backing_top_row(1.00)
+    moving = backing_top_row(1.20)
+    check("a sequential backing does not jump out of the queue",
+          waiting >= 0 and abs(arriving - waiting) <= 6,
+          f"waiting {waiting}, arriving {arriving}")
+    check("and then rides upward like an ordinary line",
+          moving >= 0 and moving < arriving - 3,
+          f"arriving {arriving}, moving {moving}")
+
     # the slideshow: two covers, two different grounds
     import base64 as _b64
     import io as _io
@@ -934,17 +993,42 @@ def main():
         output = os.path.join(tmp, "opening.mp4")
     class NoIntro(AI):
         intro = False
+    class CardOnly(NoIntro):
+        card = True
+    class CardAndCount(AI):
+        card = True
     check("the opening is one count of three", video.intro_lead(AI(), "Name") == 3.0,
           video.intro_lead(AI(), "Name"))
     check("a nameless song is only counted in", video.intro_lead(AI(), "") == 3.0,
           video.intro_lead(AI(), ""))
     check("and it can be turned off altogether",
           video.intro_lead(NoIntro(), "Name") == 0.0, video.intro_lead(NoIntro(), "Name"))
+    check("the title card is an independent three seconds",
+          video.intro_lead(CardOnly(), "Name") == 3.0,
+          video.intro_lead(CardOnly(), "Name"))
+    check("the card and count can both be used",
+          video.intro_lead(CardAndCount(), "Name") == 6.0,
+          video.intro_lead(CardAndCount(), "Name"))
+    check("a card with no title adds nothing",
+          video.intro_lead(CardOnly(), "") == 0.0,
+          video.intro_lead(CardOnly(), ""))
 
     opening = {"colors": ["#00ff00", "#ff00ff"],
                "theme": {"bg": "#000000", "text": "#ffffff"},
                "data": {"title": "Named Song", "duration": 12.0, "lines": [
                    one_line("the first line of it", 7.0, 10.0)]}}
+    card_buf = _io.BytesIO()
+    Image.new("RGB", (400, 400), (210, 35, 30)).save(card_buf, "JPEG")
+    opening["cardCover"] = ("data:image/jpeg;base64," +
+                            _b64.b64encode(card_buf.getvalue()).decode())
+    card_jpg = os.path.join(tmp, "youtube-cover.jpg")
+    video.title_card_image(opening, 1920, 1080).save(card_jpg, "JPEG")
+    card_im = Image.open(card_jpg).convert("RGB")
+    check("the YouTube cover is exactly 1920 by 1080",
+          card_im.size == (1920, 1080), card_im.size)
+    centre = card_im.crop((700, 60, 1220, 620)).resize((1, 1)).getpixel((0, 0))
+    check("the project's cover is visible on the title art",
+          centre[0] > centre[2] * 1.5, centre)
     wav4 = tone(os.path.join(tmp, "d.wav"), 220.0, 12.0)
     video.render(opening, wav4, AI.output, AI())
     check("the clip grew by the opening, and by exactly that much",

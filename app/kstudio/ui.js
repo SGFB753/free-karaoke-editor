@@ -357,6 +357,8 @@ const STR = {
     expQNorm: "the usual",
     expQLight: "lighter file",
     expIntroLbl: "countdown 3–2–1 before the song",
+    expCardLbl: "title card with cover, song and artist",
+    expCoverLbl: "save a 1920×1080 YouTube cover",
     expGo: "Render",
     swMore: "wheel…",
     coverBtn: "⛰ Cover",
@@ -786,6 +788,8 @@ const STR = {
     expQNorm: "обычное",
     expQLight: "полегче файл",
     expIntroLbl: "отсчёт 3–2–1 перед песней",
+    expCardLbl: "заставка с обложкой, названием и исполнителем",
+    expCoverLbl: "сохранить обложку 1920×1080 для YouTube",
     expGo: "Рендерить",
     swMore: "круг…",
     coverBtn: "⛰ Обложка",
@@ -4342,7 +4346,7 @@ $("btnExportHtml").addEventListener("click", async () => {
     screen("scrEdit"); showMade(r.path); toast(T.jobReady);
   });
 });
-// The MP4 dialog: size, frames, quality and the opening — remembered
+// The MP4 dialog: size, frames, quality and optional extras — remembered
 // between songs, because taste does not change per song.
 $("btnExportMp4").addEventListener("click", () => {
   try{
@@ -4350,7 +4354,10 @@ $("btnExportMp4").addEventListener("click", () => {
     if (saved.size) $("expSize").value = saved.size;
     if (saved.fps) $("expFps").value = saved.fps;
     if (saved.q) $("expQ").value = saved.q;
-    if (saved.intro != null) $("expIntro").checked = !!saved.intro;
+    const rememberExtras = saved.extrasVersion === 2;
+    $("expIntro").checked = rememberExtras && !!saved.intro;
+    $("expCard").checked = rememberExtras && !!saved.card;
+    $("expCover").checked = rememberExtras && !!saved.cover;
   }catch(e){}
   $("expDlg").classList.remove("hide");
 });
@@ -4363,10 +4370,15 @@ $("btnExpGo").addEventListener("click", async () => {
   const [w, h] = $("expSize").value.split("x").map(Number);
   const opts = {kind: "mp4", width: w, height: h,
                 fps: +$("expFps").value, crf: +$("expQ").value,
-                intro: $("expIntro").checked};
+                intro: $("expIntro").checked,
+                card: $("expCard").checked,
+                cover: $("expCover").checked};
   try{
     localStorage.setItem("mp4opts", JSON.stringify({size: $("expSize").value,
-      fps: $("expFps").value, q: $("expQ").value, intro: $("expIntro").checked}));
+      fps: $("expFps").value, q: $("expQ").value,
+      extrasVersion: 2,
+      intro: $("expIntro").checked, card: $("expCard").checked,
+      cover: $("expCover").checked}));
   }catch(e){}
   await flush();
   const j = await api(`/api/project/${encodeURIComponent(pid)}/export`, opts);

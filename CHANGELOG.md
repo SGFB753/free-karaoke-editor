@@ -7,6 +7,20 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.47.1
+
+**Lyric changes are smooth and keep a consistent layout.** Main and backing
+lines now travel through the same transition instead of jumping between
+different arrangements. Lines keep even vertical spacing regardless of their
+length, backing vocals are previewed before they begin, and simultaneous voices
+occupy stable non-overlapping seats.
+
+**The MP4 opening is optional and configurable again.** The export window has
+separate switches for the 3–2–1 count, a three-second title card with the song,
+artist and project cover, and a standalone 1920×1080 YouTube cover. All three
+start disabled and remember the last choice after the first export. The title
+art uses the project cover even when that cover is not used behind the lyrics.
+
 ## 4.47.0
 
 **The editor responds normally to mouse and keyboard input again.** The model,

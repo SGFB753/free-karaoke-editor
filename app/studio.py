@@ -1855,6 +1855,12 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
                                    for n in data.get("coverSet") or []]
                                   if data.get("coverBg") else None))
         payload = B.read_payload(tmp_html)
+        # The opening/YouTube art may use the project's cover even when the
+        # lyrics themselves use the plain or moving background.
+        project_cover = (os.path.join(folder, data.get("cover") or "")
+                         if data.get("cover") else "")
+        if project_cover and os.path.isfile(project_cover):
+            payload["cardCover"] = B._data_uri(project_cover, "image/jpeg")
         import tempfile
         tmpdir = tempfile.mkdtemp(prefix="karaoke_render_")
         try:
@@ -1878,7 +1884,8 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
             a.preset = opts.get("preset", "medium"); a.font = opts.get("font")
             a.start = 0.0; a.seconds = float(opts.get("seconds", 0) or 0)
             a.audio = opts.get("audio", "minus"); a.timings = None; a.output = out
-            a.intro = bool(opts.get("intro", True))
+            a.intro = bool(opts.get("intro", False))
+            a.card = bool(opts.get("card", False))
             back = data.get("backdrop")
             a.backdrop = (os.path.join(folder, back)
                           if back and os.path.isfile(os.path.join(folder, back))
@@ -1890,6 +1897,13 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
                     last[0] = msg
                     log(msg)
             video.render(payload, wav, out, a, on_progress=prog)
+            cover_out = ""
+            if opts.get("cover"):
+                cover_out = os.path.join(out_dir, base + "_youtube-cover.jpg")
+                video.title_card_image(payload, 1920, 1080, a.font).save(
+                    cover_out, "JPEG", quality=94, subsampling=0)
+                log(tr(f"YouTube cover: {cover_out}",
+                       f"Обложка для YouTube: {cover_out}"))
         finally:
             import shutil
             shutil.rmtree(tmpdir, ignore_errors=True)
@@ -1898,7 +1912,10 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
             except OSError:
                 pass
         log(tr(f"Done: {out}", f"Готово: {out}"))
-        return {"kind": "mp4", "path": out}
+        result = {"kind": "mp4", "path": out}
+        if cover_out:
+            result["cover"] = cover_out
+        return result
 
     raise ValueError(tr(f"unknown export kind: {kind}", f"неизвестный вид экспорта: {kind}"))
 

@@ -83,8 +83,20 @@ $('brPasteText').dispatchEvent(new w.KeyboardEvent('keydown',
 ok('Escape closes it even from its textarea', $('browser').classList.contains('hide'));
 $('btnExportMp4').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 ok('the MP4 options opened', !$('expDlg').classList.contains('hide'));
+ok('the optional opening extras start switched off',
+   !$('expIntro').checked && !$('expCard').checked && !$('expCover').checked);
 doc.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
 ok('Escape closes the MP4 options too', $('expDlg').classList.contains('hide'));
+w.localStorage.setItem('mp4opts', JSON.stringify({intro:true,card:true,cover:true}));
+$('btnExportMp4').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+ok('old MP4 settings do not silently enable the new opening extras',
+   !$('expIntro').checked && !$('expCard').checked && !$('expCover').checked);
+$('btnExpCancel').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+w.localStorage.setItem('mp4opts', JSON.stringify({extrasVersion:2,intro:true,card:true,cover:true}));
+$('btnExportMp4').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+ok('the three MP4 choices are remembered',
+   $('expIntro').checked && $('expCard').checked && $('expCover').checked);
+$('btnExpCancel').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 
 ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');
