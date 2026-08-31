@@ -15,7 +15,7 @@ const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disabl
 const p = await b.newPage();
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('dialog', d => d.accept());
-await p.setViewport({width:1280, height:900});
+await p.setViewport({width:1280, height:1000});
 await p.goto(API+'/', {waitUntil:'networkidle0'});
 await sleep(700);
 await p.click('.card');
@@ -120,6 +120,21 @@ m = await marks();
 ok('Shift+arrows build a contiguous batch', m.n === 3, JSON.stringify(m));
 await p.keyboard.press('Escape'); await sleep(200);
 ok('Escape clears the batch', (await marks()).n === 0, JSON.stringify(await marks()));
+
+console.log('\n--- all lines, then exclude the bad piece ---');
+await p.click('#btnSelectAll'); await sleep(250);
+m = await marks();
+ok('the button selects every line', m.n === original.length, JSON.stringify(m));
+await hit(vis[1], ['Control']);
+m = await marks();
+ok('Ctrl+click removes one line from the full selection', m.n === original.length - 1,
+   JSON.stringify(m));
+await p.keyboard.press('Escape'); await sleep(150);
+await p.keyboard.down('Control'); await p.keyboard.press('A'); await p.keyboard.up('Control');
+await sleep(250);
+m = await marks();
+ok('Ctrl+A selects every line too', m.n === original.length, JSON.stringify(m));
+await p.keyboard.press('Escape'); await sleep(150);
 
 console.log('\n--- actions over the whole batch ---');
 await hit(vis[0]);

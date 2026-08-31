@@ -63,6 +63,13 @@ click('btnUndo'); await sleep(900);
 const s2 = (await srv())[2].start;
 ok('one undo took back both presses at once', Math.abs(s2 - s0) < 1e-6,
    `${s1} → ${s2}, expected ${s0}`);
+ok('redo became available after undo', !$('btnRedo').disabled);
+key('y', {ctrlKey:true}); await sleep(900);
+const s3 = (await srv())[2].start;
+ok('Ctrl+Y returned the undone edit', Math.abs(s3 - s1) < 1e-6,
+   `${s2} → ${s3}, expected ${s1}`);
+key('z', {ctrlKey:true}); await sleep(900);
+ok('Ctrl+Z can undo the returned edit again', Math.abs((await srv())[2].start - s0) < 1e-6);
 
 console.log('\n--- undoing a line deletion ---');
 const nBefore = (await srv()).length;

@@ -7,6 +7,36 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.47.0
+
+**The editor responds normally to mouse and keyboard input again.** The model,
+language and timing-mode selects no longer close when the mouse button is
+released. The “Other lyrics” window stays open when a text selection is dragged
+past its edge, while Space still controls playback after using toolbar controls.
+
+**Editing now has complete history and fast whole-song selection.** `Ctrl+Y`
+and `Ctrl+Shift+Z` restore an undone change, with a visible Redo button beside
+Undo. “All lines” and `Ctrl+A` select the entire text; unwanted lines can then be
+removed with a `Ctrl`-click, making it practical to lock a nearly finished song
+and re-time only its troublesome fragment.
+
+**The timeline is quicker to navigate and more precise.** `Ctrl` plus the mouse
+wheel changes zoom. Lines snap to yellow onsets only when genuinely close —
+within five pixels and no farther than 80 ms — so a distant marker no longer
+pulls an edge away before the pointer reaches it.
+
+**Preview and rendered video no longer change lyric layout mid-line.** A queued
+line uses the same size and wrapping as it will when active. Backing vocals are
+visible in advance, remain centred instead of flying in from the right, and
+overlapping voices keep stable, non-colliding seats.
+
+**Automatic updates close the old Studio window.** Chrome or Edge now runs in
+a private process owned by that application instance and exits with it. The
+first transition from an older release is covered too: a new EXE launched by
+the previous updater closes the leftover Studio window without terminating the
+user's normal browser. File replacement, project preservation and rollback are
+covered by automated checks.
+
 ## 4.46.10
 
 **When LRCLIB does not know a song, Studio now looks for its words on Genius.**

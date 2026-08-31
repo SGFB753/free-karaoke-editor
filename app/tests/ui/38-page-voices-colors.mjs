@@ -139,15 +139,14 @@ console.log('\n--- different voices do not blur together ---');
 ok('both are marked as “singing together”',
    cur.every(e => e.classList.contains('duo')),
    cur.map(e => e.className).join(' | '));
-ok('the first voice goes left, the second right',
+ok('the first and second voice keep their identities',
    !lns2[0].classList.contains('v2') && lns2[1].classList.contains('v2'));
 {
   const css = fs.readFileSync(page2,'utf8').replace(/\s+/g,' ');
-  ok('the styles carry the split to the sides',
-     /\.ln\.duo:not\(\.v2\)\{[^}]*text-align:left/.test(css) &&
-     /\.ln\.duo\.v2\{[^}]*text-align:right/.test(css),
+  ok('the styles keep both voices centred when they become active',
+     /\.ln\.duo:not\(\.v2\),\.ln\.duo\.v2\{[^}]*text-align:center/.test(css),
      'the .ln.duo rules');
-  ok('each side has its own voice mark',
+  ok('each voice has its own mark',
      /\.ln\.duo::before\{content:"1"/.test(css) && /\.ln\.duo\.v2::before\{content:"2"/.test(css));
 }
 // when only one is singing — no splitting apart

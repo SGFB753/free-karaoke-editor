@@ -48,13 +48,13 @@ const before = await srvStarts();
 
 const blocks = [...doc.querySelectorAll('.blk')];
 ok('the timeline has blocks', blocks.length >= 3, 'blocks '+blocks.length);
+const pd = (t,x) => { const e = new w.MouseEvent(t,{bubbles:true,cancelable:true,clientX:x});
+                      Object.defineProperty(e,'pointerId',{value:1});
+                      return e; };
 
 // --- drag the third block to the right ------------------------------------
 console.log('\n--- dragging a line to the right ---');
 const B = blocks[2];
-const pd = (t,x) => { const e = new w.MouseEvent(t,{bubbles:true,cancelable:true,clientX:x});
-                      Object.defineProperty(e,'pointerId',{value:1});
-                      return e; };
 B.dispatchEvent(pd('pointerdown', 100));
 await sleep(30);
 ok('the line got selected when grabbed', /строка 3/.test($('selNote').textContent),

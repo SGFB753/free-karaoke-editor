@@ -89,6 +89,7 @@ JOBS: dict = {}
 JOBS_LOCK = threading.Lock()
 PENDING_UPDATES: dict = {}
 DESKTOP_SESSION = False
+DESKTOP_WINDOW_PROC = None
 STAGING = tempfile.mkdtemp(prefix="KaraokeStudio-")
 atexit.register(lambda: shutil.rmtree(STAGING, ignore_errors=True))
 
@@ -2137,8 +2138,15 @@ def free_port(preferred: int = 8770) -> int:
     return 0
 
 
+def browser_command(exe: str, url: str, profile: str) -> list[str]:
+    return [exe, f"--app={url}", "--window-size=1280,860",
+            f"--user-data-dir={profile}", "--no-first-run",
+            "--disable-default-apps"]
+
+
 def open_window(url: str) -> None:
     """An app window: no address bar, no tabs, if Chrome or Edge is around."""
+    global DESKTOP_WINDOW_PROC
     if os.name == "nt":
         candidates = [
             os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
@@ -2150,13 +2158,93 @@ def open_window(url: str) -> None:
         for exe in candidates:
             if os.path.isfile(exe):
                 try:
-                    subprocess.Popen([exe, f"--app={url}",
-                                      "--window-size=1280,860"],
-                                     cwd=tempfile.gettempdir())
+                    # A private profile prevents Chrome from handing this app
+                    # window to the user's already-running browser. It gives us
+                    # one process tree that belongs solely to this Studio and
+                    # can therefore be closed safely during an update.
+                    profile = os.path.join(STAGING, "browser-profile")
+                    os.makedirs(profile, exist_ok=True)
+                    DESKTOP_WINDOW_PROC = subprocess.Popen(
+                        browser_command(exe, url, profile),
+                        cwd=tempfile.gettempdir())
                     return
                 except Exception:
                     pass
     webbrowser.open(url)
+
+
+def close_desktop_window() -> None:
+    """Close only the browser process created for this Studio instance."""
+    global DESKTOP_WINDOW_PROC
+    proc, DESKTOP_WINDOW_PROC = DESKTOP_WINDOW_PROC, None
+    if proc is None or proc.poll() is not None:
+        return
+    try:
+        proc.terminate()
+        proc.wait(timeout=5)
+    except Exception:
+        try:
+            proc.kill()
+            proc.wait(timeout=2)
+        except Exception:
+            pass
+
+
+def launched_by_updater(cwd: str | None = None) -> bool:
+    """The external updater starts the new EXE from the system temp folder."""
+    here = os.path.abspath(cwd or os.getcwd())
+    temp = os.path.abspath(tempfile.gettempdir())
+    return bool(getattr(sys, "frozen", False) and os.name == "nt"
+                and os.path.normcase(here) == os.path.normcase(temp))
+
+
+def close_stale_studio_windows() -> int:
+    """Close old app windows left by releases that did not own their browser.
+
+    This runs only when the new EXE was launched by the updater, before its own
+    window exists. Sending WM_CLOSE to an exact Studio title closes that one
+    window gracefully and never terminates the user's Chrome/Edge process.
+    """
+    if os.name != "nt":
+        return 0
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    enum_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user32.EnumWindows.argtypes = (enum_proc, wintypes.LPARAM)
+    user32.EnumWindows.restype = wintypes.BOOL
+    user32.GetWindowTextLengthW.argtypes = (wintypes.HWND,)
+    user32.GetWindowTextLengthW.restype = ctypes.c_int
+    user32.GetWindowTextW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+    user32.GetWindowTextW.restype = ctypes.c_int
+    user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND,
+                                                 ctypes.POINTER(wintypes.DWORD))
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    user32.PostMessageW.argtypes = (wintypes.HWND, wintypes.UINT,
+                                    wintypes.WPARAM, wintypes.LPARAM)
+    user32.PostMessageW.restype = wintypes.BOOL
+    titles = {"Karaoke Studio", "Караоке-студия"}
+    closed = 0
+
+    @enum_proc
+    def visit(hwnd, _param):
+        nonlocal closed
+        n = user32.GetWindowTextLengthW(hwnd)
+        if n <= 0:
+            return True
+        buf = ctypes.create_unicode_buffer(n + 1)
+        user32.GetWindowTextW(hwnd, buf, n + 1)
+        if buf.value.strip() in titles:
+            pid = wintypes.DWORD()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value and pid.value != os.getpid():
+                user32.PostMessageW(hwnd, 0x0010, 0, 0)  # WM_CLOSE
+                closed += 1
+        return True
+
+    user32.EnumWindows(visit, 0)
+    return closed
 
 
 def parse_args(argv):
@@ -2244,6 +2332,8 @@ def main(argv=None) -> int:
                 pass
             return 5
     want, no_browser, host = parse_args(args)
+    if launched_by_updater():
+        close_stale_studio_windows()
     # Versions before 4.46.6 kept uploads in a second, hidden-looking store.
     # Fold anything a real project uses into that project before serving it.
     P.migrate_legacy_incoming(PROJECTS, ready_dir())
@@ -2302,6 +2392,7 @@ def main(argv=None) -> int:
         print(tr("\nClosing the studio.", "\nЗакрываю студию."))
     finally:
         srv.server_close()
+        close_desktop_window()
     return 0
 
 

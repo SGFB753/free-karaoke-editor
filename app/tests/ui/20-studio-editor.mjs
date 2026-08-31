@@ -131,6 +131,12 @@ $('btnZoomIn').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(150);
 ok('the zoom changes', $('zoomNote').textContent !== z0,
    z0+' → '+$('zoomNote').textContent);
+const z1 = $('zoomNote').textContent;
+$('tlwrap').dispatchEvent(new w.WheelEvent('wheel',
+  {bubbles:true, cancelable:true, ctrlKey:true, deltaY:120}));
+await sleep(150);
+ok('Ctrl+wheel changes the timeline zoom too', $('zoomNote').textContent !== z1,
+   z1+' → '+$('zoomNote').textContent);
 ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(';'));
 console.log(fail?`\nFAILED: ${fail}`:'\nAll checks passed');
 process.exit(fail?1:0);

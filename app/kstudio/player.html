@@ -55,12 +55,12 @@
   }
   .ln.done{opacity:.30; color:var(--sung)}
   .ln.next{opacity:.55}
-  .ln.cur{opacity:1; color:var(--text); transform:scale(1.045)}
+  .ln.cur{opacity:1; color:var(--text); transform:none}
   /* A line wholly in brackets is backing vocals. It is written so the backing
      can be heard, so on screen it stays humbler than the main line. */
   .ln.back{font-size:calc(var(--stage-size) * .72); font-style:italic;
            letter-spacing:0}
-  .ln.back.cur{transform:scale(1.02)}
+  .ln.back.cur{transform:none}
   /* A line the original sings: the recorded voice is not removed here.
      Backing vocals, speech, a bit that matters to the story — it is not yours
      to sing, and that has to be visible in advance, not learnt by ear. */
@@ -79,21 +79,14 @@
   }
   /* The second voice gets its own colour: who sings and where the style changed. */
   .ln.v2 .w .hl{color:var(--accent-2)}
-  /* Two voices at once. The lines sit one under another, but centred they read
-     as one mush with nothing for the eye to hold on to. So they are pulled
-     apart — main voice left, second right — each with a number tag. */
+  /* Two voices at once stay in the same centred seats they occupied in the
+     preview. Number and colour distinguish them without a sideways jump. */
   .ln.duo{transform:none !important; transition:transform .25s, margin .25s}
   .ln.duo.cur{opacity:1}
-  .ln.duo:not(.v2){text-align:left; padding-left:6vw; padding-right:22vw}
-  .ln.duo.v2{text-align:right; padding-right:6vw; padding-left:22vw}
+  .ln.duo:not(.v2),.ln.duo.v2{text-align:center; padding-left:6vw; padding-right:6vw}
   .ln.duo::before{content:"1"; font-size:.42em; font-weight:700; opacity:.55;
     vertical-align:middle; margin-right:.5em; color:var(--accent)}
-  .ln.duo.v2::before{content:"2"; color:var(--accent-2); margin-right:0;
-    margin-left:.5em; float:right}
-  @media (max-width: 700px){
-    .ln.duo:not(.v2){padding-right:10vw}
-    .ln.duo.v2{padding-left:10vw}
-  }
+  .ln.duo.v2::before{content:"2"; color:var(--accent-2)}
   .ln.cur .w{color:rgba(232,235,245,.34)}
   .sect{font-size:12px; font-weight:600; letter-spacing:2.5px; text-transform:uppercase;
         color:var(--accent2); opacity:.62; text-align:center; padding:1.1em 0 .2em}

@@ -34,6 +34,10 @@ $('nativeFile').addEventListener('click', () => nativeClicks++);
 console.log('--- ordinary choices go straight to the native picker ---');
 $('btnAdd').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(200);
+$('selModel').focus();
+w.dispatchEvent(new w.MouseEvent('pointerup',{bubbles:true}));
+ok('a native select keeps focus through pointer-up', doc.activeElement === $('selModel'),
+   'active=' + (doc.activeElement && doc.activeElement.id));
 doc.querySelector('[data-pick="audio"]').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(100);
 ok('the audio button clicked the native file input', nativeClicks === 1, String(nativeClicks));
@@ -61,10 +65,19 @@ ok('its Choose button opens the native picker too', nativeClicks === 3, String(n
 ok('it asks for text files', $('nativeFile').accept === '.txt,.lrc', $('nativeFile').accept);
 
 console.log('\n--- dialogs close the ordinary desktop way ---');
-$('browser').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+$('browser').dispatchEvent(new w.MouseEvent('pointerdown',
+  {bubbles:true,clientX:20,clientY:20}));
+$('browser').dispatchEvent(new w.MouseEvent('pointerup',
+  {bubbles:true,clientX:20,clientY:20}));
 ok('a click on the shade closes Other lyrics', $('browser').classList.contains('hide'));
 $('btnLyrics').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(400);
+$('brPasteText').dispatchEvent(new w.MouseEvent('pointerdown',
+  {bubbles:true,clientX:100,clientY:100}));
+$('browser').dispatchEvent(new w.MouseEvent('pointerup',
+  {bubbles:true,clientX:20,clientY:20}));
+ok('dragging text onto the shade does not close the dialog',
+   !$('browser').classList.contains('hide'));
 $('brPasteText').dispatchEvent(new w.KeyboardEvent('keydown',
   {key:'Escape',bubbles:true,cancelable:true}));
 ok('Escape closes it even from its textarea', $('browser').classList.contains('hide'));

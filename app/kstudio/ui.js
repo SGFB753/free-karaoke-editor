@@ -300,6 +300,12 @@ const STR = {
     hotkeys: "Space — play · ← → seek · [ ] shift the line by 50 ms",
     nothingToUndo: "Nothing to undo",
     undone: "Undone",
+    nothingToRedo: "Nothing to redo",
+    redone: "Redone",
+    redo: "↷ Redo",
+    redoHint: "Redo the last undone change (Ctrl+Y)",
+    selectAll: "☑ All lines",
+    selectAllHint: "Select every line (Ctrl+A); Ctrl-click lines to remove them",
     sec: " s",
     theEnd: "End",
     tillEnd: "to the end of the recording",
@@ -723,6 +729,12 @@ const STR = {
     hotkeys: "Пробел — пуск · ← → перемотка · [ ] сдвиг строки на 50 мс",
     nothingToUndo: "Отменять нечего",
     undone: "Отменено",
+    nothingToRedo: "Возвращать нечего",
+    redone: "Возвращено",
+    redo: "↷ Вернуть",
+    redoHint: "Вернуть отменённую правку (Ctrl+Y)",
+    selectAll: "☑ Все строки",
+    selectAllHint: "Выбрать все строки (Ctrl+A); Ctrl-кликом исключить ненужные",
     sec: " с",
     theEnd: "Конец",
     tillEnd: "до конца записи",
@@ -998,7 +1010,14 @@ $('btnUpdate').addEventListener('click', async () => {
     const started = await api('/api/update/download', {});
     watchJob(started.job, T.updateDownloading, async ready => {
       $("jobTitle").textContent = T.updateRestart;
-      try { await api('/api/update/apply', {token: ready.token}); }
+      try {
+        await api('/api/update/apply', {token: ready.token});
+        // Do not leave the old app window showing a completed restart forever.
+        // The server also owns and closes its private browser process; this is
+        // the immediate, graceful path while the JSON response is still alive.
+        if (desktopLifetime){ desktopLifetime.close(); desktopLifetime = null; }
+        setTimeout(() => window.close(), 50);
+      }
       catch(e){ $("jobTitle").textContent = T.jobFail; $("jobLog").textContent = e.message;
         $("btnJobBack").classList.remove("hide"); }
     });
@@ -1205,8 +1224,20 @@ let pickTarget = null;
 document.querySelectorAll("[data-pick]").forEach(b =>
   b.addEventListener("click", () => openBrowser(b.dataset.pick)));
 $("brCancel").addEventListener("click", () => $("browser").classList.add("hide"));
-$("browser").addEventListener("click", e => {
-  if (e.target === $("browser")) $("browser").classList.add("hide");
+// Close only on a deliberate press and release on the backdrop. While selecting
+// pasted lyrics it is easy to drag the pointer outside the dialog; that gesture
+// must not throw the whole text away.
+let browserBackdropPress = null;
+$("browser").addEventListener("pointerdown", e => {
+  browserBackdropPress = e.target === $("browser")
+    ? {x: e.clientX, y: e.clientY, id: e.pointerId} : null;
+});
+$("browser").addEventListener("pointerup", e => {
+  const p = browserBackdropPress;
+  browserBackdropPress = null;
+  if (p && e.target === $("browser") && p.id === e.pointerId
+      && Math.hypot(e.clientX - p.x, e.clientY - p.y) < 4)
+    $("browser").classList.add("hide");
 });
 $("brUp").addEventListener("click", () => showDir($("brBody").dataset.parent));
 
@@ -1919,6 +1950,10 @@ async function openProject(id){
   pitch = clamp(parseInt(data.pitch || 0, 10) || 0, -6, 6);
   refreshPitch();
   lines = data.lines;
+  past.length = 0;
+  future.length = 0;
+  lastSnap = {what: "", at: 0};
+  refreshHistory();
   envelope = decodeEnv(data.envelope);
   quiet = data.quiet || [];
   envHop = (data.envelope||{}).hop || 0.02;
@@ -2119,6 +2154,19 @@ function selectLine(i, jump, mode){
   makeWords();                       // the word row always belongs to the selected line
   refreshVoice(); refreshKeep(); refreshRhythm();
 }
+function selectAllLines(){
+  if (!lines.length) return;
+  marked.clear();
+  lines.forEach((_, i) => marked.add(i));
+  if (sel < 0) sel = 0;
+  anchor = sel;
+  lineEls.forEach((L, k) => L.el.classList.toggle("sel", k === sel));
+  paintMarks();
+  $("selNote").textContent = T.linesPicked(marked.size);
+  $("selNote").classList.add("many");
+  layoutBlocks();
+  refreshVoice(); refreshKeep(); refreshRhythm();
+}
 // Scrolling the lyrics by hand. The only way used to be ↑ ↓ one line at a
 // time — you never get back to the start of a long song like that.
 let freeScroll = 0, scrollY = 0;
@@ -2155,7 +2203,7 @@ function centerLine(i){
    and undo is the only protection from a wrong move. We keep snapshots of the
    lines: there are few of them, and this way no inverse action has to be
    written for every kind of edit. */
-const past = [];
+const past = [], future = [];
 let lastSnap = {what: "", at: 0};
 function snap(what){
   // A run of identical small steps (holding [ or ]) is one undo step, or it
@@ -2168,19 +2216,35 @@ function snap(what){
   lastSnap = {what: what || "", at: now};
   past.push(JSON.stringify(lines));
   if (past.length > 120) past.shift();
-  refreshUndo();
+  future.length = 0;
+  refreshHistory();
 }
 function undo(){
-  if (!past.length){ refreshUndo(); return toast(T.nothingToUndo); }
+  if (!past.length){ refreshHistory(); return toast(T.nothingToUndo); }
+  future.push(JSON.stringify(lines));
   lines = JSON.parse(past.pop());
   lastSnap = {what: "", at: 0};
   buildLines(); makeBlocks();
   selectLine(clamp(sel, 0, lines.length - 1), false);
   curLine = -2;
-  refreshUndo(); touched();
+  refreshHistory(); touched();
   toast(T.undone);
 }
-function refreshUndo(){ $("btnUndo").disabled = past.length === 0; }
+function redo(){
+  if (!future.length){ refreshHistory(); return toast(T.nothingToRedo); }
+  past.push(JSON.stringify(lines));
+  lines = JSON.parse(future.pop());
+  lastSnap = {what: "", at: 0};
+  buildLines(); makeBlocks();
+  selectLine(clamp(sel, 0, lines.length - 1), false);
+  curLine = -2;
+  refreshHistory(); touched();
+  toast(T.redone);
+}
+function refreshHistory(){
+  $("btnUndo").disabled = past.length === 0;
+  $("btnRedo").disabled = future.length === 0;
+}
 
 /* ---------- countdown to the singing ---------- */
 // While nobody sings the stage is empty and it is impossible to tell whether
@@ -2633,6 +2697,8 @@ $("btnRhythm").addEventListener("click", copyRhythm);
 $("btnPaste").addEventListener("click", pasteRhythm);
 $("btnPasteLine").addEventListener("click", pasteLine);
 $("btnUndo").addEventListener("click", undo);
+$("btnRedo").addEventListener("click", redo);
+$("btnSelectAll").addEventListener("click", selectAllLines);
 
 // The save state is always visible instead of flashing for a second: one has
 // to know whether an edit is on disk without guessing.
@@ -2793,6 +2859,7 @@ function showProblems(list){
 /* ================= the timeline ================= */
 let zoom = 15;                  // how many seconds are visible
 function pps(){ return $("tlwrap").clientWidth / zoom; }   // pixels per second
+function onsetSnapRange(){ return Math.min(0.08, 5 / pps()); }
 function viewStart(){ return clamp(mediaTime() - zoom*0.35, 0, Math.max(dur-zoom,0)); }
 function xOf(t){ return (t - viewStart()) * pps(); }
 function tOf(x){ return viewStart() + x / pps(); }
@@ -3223,13 +3290,14 @@ window.addEventListener("pointermove", e => {
     let ns = clamp(drag.start + dt, 0, ceil);
     if (ns >= ceil - 0.001) hitLimit();
     const snap2 = nearestOnset(ns);
-    if (snap2 !== null && Math.abs(snap2 - ns) < zoom*0.012) ns = clamp(snap2, 0, ceil);
+    if (snap2 !== null && Math.abs(snap2 - ns) < onsetSnapRange())
+      ns = clamp(snap2, 0, ceil);
     ln.start = ns;
     if (w0){ w0.t = ns; w0.d = (drag.words[0] + drag.durs[0]) - ns; }
   } else {
     let ns = Math.max(0, drag.start + dt);
     const snap = nearestOnset(ns);            // snap to the start of a phrase
-    if (snap !== null && Math.abs(snap-ns) < zoom*0.012) ns = snap;
+    if (snap !== null && Math.abs(snap-ns) < onsetSnapRange()) ns = snap;
     const d = ns - drag.start;
     ln.start = ns; ln.end = drag.end + d;
     ln.words.forEach((w,k) => w.t = drag.words[k] + d);
@@ -3256,7 +3324,7 @@ window.addEventListener("pointerup", e => {
       const at = pile.indexOf(sel);
       const next = pile[(at >= 0 ? at + 1 : 0) % pile.length];
       diveAt = null;
-      if (drag){ drag = null; $("tlwrap").classList.remove("drag"); past.pop(); refreshUndo(); }
+      if (drag){ drag = null; $("tlwrap").classList.remove("drag"); past.pop(); refreshHistory(); }
       selectLine(next, false);
       toast(T.lineDove(next + 1));
       return;
@@ -3453,7 +3521,7 @@ function editText(i){
     const changed = save && retext(i, inp.value);
     // nothing changed, so there must be no undo step, or the button would stay
     // lit over an empty history and do nothing when pressed
-    if (save && !changed){ past.pop(); refreshUndo(); }
+    if (save && !changed){ past.pop(); refreshHistory(); }
     buildLines();                       // rebuild the stage: the word count changed
     makeBlocks();                       // and the label on the timeline too
     selectLine(i, false);
@@ -3543,6 +3611,13 @@ $("tlwrap").addEventListener("wheel", e => {
   if (!dur || marking) return;
   const raw = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
   if (!raw) return;
+  if (e.ctrlKey || e.metaKey){
+    // Keep the moment under the playhead and change only the visible span.
+    // A gentle exponential step works for both a wheel and a touchpad.
+    setZoom(zoom * Math.exp(raw * 0.0015));
+    e.preventDefault();
+    return;
+  }
   const px = raw * (e.deltaMode === 1 ? 16 : e.deltaMode === 2
                     ? $("tlwrap").clientWidth : 1);
   const dt = clamp(px / 100 * zoom * 0.12, -zoom * 0.8, zoom * 0.8);
@@ -3624,7 +3699,7 @@ function takeQuiet(list){
   snap("");
   let n = 0;
   fresh.forEach(x => { if (addMark(x.start, x.end)) n++; });
-  if (!n){ past.pop(); refreshUndo(); return toast(T.quietNothingNew); }
+  if (!n){ past.pop(); refreshHistory(); return toast(T.quietNothingNew); }
   touched();
   drawWave();
   drawSummary(lastData);
@@ -3735,7 +3810,7 @@ $("btnClip").addEventListener("click", () => {
     i = j;
   }
   if (!n && !moved){ past.pop(); return toast(T.clipNothing); }
-  curLine = -2; layoutBlocks(); touched(); refreshUndo();
+  curLine = -2; layoutBlocks(); touched(); refreshHistory();
   toast(moved ? T.clipMoved(n, moved) : T.clipDone(n));
 });
 
@@ -3780,7 +3855,7 @@ $("btnSnap").addEventListener("click", () => {
     ln.start += d; ln.end += d; ln.words.forEach(w=>w.t += d); n++;
   });
   if (!n) past.pop();               // nothing moved — nothing to undo
-  curLine=-2; layoutBlocks(); touched(); refreshUndo();
+  curLine=-2; layoutBlocks(); touched(); refreshHistory();
   toast(n ? T.movedN(n) : T.allInPlace);
 });
 
@@ -3892,7 +3967,7 @@ document.addEventListener("click", e => {
 window.addEventListener("pointerup", () => {
   const control = document.activeElement;
   if (control && control.matches &&
-      control.matches("button, input[type='range'], input[type='checkbox'], select"))
+      control.matches("button, input[type='range'], input[type='checkbox']"))
     control.blur();
 });
 document.addEventListener("keydown", e => {
@@ -3917,10 +3992,15 @@ document.addEventListener("keydown", e => {
     $("selNote").textContent = T.lineNo(sel+1, fmtMs(lines[sel].start)); };
   if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z" ||
        e.key === "я" || e.key === "Я")){
-    e.preventDefault(); undo(); return;
+    e.preventDefault(); e.shiftKey ? redo() : undo(); return;
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === "y" || e.key === "Y" ||
+       e.key === "н" || e.key === "Н")){
+    e.preventDefault(); redo(); return;
   }
   if (e.ctrlKey || e.metaKey){
     const k = e.key.toLowerCase();
+    if (k === "a" || k === "ф"){ e.preventDefault(); selectAllLines(); return; }
     if (k === "c" || k === "с"){ e.preventDefault(); copyRhythm(); return; }
     if (k === "v" || k === "м"){
       e.preventDefault(); e.shiftKey ? pasteLine() : pasteRhythm(); return; }

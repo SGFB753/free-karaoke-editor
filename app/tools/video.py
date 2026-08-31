@@ -501,7 +501,6 @@ class LineArt:
 
         def row_x(idxs):
             total = self.font.getlength(row_text_of(idxs))
-            # the backing sits to the right, tucked under its lead like a reply
             x0 = (width - margin - total) if align == "right" else (width - total) / 2
             return max(x0, margin)
 
@@ -534,7 +533,7 @@ class LineArt:
         hot = COL_HOT2 if line.get("voice") == 2 else COL_HOT
         # a duet's backing line fills as it is sung too — only the queue lines
         # (drawn dim ahead of their time) never need a hot layer
-        self.hot = draw(hot) if (main or align == "right") else None
+        self.hot = draw(hot)
 
     def _fill_at(self, line, t):
         """(row, x) of the sweep at moment t."""
@@ -794,7 +793,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 # made the very lines on screen be typeset again
                 store.pop(next(iter(store)))
             store[i] = LineArt(lines[i], font_for, W, margin, main,
-                               align="right" if duo_side else "center")
+                               align="center")
         return store[i]
 
     starts = [ln["start"] for ln in lines]
@@ -830,16 +829,22 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         mask = img.getchannel("A").point(lambda v: int(v * alpha))
         frame.paste(img, pos, mask)
 
-    def draw_queue(frame, n1, duo=-1, off=0, alpha=1.0):
+    def draw_queue(frame, n1, duo=-1, off=0, alpha=1.0, floor=0):
         """The line coming next, and the one after it fainter still — the
         singer reads forward, never back. The count-in shows the same queue,
         so nothing jumps when the music finally starts."""
-        nx = get(n1, False)
-        paste_faded(frame, nx.dim, (0, y_next - nx.h // 2 + off), alpha)
+        # The waiting line uses exactly the typography it will have when it
+        # becomes current. Otherwise a long line fits in the preview and then
+        # suddenly wraps or grows as the singer reaches it.
+        nx = get(n1, True)
+        gap_px = int(H * 0.014)
+        ny = max(y_next - nx.h // 2 + off, floor + gap_px)
+        paste_faded(frame, nx.dim, (0, ny), alpha)
         n2i = next_sung(lines, n1)
         if n2i < len(lines) and n2i != duo:
-            n2 = get(n2i, False)
-            paste_faded(frame, n2.faint, (0, y_next2 - n2.h // 2 + off), alpha)
+            n2 = get(n2i, True)
+            n2y = max(y_next2 - n2.h // 2 + off, ny + nx.h + gap_px)
+            paste_faded(frame, n2.faint, (0, n2y), alpha)
 
     t_start = args.start
     if t_start >= duration:
@@ -1103,8 +1108,8 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             duo_bottom = y_b + pic.h
         elif not over and idx >= 0:
             # The lead stays exactly where a solo line sits; the backing is
-            # smaller, to the right, tucked under it like a reply — two full
-            # rows used to collide with the dots and the queue.
+            # smaller and centred under it. Moving it sideways only when it
+            # starts made it appear to fly in from outside the preview.
             pair = [idx] if duo < 0 else sorted(
                 [idx, duo], key=lambda j: lines[j].get("voice") == 2)
             y_j = 0
@@ -1137,6 +1142,24 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                            font=small, fill=_mix(COL_DIM, (255, 255, 255), 0.3),
                            anchor="ra", **edged(small))
 
+        # A backing line that will enter over the current lead is shown dim in
+        # its eventual seat before its first word. It no longer materialises
+        # only at the instant it starts.
+        if not over and idx >= 0 and duo < 0 and not lines[idx].get("backing"):
+            upcoming_back = -1
+            for j in range(idx + 1, min(len(lines), idx + 4)):
+                if not lines[j].get("backing"):
+                    break
+                if t < lines[j]["start"] < lines[idx]["end"]:
+                    upcoming_back = j
+                    break
+            if upcoming_back >= 0:
+                pic = get(upcoming_back, main=False, duo_side=True)
+                y_b = max(duo_bottom + int(H * 0.008),
+                          y_main + int(H * 0.036) + off)
+                paste_faded(frame, pic.dim, (0, y_b), scene_alpha * 0.72)
+                duo_bottom = y_b + pic.h
+
         # Guide dots: a countdown, not decoration. On the page they are
         # separators in a scrolling list; a frame has no scroll, so here
         # they show up only once the singing has stopped and the wait is
@@ -1150,7 +1173,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
 
         n1 = next_sung(lines, idx)
         if not over and n1 < len(lines) and n1 != duo:
-            draw_queue(frame, n1, duo, off, scene_alpha)
+            draw_queue(frame, n1, duo, off, scene_alpha, duo_bottom)
 
             gap = lines[n1]["start"] - (lines[idx]["end"] if idx >= 0 else 0)
             left = lines[n1]["start"] - t

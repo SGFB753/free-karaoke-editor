@@ -1,5 +1,5 @@
-// Two voices at once: in a real browser the lines must read apart — they must
-// not overlap and must stand on different sides of the stage.
+// Two voices at once: in a real browser the lines must read apart vertically,
+// while staying in the same centred seats they had before becoming active.
 import puppeteer from 'puppeteer';
 import fs from 'fs';
 import path from 'path';
@@ -83,10 +83,11 @@ if (state.n >= 2){
   ok('the lines do not overlap vertically',
      one.b <= two.t + 2 || two.b <= one.t + 2,
      `${one.t}–${one.b} and ${two.t}–${two.b}`);
-  ok('the first voice sits to the left of the second', one.l < two.l,
-     `${one.l} vs ${two.l}`);
-  ok('the second hugs the right edge', two.r > state.stage * 0.6,
-     `${two.r} with a width of ${state.stage}`);
+  const c1 = (one.l + one.r) / 2, c2 = (two.l + two.r) / 2;
+  ok('both voices stay centred instead of flying sideways',
+     Math.abs(c1 - state.stage / 2) < state.stage * 0.08 &&
+     Math.abs(c2 - state.stage / 2) < state.stage * 0.08,
+     `centres ${c1} / ${c2}, stage ${state.stage}`);
   ok('both are fully visible on stage',
      one.t > 0 && two.b < 720, `${one.t} … ${two.b}`);
 }

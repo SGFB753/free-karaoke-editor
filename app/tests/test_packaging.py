@@ -14,6 +14,7 @@ sys.path.insert(0, ROOT)
 
 from kstudio import update
 import updater
+import studio
 
 
 def check(name, yes):
@@ -64,6 +65,39 @@ def main():
     check("a source checkout cannot overwrite itself", not update.supported())
     check("versions compare numerically",
           update._version_tuple("v4.10.0") > update._version_tuple("4.9.9"))
+
+    # The app window is a separate Chromium process. During an update the old
+    # server must own and close exactly that process, or its completed restart
+    # screen remains beside the newly launched version forever.
+    owned = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
+                             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    try:
+        studio.DESKTOP_WINDOW_PROC = owned
+        studio.close_desktop_window()
+        check("an update closes the old Studio app window process",
+              owned.poll() is not None and studio.DESKTOP_WINDOW_PROC is None)
+    finally:
+        if owned.poll() is None:
+            owned.kill()
+        owned.wait()
+    browser_cmd = studio.browser_command("chrome.exe", "http://127.0.0.1:8770/",
+                                         r"C:\Temp\studio-profile")
+    check("the Studio window has a private browser process",
+          any(a.startswith("--user-data-dir=") for a in browser_cmd)
+          and "--no-first-run" in browser_cmd
+          and any(a.startswith("--app=http://127.0.0.1:8770/") for a in browser_cmd))
+    old_frozen = getattr(studio.sys, "frozen", None)
+    try:
+        studio.sys.frozen = True
+        check("the first fixed release recognises a Windows launch from the old updater",
+              studio.launched_by_updater(tempfile.gettempdir()) == (os.name == "nt"))
+        check("an ordinary launch is not mistaken for an update",
+              not studio.launched_by_updater(os.path.join(tempfile.gettempdir(), "elsewhere")))
+    finally:
+        if old_frozen is None:
+            delattr(studio.sys, "frozen")
+        else:
+            studio.sys.frozen = old_frozen
 
     # The external updater must wait until the old executable releases its DLLs.
     # os.kill(pid, 0), while useful on POSIX, is not a harmless liveness probe on

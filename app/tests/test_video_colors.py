@@ -163,10 +163,11 @@ def main():
           and video.pips_lit(1.0, 2.0) == 0)
     check("and it never jumps past three", video.pips_lit(10.0, 0.01) == 3)
 
-    print("\nA duet frame: the backing smaller, to the right, off the dots")
+    print("\nA duet frame: the backing is previewed and stays centred off the dots")
     # The second voice used to draw at full size and land on the countdown
     # dots. Now the lead sits where a solo line sits, and the backing is
-    # smaller, right-aligned, tucked under it like a reply.
+    # smaller and centred under it. It is already visible before its first
+    # word, so it does not fly in sideways when it becomes active.
     duet_song = {"colors": ["#00ff00", "#ff00ff"],
                  "theme": {"bg": "#000000", "text": "#ffffff"},
                  "data": {"title": "T", "duration": 20.0, "lines": [
@@ -185,7 +186,7 @@ def main():
         width, height, fps, crf = 640, 360, 5, 30
         preset, font = "ultrafast", None
         intro = False
-        start, seconds, audio, timings = 5.8, 4.5, "minus", None
+        start, seconds, audio, timings = 5.0, 5.7, "minus", None
         output = os.path.join(tmp, "duet.mp4")
     video.render(duet_song, wavd, AD.output, AD())
     pngd = os.path.join(tmp, "duet.png")
@@ -205,15 +206,25 @@ def main():
     check("the lead is drawn where a solo line sits", lead_ink > 150, lead_ink)
     check("the backing is there, under it", back_left + back_right > 30,
           back_left + back_right)
-    check("and it leans right, smaller than the lead",
-          back_right > back_left * 1.5 and (back_left + back_right) < lead_ink,
+    check("and it stays centred, smaller than the lead",
+          abs(back_right - back_left) < (back_left + back_right) * 0.35
+          and (back_left + back_right) < lead_ink,
           f"left {back_left}, right {back_right}, lead {lead_ink}")
+
+    png_waiting = os.path.join(tmp, "duet-waiting.png")
+    subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "0.2", "-i", AD.output,
+                    "-frames:v", "1", png_waiting], check=True)
+    imw = Image.open(png_waiting).convert("RGB")
+    waiting_back = sum(1 for y in range(int(Hd * 0.49), int(Hd * 0.61))
+                       for x in range(0, Wd, 2)
+                       if sum(imw.getpixel((x, y))) > 90)
+    check("the backing is visible before it starts", waiting_back > 30, waiting_back)
 
     # …and when the lead ends but the na-na-na carries on, the backing keeps
     # its side seat instead of being promoted to the main one, full size, in
     # the way of the lead text.
     png_alone = os.path.join(tmp, "duet-alone.png")
-    subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "3.9", "-i", AD.output,
+    subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "4.7", "-i", AD.output,
                     "-frames:v", "1", png_alone], check=True)
     ima = Image.open(png_alone).convert("RGB")
     Wa, Ha = ima.size
@@ -228,8 +239,9 @@ def main():
     side_right = ink_a(0.46, 0.58, 0.5, 1.0)
     check("with the lead gone, the main seat stays empty",
           main_seat < 40, main_seat)
-    check("the lone backing still sits small to the right",
-          side_right > 30 and side_right > side_left * 1.5,
+    check("the lone backing still sits small and centred",
+          side_left + side_right > 30
+          and abs(side_right - side_left) < (side_left + side_right) * 0.35,
           f"left {side_left}, right {side_right}")
     check("and the next lead still waits below",
           ink_a(0.58, 0.70) > 40, ink_a(0.58, 0.70))
