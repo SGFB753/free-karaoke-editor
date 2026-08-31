@@ -219,6 +219,9 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
            log: Log = _noop) -> str:
     """Build a project. Returns the path to its folder."""
     lyr = L.load(lyrics_path)
+    if lyr.ignored_junk:
+        log(tr(f"Removed {lyr.ignored_junk} recommendation lines copied from Genius.",
+               f"Убрано строк из рекомендаций Genius: {lyr.ignored_junk}."))
     if not lyr.lines:
         raise ValueError(tr("The lyrics file has no lines at all.",
                         "В файле с текстом не нашлось ни одной строки."))
@@ -282,6 +285,8 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
         lyr, engine = A.align(lyr, align_src, dur, align_engine,
                               whisper_model, language, device, log,
                               isolated=False, skip=holes)
+        if vocals and engine == "whisper":
+            A.refine_leading_silence(lyr, vocals, log=log)
         log(tr(f"Timing ready ({B.ENGINE_LABEL.get(engine, engine)}).",
            f"Разметка готова ({B.ENGINE_LABEL.get(engine, engine)})."))
 

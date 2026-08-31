@@ -282,6 +282,84 @@ def align_energy(lyrics: Lyrics, audio_path: str, duration: float,
 #  Whisper forced alignment
 # --------------------------------------------------------------------------- #
 
+def _alignment_blocks(lines: List[Line], max_lines: int = 8,
+                      max_words: int = 55) -> List[List[Line]]:
+    """Small sequential batches keep one failed phrase from losing a long song."""
+    out: List[List[Line]] = []
+    block: List[Line] = []
+    words = 0
+    for line in lines:
+        count = len(line.words)
+        if block and (len(block) >= max_lines or words + count > max_words):
+            out.append(block)
+            block, words = [], 0
+        block.append(line)
+        words += count
+    if block:
+        out.append(block)
+    return out
+
+
+def _safe_alignment_anchor(segments, offset: float = 0.0,
+                           max_gap: float = 12.0) -> Optional[float]:
+    """Last trustworthy end in one recovery block.
+
+    stable-ts may place the first few lines correctly and then jump far ahead
+    on a phrase it cannot match.  Using that late segment as the next block's
+    cursor turns one bad phrase into a broken remainder of the song.
+    """
+    end: Optional[float] = None
+    previous_end: Optional[float] = None
+    for seg in segments:
+        words = seg.words or []
+        probs = [float(w.probability) for w in words
+                 if getattr(w, "probability", None) is not None]
+        start = float(seg.start) + offset
+        stop = float(seg.end) + offset
+        sane = (stop > start and stop - start < max(8.0, 1.5 * len(words))
+                and (not probs or max(probs) >= 0.005))
+        if not sane:
+            break
+        if previous_end is not None and start - previous_end > max_gap:
+            break
+        end = stop
+        previous_end = stop
+    return end
+
+
+def _lost_alignment_index(lines: List[Line]) -> Optional[int]:
+    """First line of a confidence collapse after implausible consecutive gaps."""
+    def bounds(line: Line):
+        timed = [w for w in line.words if w.start is not None and w.end is not None]
+        return (timed[0].start, timed[-1].end) if timed else (None, None)
+
+    def confidence(line: Line) -> float:
+        got = [w.prob for w in line.words if w.prob is not None]
+        return sum(got) / len(got) if got else 1.0
+
+    for i in range(1, len(lines)):
+        _a0, previous_end = bounds(lines[i - 1])
+        current_start, _b1 = bounds(lines[i])
+        if previous_end is None or current_start is None \
+                or current_start - previous_end < 7.0:
+            continue
+        window = lines[i:min(i + 5, len(lines))]
+        low = sum(confidence(line) < 0.30 for line in window)
+        another_gap = False
+        for left, right in zip(window, window[1:]):
+            _x, left_end = bounds(left)
+            right_start, _y = bounds(right)
+            if left_end is not None and right_start is not None \
+                    and right_start - left_end > 5.0:
+                another_gap = True
+                break
+        # One quiet instrumental bridge is legitimate. Several large holes and
+        # several barely recognised lines in a row mean the aligner lost place.
+        if low >= 3 and another_gap:
+            return i
+    return None
+
+
 def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                   model_name: str = "medium", language: str = "ru",
                   device: Optional[str] = None, log: Log = _noop,
@@ -407,14 +485,33 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     # silence it can hear perfectly well is empty, just to make room. The lead
     # lines anchor cleanly on their own; the backing is placed by rule after.
     main_lines = [ln for ln in lyrics.lines if not ln.backing] or lyrics.lines
-    main_words = [w for ln in main_lines for w in ln.words]
-    main_text = "\n".join(ln.text for ln in main_lines)
     if len(main_lines) < len(lyrics.lines):
         log(tr(f"  backing lines kept away from the aligner: "
                f"{len(lyrics.lines) - len(main_lines)}",
                f"  бэк-строк не показано разметчику: "
                f"{len(lyrics.lines) - len(main_lines)}"))
 
+    # stable-ts splits tokens internally, but after one failed phrase its audio
+    # cursor can jump tens of seconds and never recover. Give each short block a
+    # fresh context, starting at the end found for the previous one.
+    blocks = [main_lines]
+
+    def whole(t: float) -> float:
+        """From the stitched audio back into the song it was cut from."""
+        if not keep:
+            return t
+        at = 0.0
+        for a, b in keep:
+            if t <= at + (b - a):
+                return a + (t - at)
+            at += b - a
+        return keep[-1][1]
+
+    probs: List[float] = []
+    matched_count = 0.0
+    matched_total = 0
+    got_words = 0
+    cursor = 0.0
     log(tr("Lining the text up with the audio…", "Выравниваю текст по звуку…"))
     try:
         # stable-ts complains through the warnings module — “12/34 segments failed
@@ -438,19 +535,87 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                            "впятеро дольше small, а при нехватке памяти — ещё "
                            "дольше. Прервать можно, разметка пересчитается "
                            "с другой моделью.")) as hb:
-            try:
-                # verbose=False, not None: with None the library switches its
-                # own counter off, and then the progress it hands us is zero
-                # from beginning to end — which is how this step spent minutes
-                # saying only how long it had been running.
-                result = model.align(audio_input, main_text,
-                                     language=language, original_split=True,
-                                     progress_callback=hb.progress, verbose=False)
-            except TypeError:
-                # older stable-ts builds lack these parameters — the elapsed
-                # time still shows, it comes from Heartbeat itself
-                result = model.align(audio_input, main_text,
-                                     language=language, original_split=True)
+            for block_no, block in enumerate(blocks):
+                offset = cursor if decoded else 0.0
+                block_audio = (audio_input[int(offset * 16000):]
+                               if decoded and offset > 0 else audio_input)
+                block_text = "\n".join(ln.text for ln in block)
+
+                def block_progress(done, total, n=block_no):
+                    share = float(done or 0) / float(total or 1)
+                    hb.progress(n + max(0.0, min(1.0, share)), len(blocks))
+
+                try:
+                    result = model.align(block_audio, block_text,
+                                         language=language, original_split=True,
+                                         progress_callback=block_progress,
+                                         verbose=False)
+                except TypeError:
+                    # Older stable-ts builds lack the progress parameters.
+                    result = model.align(block_audio, block_text,
+                                         language=language, original_split=True)
+                if result is None:
+                    continue
+
+                rec: List[tuple] = []
+                safe_end = (_safe_alignment_anchor(result.segments, offset)
+                            if block_no > 0 else None)
+                for seg in result.segments:
+                    # A recovery block can have a sound prefix and a failed
+                    # last segment stretched far into the remaining track.
+                    # It must not overwrite the useful timings with that tail.
+                    if block_no > 0 and (safe_end is None or
+                            float(seg.end) + offset > safe_end + 0.001):
+                        break
+                    seg_probs = [float(w.probability) for w in (seg.words or [])
+                                 if getattr(w, "probability", None) is not None]
+                    seg_start = float(seg.start) + offset
+                    seg_end = float(seg.end) + offset
+                    for w in (seg.words or []):
+                        key = normalize_token(w.word)
+                        if not key:
+                            continue
+                        p = getattr(w, "probability", None)
+                        a = float(w.start) + offset
+                        b = float(w.end) + offset
+                        rec.append((key, whole(a), whole(b),
+                                    float(p) if p is not None else None))
+                        got_words += 1
+                        if p is not None:
+                            probs.append(float(p))
+
+                block_words = [w for ln in block for w in ln.words]
+                share = _apply_recognized(block_words, rec) if rec else 0.0
+                matched_count += share * len(block_words)
+                matched_total += len(block_words)
+                if block_no == 0 and len(blocks) == 1 and decoded:
+                    lost = _lost_alignment_index(main_lines)
+                    if lost is not None:
+                        recovery = _alignment_blocks(main_lines[lost:])
+                        # Do not let timings from the failed full pass survive
+                        # in words a recovery block could not hear either.
+                        for line in main_lines[lost:]:
+                            line.start = line.end = None
+                            for word in line.words:
+                                word.start = word.end = word.prob = None
+                        blocks.extend(recovery)
+                        previous = main_lines[lost - 1]
+                        previous_end = max(
+                            (w.end for w in previous.words if w.end is not None),
+                            default=0.0)
+                        cursor = max(0.0, previous_end - 0.25)
+                        log(tr(
+                            f"  alignment lost its place at line {lost + 1}; "
+                            f"retrying the rest in {len(recovery)} short blocks",
+                            f"  разметка потеряла место на строке {lost + 1}; "
+                            f"остаток повторяю короткими блоками ({len(recovery)})"))
+                if decoded and block_no + 1 < len(blocks):
+                    if block_no > 0 or len(blocks) == 1:
+                        raw_end = _safe_alignment_anchor(result.segments, offset)
+                        if raw_end is None:
+                            raw_end = cursor
+                        cursor = max(cursor, raw_end - 0.25)
+                del result
         stack.__exit__(None, None, None)
         report_warnings(caught, len(lyrics.lines), log)
     except FileNotFoundError as e:
@@ -461,34 +626,11 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
             f"Whisper не смог запустить ffmpeg ({e}). Поставьте его в систему: "
             f"winget install Gyan.FFmpeg — и перезапустите командную строку."))
 
-    rec: List[tuple] = []
-    probs: List[float] = []
-    for seg in result.segments:
-        for w in (seg.words or []):
-            key = normalize_token(w.word)
-            if key:
-                p = getattr(w, "probability", None)
-                rec.append((key, float(w.start), float(w.end),
-                            float(p) if p is not None else None))
-                if p is not None:
-                    probs.append(float(p))
-    if not rec:
+    if not got_words:
         raise RuntimeError(tr("Whisper returned no timed words at all",
                               "Whisper не вернул ни одного слова с таймингом"))
 
-    if keep:
-        def whole(t: float) -> float:
-            """From the stitched audio back into the song it was cut from."""
-            at = 0.0
-            for a, b in keep:
-                if t <= at + (b - a):
-                    return a + (t - at)
-                at += b - a
-            return keep[-1][1]
-
-        rec = [(k, whole(a), whole(b), pr) for k, a, b, pr in rec]
-
-    matched = _apply_recognized(main_words, rec)
+    matched = matched_count / matched_total if matched_total else 0.0
     # This is NOT a “is it the right text” check: align() forces the given text
     # onto the audio, so the words always match. It catches a tokenisation
     # mismatch between our parser and Whisper's — without it such a failure
@@ -517,13 +659,14 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
 
     # the model weighs gigabytes — let it go at once, it is not needed further.
     # A lent one is its owner's business: pieces of one song share it.
-    del result
     if not lent:
         del model
     import gc
     gc.collect()
 
     _trim_leading_silence(lyrics)
+    if isolated:
+        refine_leading_silence(lyrics, audio_path, log=log)
     # Line bounds come from the words — without this step lines have no times
     # yet, and the repairs would compare emptiness with emptiness.
     _fill_lines(lyrics, duration)
@@ -554,6 +697,11 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
         # …and whatever is left overlapping after every gentler pass is forced
         # out: the marks are the person's own words, and they win.
         enforce_marks(lyrics, skip, duration, log=log)
+    repair_overlapping_repeats(lyrics, duration, log=log)
+    # Run this after every audio and pile repair: an unheard line at the edge
+    # of a recovery block must remain inside the final gap and must not push or
+    # overlap the accurately heard next block.
+    fit_unheard_lines(lyrics, log=log)
     repair_order(lyrics, log=log)
     repair_ragged(lyrics, log=log)
     _fill_lines(lyrics, duration)      # after repairs the bounds may exceed the track
@@ -671,6 +819,56 @@ def _trim_leading_silence(lyrics: Lyrics, factor: float = 3.0) -> None:
             w.start = w.end - expect
 
 
+def refine_leading_silence(lyrics: Lyrics, vocal_audio: str,
+                           log: Log = _noop, max_shift: float = 3.2) -> int:
+    """Move an early line start to the first real voice in its vocal stem.
+
+    Forced alignment occasionally assigns the quiet lead-in to the first word,
+    especially with the smaller Whisper models. Duration alone cannot tell
+    that mistake from a genuinely held first syllable. A separated vocal can:
+    move the boundary only when it contains a measured stretch with no voice
+    and its end still falls inside that first word. The rest of the word and
+    every later word keep their precise Whisper timing.
+    """
+    try:
+        from . import audio as AU
+        env, hop = AU.rms_envelope(vocal_audio)
+        quiet = silent_spans(env, hop, least=0.35)
+    except Exception:
+        return 0
+    duration = len(env) * hop
+    if not quiet or sum(q["end"] - q["start"] for q in quiet) > 0.85 * duration:
+        return 0
+
+    fixed = 0
+    for ln in lyrics.lines:
+        if ln.backing or not ln.words:
+            continue
+        first = ln.words[0]
+        if first.start is None or first.end is None:
+            continue
+        for q in quiet:
+            shift = q["end"] - first.start
+            if q["start"] > first.start + 0.12 or shift < 0.28 \
+                    or shift > max_shift:
+                continue
+            # If several complete words precede the onset, the model lost more
+            # than a boundary and a blind automatic rewrite is not safe.
+            if q["end"] >= first.end - 0.04:
+                continue
+            new_start = min(q["end"] - 0.06, first.end - 0.08)
+            if new_start <= first.start + 0.2:
+                continue
+            first.start = max(first.start, new_start)
+            ln.start = first.start
+            fixed += 1
+            break
+    if fixed:
+        log(tr(f"  early line starts moved to the detected voice onset: {fixed}",
+               f"  ранних начал строк перенесено к найденному вступлению вокала: {fixed}"))
+    return fixed
+
+
 def _interpolate_gaps(words: List[Word]) -> None:
     """Words left without a time (insertions in the text) are filled in between."""
     i = 0
@@ -755,6 +953,127 @@ def repair_lines(lyrics: Lyrics, max_word_gap: float = 1.2, log: Log = _noop) ->
     if fixed:
         log(tr(f"  lines whose words drifted apart, put back together: {fixed}",
                f"  собрал обратно строк с разъехавшимися словами: {fixed}"))
+    return fixed
+
+
+def fit_unheard_lines(lyrics: Lyrics, log: Log = _noop) -> int:
+    """Fit one unheard line into the gap between two confidently heard lines.
+
+    A failed final segment of a recovery block has no timing of its own. The
+    generic fallback estimates its length from word count, which can overlap
+    the first accurately heard line of the next block and make that whole block
+    appear late. Two neighbouring audio anchors give a better, bounded answer.
+    """
+    fixed = 0
+    lines = lyrics.lines
+    for i in range(1, len(lines) - 1):
+        line = lines[i]
+        probs = [w.prob for w in line.words if w.prob is not None]
+        if probs and max(probs) > 0.005:
+            continue
+        previous, following = lines[i - 1], lines[i + 1]
+        previous_probs = [w.prob for w in previous.words if w.prob is not None]
+        following_probs = [w.prob for w in following.words if w.prob is not None]
+        if not previous_probs or max(previous_probs) <= 0.005 \
+                or not following_probs or max(following_probs) <= 0.005:
+            continue
+        if previous.end is None or following.start is None:
+            continue
+        # Low confidence alone is not a reason to stretch a correctly bounded
+        # short phrase across a real musical gap. This repair is specifically
+        # for an unheard line that collided with the next audible anchor.
+        if line.end is not None and line.end < following.start - 0.1:
+            continue
+        start = previous.end
+        end = following.start - 0.05
+        if end - start < 0.3:
+            continue
+        _spread(line.words, start, end)
+        line.start, line.end = line.words[0].start, line.words[-1].end
+        fixed += 1
+    if fixed:
+        log(tr(f"  unheard lines fitted between their audible neighbours: {fixed}",
+               f"  нерасслышанных строк поставлено между слышимыми соседями: {fixed}"))
+    return fixed
+
+
+def repair_overlapping_repeats(lyrics: Lyrics, duration: float,
+                               log: Log = _noop) -> int:
+    """Untangle two identical adjacent blocks when the first lost its tail.
+
+    With repeated lyrics, forced alignment can use an early copy of A-B-C-D
+    for the second block while E-F-G-H at the end of the first block remains
+    unheard and gets interpolated over it. The reliable second copy tells us
+    both where that missing suffix was actually sung and the rhythm with which
+    the complete block repeats once more.
+    """
+    lines = lyrics.lines
+
+    def key(line: Line) -> str:
+        return " ".join(normalize_token(w.text) for w in line.words)
+
+    def heard(line: Line) -> bool:
+        probs = [w.prob for w in line.words if w.prob is not None]
+        return bool(probs and max(probs) > 0.005)
+
+    fixed = 0
+    occupied_until = 0
+    for size in range(min(16, len(lines) // 2), 3, -1):
+        for start in range(occupied_until, len(lines) - 2 * size + 1):
+            first = lines[start:start + size]
+            second = lines[start + size:start + 2 * size]
+            if [key(x) for x in first] != [key(x) for x in second]:
+                continue
+            if not all(heard(x) and all(w.start is not None and w.end is not None
+                                        for w in x.words) for x in second):
+                continue
+            if first[-1].end is None or second[0].start is None \
+                    or first[-1].end <= second[0].start + 0.2:
+                continue
+
+            suffix = 0
+            for a, b in zip(reversed(first), reversed(second)):
+                if heard(a) or not heard(b):
+                    break
+                suffix += 1
+            # A low-confidence line immediately before the collision may still
+            # be correctly timed. Borrow only the part that physically reaches
+            # into the next copy, not every uncertain line before it.
+            while suffix and (first[-suffix].end or 0.0) \
+                    <= (second[0].start or 0.0) + 0.2:
+                suffix -= 1
+            if suffix < 2 or suffix >= size:
+                continue
+
+            # Keep a snapshot because the first copy borrows its suffix before
+            # the complete second copy is shifted to the next occurrence.
+            template = [[(w.start, w.end, w.prob) for w in line.words]
+                        for line in second]
+            for target, source in zip(first[-suffix:], template[-suffix:]):
+                if len(target.words) != len(source):
+                    break
+                for word, (a, b, p) in zip(target.words, source):
+                    word.start, word.end, word.prob = a, b, p
+                target.start, target.end = target.words[0].start, target.words[-1].end
+            else:
+                next_start = (first[-1].end or 0.0) + 0.05
+                shift = next_start - (second[0].start or 0.0)
+                last_end = second[-1].end or 0.0
+                if shift <= 0.0 or last_end + shift > duration:
+                    continue
+                for line in second:
+                    for word in line.words:
+                        word.start += shift
+                        word.end += shift
+                    line.start, line.end = line.words[0].start, line.words[-1].end
+                fixed += 1
+                occupied_until = start + 2 * size
+                break
+        if fixed:
+            break
+    if fixed:
+        log(tr(f"  overlapping repeated lyric blocks untangled: {fixed}",
+               f"  наложившихся повторяющихся блоков разложено: {fixed}"))
     return fixed
 
 
@@ -1359,6 +1678,18 @@ def repair_order(lyrics: Lyrics, log: Log = _noop) -> int:
             continue
         last_word_end = a.words[-1].end if a.words else a.start
         new_end = b.start - 0.05
+        overlap = a.end - b.start
+        # A few tens of milliseconds are usually rounding at a phrase edge,
+        # not two voices. Trimming that sliver from the last word is inaudible
+        # and keeps the editor from rendering two same-voice clips on top of
+        # each other.
+        if 0.0 < overlap <= 0.2 and a.words:
+            last = a.words[-1]
+            if new_end > (last.start or 0.0) + 0.04:
+                last.end = new_end
+                a.end = new_end
+                fixed += 1
+                continue
         # trim only when it will not cut through words: never maim the timing
         if new_end >= max(a.start + 0.2, last_word_end):
             a.end = new_end

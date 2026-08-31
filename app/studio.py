@@ -13,6 +13,7 @@ happens in Python, which is the part with access to the files.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import mimetypes
@@ -75,6 +76,7 @@ from kstudio import separate as S          # noqa: E402
 from kstudio import update as UP            # noqa: E402
 
 UI = os.path.join(ROOT, "kstudio", "studio.html")
+ICON_32 = os.path.join(ROOT, "kstudio", "icon-32.png")
 # Modules in a PyInstaller onedir build live under its private _internal
 # folder. Deriving the project location from __file__ would put songs beside
 # those temporary/runtime files. The executable directory is stable, visible
@@ -372,6 +374,15 @@ def downloaded_models() -> dict:
     return M.whisper_all()
 
 
+def icon_revision() -> str:
+    """Content fingerprint that dislodges Chrome's app-window favicon cache."""
+    try:
+        with open(ICON_32, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()[:12]
+    except OSError:
+        return __version__
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "KaraokeStudio/" + __version__
 
@@ -479,7 +490,8 @@ class Handler(BaseHTTPRequestHandler):
                 # Language of the window labels: from settings, otherwise from
                 # the system. The button in the window still overrides it.
                 with open(UI, encoding="utf-8") as f:
-                    page = f.read().replace("__UI_LANG__", ui_lang())
+                    page = f.read().replace("__UI_LANG__", ui_lang()).replace(
+                        "__ICON_VERSION__", icon_revision())
                 return self._send(200, page.encode("utf-8"),
                                   "text/html; charset=utf-8")
 
@@ -1099,6 +1111,13 @@ def timing_audio(folder: str, data: dict) -> tuple:
                                "не найден звук песни"))
 
 
+def vocal_timing_audio(folder: str, data: dict) -> Optional[str]:
+    """Separated vocal used only to prove that an early line starts in silence."""
+    name = (data.get("tracks") or {}).get("vocals")
+    path = os.path.join(folder, name) if name else ""
+    return path if path and os.path.isfile(path) else None
+
+
 def realign_part(folder: str, opts: dict, log) -> dict:
     """Time a handful of lines again, and leave the rest of the song alone.
 
@@ -1154,6 +1173,9 @@ def realign_part(folder: str, opts: dict, log) -> dict:
     piece, engine = A.align(piece, audio, dur, opts.get("align", "auto"), model,
                             opts.get("lang", "auto"), None, log,
                             isolated=isolated, skip=outside)
+    onset_audio = vocal_timing_audio(folder, data)
+    if onset_audio and engine == "whisper":
+        A.refine_leading_silence(piece, onset_audio, log=log)
 
     fresh = [ln.to_json() for ln in piece.lines]
     moved = 0
@@ -1200,6 +1222,9 @@ def realign(folder: str, opts: dict, log) -> dict:
                 "исходный файл с текстом не найден: " + str(src) +
                 ". Выберите файл кнопкой «Заменить текст»."))
     lyr = L.load(src)
+    if lyr.ignored_junk:
+        log(tr(f"Removed {lyr.ignored_junk} recommendation lines copied from Genius.",
+               f"Убрано строк из рекомендаций Genius: {lyr.ignored_junk}."))
     was = len(data.get("lines") or [])
     if len(lyr.lines) != was:
         log(tr(f"The text now has {len(lyr.lines)} lines instead of {was} — "
@@ -1246,6 +1271,9 @@ def realign(folder: str, opts: dict, log) -> dict:
                           opts.get("lang", "auto"), None, log,
                           isolated=isolated,
                           skip=holes)
+    onset_audio = vocal_timing_audio(folder, data)
+    if onset_audio and engine == "whisper":
+        A.refine_leading_silence(lyr, onset_audio, log=log)
     fresh = [ln.to_json() for ln in lyr.lines]
     # A line put right by hand outweighs anything a model returns for it.
     P.keep_locked(data.get("lines") or [], fresh, log)
@@ -2245,7 +2273,10 @@ def main(argv=None) -> int:
                          f"Откройте http://127.0.0.1:{port}/ или укажите другой "
                          f"порт: --port {port + 1}"), file=sys.stderr)
                 return 1
-    url = f"http://127.0.0.1:{port}/"
+    # Chrome --app caches a taskbar icon by application URL independently of
+    # normal HTTP caching. A content revision in both the page URL and favicon
+    # links makes a replaced icon visible on the next launch.
+    url = f"http://127.0.0.1:{port}/?icon={icon_revision()}"
 
     caps = capabilities()
     print("=" * 58)

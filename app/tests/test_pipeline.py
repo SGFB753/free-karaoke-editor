@@ -215,6 +215,89 @@ def main():
           [ln.backing for ln in back.lines if ln.text == "(ла-ла-ла)"] == [True])
     check("an ordinary line does not count as backing",
           [ln.backing for ln in back.lines if ln.text == "Обычная строка"] == [False])
+
+    genius = L.parse("""[Куплет]
+Первая настоящая строка
+You might also like
+Чужая песня (Some Other Song)
+Чужой исполнитель
+[Скит]
+Вторая настоящая строка""")
+    check("a Genius recommendation card is not mistaken for lyrics",
+          [ln.text for ln in genius.lines]
+          == ["Первая настоящая строка", "Вторая настоящая строка"],
+          [ln.text for ln in genius.lines])
+    check("the removed recommendation lines are counted",
+          genius.ignored_junk == 3, genius.ignored_junk)
+    check("the real section after a Genius card is preserved",
+          genius.lines[-1].section == "Скит", genius.lines[-1].section)
+    unbounded = L.parse("Настоящая строка\nYou might also like\nЕщё настоящая строка")
+    check("an unbounded phrase does not eat the rest of the lyrics",
+          [ln.text for ln in unbounded.lines][-2:]
+          == ["You might also like", "Ещё настоящая строка"],
+          [ln.text for ln in unbounded.lines])
+
+    long_for_blocks = L.parse("\n".join(f"Строка номер {i}" for i in range(50)))
+    blocks = A._alignment_blocks(long_for_blocks.lines)
+    check("long forced alignment is divided into short recoverable blocks",
+          len(blocks) == 7 and max(map(len, blocks)) <= 8,
+          [len(x) for x in blocks])
+    class _AnchorWord:
+        probability = 0.8
+    class _AnchorSegment:
+        def __init__(self, start, end):
+            self.start, self.end = start, end
+            self.words = [_AnchorWord()]
+    jumped = [_AnchorSegment(0.0, 1.0), _AnchorSegment(1.2, 2.0),
+              _AnchorSegment(30.0, 31.0)]
+    check("a recovery block does not anchor on a segment that jumped far ahead",
+          A._safe_alignment_anchor(jumped, 75.0) == 77.0,
+          A._safe_alignment_anchor(jumped, 75.0))
+    unheard = L.parse("Первая слышимая\nПропущенная моделью строка\nСледующая слышимая")
+    A._spread(unheard.lines[0].words, 10.0, 12.0)
+    A._spread(unheard.lines[1].words, 12.0, 15.5)
+    A._spread(unheard.lines[2].words, 14.0, 16.0)
+    for word in unheard.lines[0].words + unheard.lines[2].words:
+        word.prob = 0.8
+    for word in unheard.lines[1].words:
+        word.prob = None
+    for line in unheard.lines:
+        line.start, line.end = line.words[0].start, line.words[-1].end
+    check("an unheard boundary line cannot push the next block later",
+          A.fit_unheard_lines(unheard) == 1
+          and abs(unheard.lines[1].start - 12.0) < 0.001
+          and abs(unheard.lines[1].end - 13.95) < 0.001,
+          (unheard.lines[1].start, unheard.lines[1].end))
+    repeat_text = [f"Повторяемая строка {i}" for i in range(8)] * 2
+    repeated = L.parse("\n".join(repeat_text))
+    for i, line in enumerate(repeated.lines):
+        A._spread(line.words, float(i if i < 8 else i - 4),
+                  float(i + 1 if i < 8 else i - 3))
+        line.start, line.end = line.words[0].start, line.words[-1].end
+        for word in line.words:
+            word.prob = 0.8 if i < 4 or i >= 8 else None
+    fixed_repeat = A.repair_overlapping_repeats(repeated, 30.0)
+    check("an unheard suffix no longer overlaps the next identical block",
+          fixed_repeat == 1
+          and repeated.lines[7].end < repeated.lines[8].start
+          and abs(repeated.lines[4].start - 8.0) < 0.001,
+          [(x.start, x.end) for x in repeated.lines[4:9]])
+    lost_sample = L.parse("\n".join(f"Проверочная строка {i}" for i in range(8)))
+    for i, line in enumerate(lost_sample.lines):
+        start = float(i * 2 if i < 3 else 30 + (i - 3) * 9)
+        A._spread(line.words, start, start + 1.5)
+        for word in line.words:
+            word.prob = 0.7 if i < 3 else 0.02
+    check("several low-confidence gaps reveal where alignment was lost",
+          A._lost_alignment_index(lost_sample.lines) == 3)
+    bridge_sample = L.parse("\n".join(f"Нормальная строка {i}" for i in range(6)))
+    for i, line in enumerate(bridge_sample.lines):
+        start = float(i * 2 if i < 3 else 20 + (i - 3) * 2)
+        A._spread(line.words, start, start + 1.5)
+        for word in line.words:
+            word.prob = 0.7
+    check("one real instrumental bridge is not called a lost alignment",
+          A._lost_alignment_index(bridge_sample.lines) is None)
     check("brackets inside a line break nothing",
           "Припев (эхо) поётся" in texts)
     check("(Припев) stayed a section heading",
@@ -1026,6 +1109,30 @@ def main():
     check("real silence is found", covers(silent, 20.5, 29.5), silent)
     check("a whispered verse is not called silence", not covers(silent, 10.5, 19.5), silent)
     check("and neither is the loud part", not covers(silent, 0.5, 9.5), silent)
+
+    # Small Whisper models sometimes stretch the first word backwards over a
+    # quiet lead-in. The separated vocal proves where voice really begins;
+    # unlike a duration heuristic it leaves a genuinely held syllable alone.
+    onset_wav = os.path.join(tmp, "voice-onset.wav")
+    _tone_and_silence(onset_wav, [(5.0, 10.0)])
+    early = L.parse("раз два три")
+    early.words[0].start, early.words[0].end = 2.0, 5.6
+    A._spread(early.words[1:], 5.6, 7.0)
+    early.lines[0].start, early.lines[0].end = 2.0, 7.0
+    fixed_onset = A.refine_leading_silence(early, onset_wav)
+    check("an early line begins when the separated voice actually enters",
+          fixed_onset == 1 and 4.8 < early.lines[0].start < 5.1,
+          early.lines[0].start)
+
+    held_wav = os.path.join(tmp, "held-onset.wav")
+    _tone_and_silence(held_wav, [(2.0, 10.0)])
+    held_onset = L.parse("долго два три")
+    held_onset.words[0].start, held_onset.words[0].end = 2.0, 5.6
+    A._spread(held_onset.words[1:], 5.6, 7.0)
+    held_onset.lines[0].start, held_onset.lines[0].end = 2.0, 7.0
+    check("a genuinely held first syllable keeps its full duration",
+          A.refine_leading_silence(held_onset, held_wav) == 0
+          and held_onset.lines[0].start == 2.0)
 
     from kstudio import report as R
     older = R.quiet_stretches(env_q, hop_q, least=2.5)
@@ -2099,12 +2206,20 @@ def main():
     seen_sources = {}
     real_sep = S.separate
     real_align = A.align
+    real_refine = A.refine_leading_silence
     real_envelope = P.build_envelope
 
     def watch_align(lyrics, audio_path, *args, **kwargs):
         seen_sources["timing"] = audio_path
         seen_sources["isolated"] = kwargs.get("isolated")
-        return real_align(lyrics, audio_path, *args, **kwargs)
+        timed, _engine = real_align(lyrics, audio_path, *args, **kwargs)
+        # This fixture uses the fast energy aligner; report Whisper here so the
+        # separate onset-refinement wiring is exercised without loading a model.
+        return timed, "whisper"
+
+    def watch_refine(lyrics, audio_path, *args, **kwargs):
+        seen_sources["onset"] = audio_path
+        return 0
 
     def watch_envelope(audio_path, *args, **kwargs):
         seen_sources["envelope"] = audio_path
@@ -2112,6 +2227,7 @@ def main():
 
     S.separate = lambda *args, **kwargs: (song_for_build, song_for_build)
     A.align = watch_align
+    A.refine_leading_silence = watch_refine
     P.build_envelope = watch_envelope
     try:
         P.create(song_for_build, text_for_build, os.path.join(tmp, "sep-source"),
@@ -2122,12 +2238,23 @@ def main():
               seen_sources)
         check("the vocal stem still supplies the waveform",
               seen_sources.get("envelope") == song_for_build, seen_sources)
+        check("and separately proves where a too-early line really begins",
+              seen_sources.get("onset") == song_for_build, seen_sources)
     finally:
         S.separate = real_sep
         A.align = real_align
+        A.refine_leading_silence = real_refine
         P.build_envelope = real_envelope
 
     import studio as ST
+    icon_rev = ST.icon_revision()
+    check("the desktop icon has a content revision for Chrome's app cache",
+          len(icon_rev) == 12 and all(c in "0123456789abcdef" for c in icon_rev),
+          icon_rev)
+    studio_page = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                    "kstudio", "studio.html"), encoding="utf-8").read()
+    check("every browser icon URL carries that replaceable revision slot",
+          studio_page.count("__ICON_VERSION__") == 3)
     picked, picked_isolated = ST.timing_audio(
         tmp, {"source_audio": song_for_build,
               "tracks": {"vocals": "missing-vocals.wav"}})
@@ -2140,6 +2267,25 @@ def main():
     check("an old project can still fall back to its vocal stem",
           picked == song_for_build and picked_isolated is True,
           (picked, picked_isolated))
+    check("a saved vocal stem is found for conservative onset correction",
+          ST.vocal_timing_audio(
+              tmp, {"tracks": {"vocals": os.path.basename(song_for_build)}}
+          ) == song_for_build)
+
+    # Fine Demucs is four complete model passes.  Its own bar restarts at each
+    # one; the Studio must combine them instead of displaying 89% -> 13%.
+    fine_progress = S._DemucsProgress(4)
+    fine_seen = [fine_progress.feed(x) for x in
+                 ("Demucs 41%", " 89%", " 100%\r 0%", " 13%", " 87%",
+                  " 100%\r 0%", " 100%\r 0%", " 100%")]
+    fine_seen = [x for x in fine_seen if x is not None]
+    check("four Demucs passes become one increasing progress counter",
+          fine_seen == sorted(fine_seen) and fine_seen[-1] == 100
+          and fine_seen[1] < 25 < fine_seen[3], fine_seen)
+    split_progress = S._DemucsProgress(1)
+    check("a percent split between pipe reads is still understood",
+          split_progress.feed("Demucs 4") is None
+          and split_progress.feed("1%") == 41)
 
     print("\nA whole song built with wordless stretches marked")
     # The road end to end, without a neural net in it: build a real project and
@@ -2551,6 +2697,7 @@ def main():
     srv = ThreadingHTTPServer(("127.0.0.1", 0), stub_lyrics.Handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     FL.BASE = f"http://127.0.0.1:{srv.server_port}"
+    FL.GENIUS_BASE = FL.BASE
     try:
         check("timed words are stripped down to words",
               FL.plain({"syncedLyrics": "[00:12.34] раз\n[00:15.00] два"}) == "раз\nдва")
@@ -2562,6 +2709,24 @@ def main():
         check("the lines are counted for the person reading",
               found[0]["lines"] == 3, found[0]["lines"])
         check("the source is named", all(f["source"] == "LRCLIB" for f in found))
+        check("the same title by another artist is filtered out",
+              FL._search_lrclib("Stub Song", "Entirely Different", 21, 5) == [])
+        check("artist suffixes and joined spelling still match",
+              FL.artist_matches("Mickey Mouse", "MickeyMouse (RUS)"))
+        check("an unrelated artist is not mistaken for the requested one",
+              not FL.artist_matches("MickeyMouse", "Helldorado"))
+        fallback = FL.search("Genius Only", "Fallback Artist")
+        check("Genius is tried when LRCLIB has no song",
+              fallback and fallback[0]["source"] == "Genius", fallback)
+        check("the Genius page yields lyrics rather than page furniture",
+              fallback[0]["text"] ==
+              "[Verse]\nGenius first line\nGenius second line\n[Chorus]\nGenius final line",
+              fallback[0]["text"])
+        bare_page = FL._GeniusPage()
+        bare_page.feed('<div data-lyrics-container="true">1 Contributor<br>'
+                       'Plain Song Lyrics<br>The actual first line</div>')
+        check("a Genius song without section headings loses its page title",
+              bare_page.text() == "The actual first line", bare_page.text())
         check("a song nobody knows finds nothing", FL.search("nothing at all") == [])
         try:
             FL.search("")

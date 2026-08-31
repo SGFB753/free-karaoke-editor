@@ -85,6 +85,45 @@ class _Done:
         self.returncode, self.stdout = returncode, stdout
 
 
+class _DemucsProgress:
+    """Turn Demucs's per-model bars into one monotonically increasing percent.
+
+    ``htdemucs_ft`` is a bag of four models.  Its command-line interface draws
+    four bars from 0 to 100, so showing the last number makes progress appear
+    to jump backwards three times.  Input arrives in arbitrary pipe chunks;
+    the short carry also keeps a percentage split between two reads intact.
+    """
+
+    def __init__(self, passes: int = 1):
+        self.passes = max(1, int(passes))
+        self.current_pass = 0
+        self.last_raw: Optional[int] = None
+        self.overall = 0
+        self._carry = ""
+
+    def feed(self, piece: str) -> Optional[int]:
+        import re
+
+        prefix = self._carry
+        scan = prefix + (piece or "")
+        found = []
+        for match in re.finditer(r"(\d{1,3})%", scan):
+            # A complete token retained only as context was handled last time.
+            if match.end() <= len(prefix):
+                continue
+            raw = min(100, int(match.group(1)))
+            if (self.last_raw is not None and self.last_raw >= 70
+                    and raw + 20 < self.last_raw):
+                self.current_pass = min(self.current_pass + 1,
+                                        self.passes - 1)
+            self.last_raw = raw
+            total = round((self.current_pass * 100 + raw) / self.passes)
+            self.overall = max(self.overall, min(100, total))
+            found.append(self.overall)
+        self._carry = scan[-4:]
+        return found[-1] if found else None
+
+
 def _run_with_pulse(cmd: List[str], log: Log) -> "_Done":
     """Run Demucs while showing that it is alive.
 
@@ -94,14 +133,18 @@ def _run_with_pulse(cmd: List[str], log: Log) -> "_Done":
     arrives, pull the last percentage out and pass it to the log along with the
     elapsed time.
     """
-    import re
-
     from .progress import Heartbeat
 
     proc = WP.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, bufsize=1, errors="replace")
     chunks: List[str] = []
-    pct = re.compile(r"(\d{1,3})%")
+    try:
+        model = cmd[cmd.index("-n") + 1]
+    except (ValueError, IndexError):
+        model = ""
+    # These are the two choices exposed by Studio.  The fine model is an
+    # ensemble of four networks; the regular one contains a single network.
+    meter = _DemucsProgress(4 if model == "htdemucs_ft" else 1)
 
     with Heartbeat(log, tr("separating the tracks", "разделение дорожек"), every=20.0) as hb:
         assert proc.stdout is not None
@@ -111,9 +154,9 @@ def _run_with_pulse(cmd: List[str], log: Log) -> "_Done":
             if not piece:
                 break
             chunks.append(piece)
-            found = pct.findall(piece)
-            if found:
-                hb.note(f"Demucs: {found[-1]}%")
+            overall = meter.feed(piece)
+            if overall is not None:
+                hb.progress(overall, 100)
         proc.wait()
 
     return _Done(proc.returncode, "".join(chunks))

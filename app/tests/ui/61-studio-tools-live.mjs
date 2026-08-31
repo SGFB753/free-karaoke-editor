@@ -40,7 +40,8 @@ if (timedOne){
 // A song of our own to work on, with a stretch of silence in it.
 const built = await finish((await post('/api/new', {
   audio: process.env.KARAOKE_SONG, lyrics: process.env.KARAOKE_TEXT,
-  align: 'energy', separate: false, title: 'Packed Song', titleSet: true})).job);
+  align: 'energy', separate: false, title: 'Packed Song', titleSet: true,
+  artist: 'Stub Artist', artistSet: true})).job);
 ok('the song is built', built.ok, (built.log || []).slice(-1)[0]);
 const pid = built.result;
 ok('and it is called what was typed for it',

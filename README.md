@@ -302,7 +302,9 @@ still outranks it.
 
 Once the sound is here, the words are looked for by the name of the song, on
 [LRCLIB](https://lrclib.net) — an open library that needs no key and no
-account. What comes back is a **suggestion**: each one says who sings it, how
+account. If it has nothing, Studio tries [Genius](https://genius.com) without
+an API key and removes the page furniture from the result. What comes back is
+a **suggestion**: each one says who sings it, how
 many lines it has and where it came from, and it lands in a box to be read
 before it is used. A wrong text lays wrong lines over the whole song, which is
 why it is never taken silently.
@@ -316,7 +318,7 @@ The lyrics have three ways in, and all three end in the same place:
   becomes `lyrics.txt` inside the self-contained project.
 
 Whether you may download a particular recording, and what you may do with the
-words, is yours to judge: the program runs `yt-dlp` and asks an open library,
+words, is yours to judge: the program runs `yt-dlp` and asks lyrics sources,
 and neither of those decides that for you.
 
 ## The lyrics file

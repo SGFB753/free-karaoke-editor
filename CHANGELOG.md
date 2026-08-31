@@ -7,6 +7,32 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.46.10
+
+**When LRCLIB does not know a song, Studio now looks for its words on Genius.**
+No API key or account is needed. Genius page furniture is removed, candidates
+are filtered by artist and ranked by title, so another act's namesake song does
+not block the proper fallback. As before, lyrics are shown for review before use.
+
+**Whisper no longer sends the rest of the lyrics adrift after one difficult
+line.** When alignment loses its place, the remainder is retried in short blocks
+from the last reliable line. Unheard lines are fitted between audible neighbours,
+repeated verses and choruses no longer overlap, and tiny boundary overlaps are
+trimmed safely. The separated vocal also corrects line starts that were placed
+too early without changing the project's sound.
+
+**Genius page debris no longer becomes part of the song.** A copied block from
+`You might also like` to the next section is removed automatically both when a
+project is created and when it is re-timed.
+
+**Demucs progress now rises from 0 to 100 without jumping backwards.** The fine
+separator's four passes are combined into one overall counter instead of
+repeating `89% → 13%`.
+
+**The application icon is calmer and more visible.** A minimal dynamic
+microphone fills the taskbar slot more clearly, and a content revision in the
+URL makes Chromium discard its cached old icon.
+
 ## 4.46.9
 
 **Windows updates no longer stall after the archive has been verified.** The

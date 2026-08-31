@@ -21,10 +21,37 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         q = parse_qs(u.query)
+        if u.path == "/stub-genius-lyrics":
+            data = (b'<html><div data-lyrics-container="true">[Verse]<br>'
+                    b'Genius first line<br>Genius second line</div>'
+                    b'<div data-lyrics-container="true">[Chorus]<br>'
+                    b'Genius final line</div></html>')
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        if u.path == "/api/search/multi":
+            want = (q.get("q") or [""])[0].lower()
+            hits = []
+            if "genius only" in want:
+                host = self.headers.get("Host")
+                hits = [{"type": "song", "result": {
+                    "title": "Genius Only", "url": f"http://{host}/stub-genius-lyrics",
+                    "primary_artist": {"name": "Fallback Artist"}}}]
+            body = {"response": {"sections": [{"type": "song", "hits": hits}]}}
+            data = json.dumps(body).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if u.path != "/api/search":
             return self.send_error(404)
         want = (q.get("track_name") or q.get("q") or [""])[0].lower()
-        if "nothing" in want:
+        if "nothing" in want or "genius only" in want:
             body = []
         else:
             body = [

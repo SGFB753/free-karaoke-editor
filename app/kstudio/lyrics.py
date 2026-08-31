@@ -204,6 +204,8 @@ class Lyrics:
     has_manual_times: bool = False
     # stretches the person marked as holding no words: [Solo 3:10-3:50]
     skips: List[tuple] = field(default_factory=list)
+    # Lines copied from a lyrics site's recommendation widget, not from a song.
+    ignored_junk: int = 0
 
     @property
     def words(self) -> List[Word]:
@@ -257,9 +259,44 @@ def _parse_lrc_time(m: re.Match) -> float:
     return mm * 60 + ss
 
 
+def strip_paste_junk(raw: str) -> tuple[str, int]:
+    """Remove recommendation cards commonly copied together with Genius lyrics.
+
+    Genius inserts a standalone ``You might also like`` followed by song and
+    artist names between real sections. To an aligner those are mandatory sung
+    words and one such card can throw every later line out of place. The next
+    square-bracket section starts the lyrics again and is preserved.
+    """
+    lines = raw.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    out: List[str] = []
+    ignored = 0
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.strip().casefold() != "you might also like":
+            out.append(line)
+            i += 1
+            continue
+
+        # Only remove a bounded card. If the user really has this phrase in a
+        # song and no later [section] exists, silently eating the rest of the
+        # lyrics would be much worse than leaving one suspicious line alone.
+        section = next((j for j in range(i + 1, len(lines))
+                        if SECTION_RE.match(lines[j].strip())), None)
+        if section is None:
+            out.append(line)
+            i += 1
+            continue
+        ignored += sum(bool(x.strip()) for x in lines[i:section])
+        i = section
+    return "\n".join(out), ignored
+
+
 def parse(raw: str) -> Lyrics:
     """Text → Lyrics. Understands LRC timings, bracketed sections and meta headers."""
+    raw, ignored_junk = strip_paste_junk(raw)
     lyr = Lyrics()
+    lyr.ignored_junk = ignored_junk
     pending_section: Optional[str] = None
     saw_content = False
     cur_voice = 1                  # which voice sings until told otherwise

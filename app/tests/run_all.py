@@ -226,7 +226,8 @@ def start_studio(port: int, projects: str, song: str = "", lyrics_api: str = "")
                # song, and the words come from a stand-in library next door.
                KARAOKE_YTDLP=os.path.join(ROOT, "tests", "stub_ytdlp.py"),
                KARAOKE_STUB_AUDIO=song,
-               KARAOKE_LYRICS_API=lyrics_api or "http://127.0.0.1:9")
+               KARAOKE_LYRICS_API=lyrics_api or "http://127.0.0.1:9",
+               KARAOKE_GENIUS_URL=lyrics_api or "http://127.0.0.1:9")
     return subprocess.Popen(
         [sys.executable, os.path.join(ROOT, "studio.py"),
          "--port", str(port), "--no-browser"],
