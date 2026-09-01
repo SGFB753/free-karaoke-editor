@@ -78,13 +78,16 @@ from kstudio import update as UP            # noqa: E402
 
 UI = os.path.join(ROOT, "kstudio", "studio.html")
 ICON_32 = os.path.join(ROOT, "kstudio", "icon-32.png")
-# Modules in a PyInstaller onedir build live under its private _internal
-# folder. Deriving the project location from __file__ would put songs beside
-# those temporary/runtime files. The executable directory is stable, visible
-# to the user, and is also the directory the updater preserves.
-if getattr(sys, "frozen", False) and not os.environ.get("KARAOKE_PROJECTS"):
+# A normal Windows install lives under Program Files, which must stay
+# read-only. Keep large user-owned data in the real Known Folder Documents
+# (whatever its language, redirect or drive), while an explicit
+# KARAOKE_PROJECTS continues to win for servers and portable/source launches.
+LEGACY_INSTALL_LIBRARY = ""
+if (getattr(sys, "frozen", False) and os.name == "nt"
+        and not os.environ.get("KARAOKE_PROJECTS")):
+    LEGACY_INSTALL_LIBRARY = os.path.dirname(os.path.abspath(sys.executable))
     os.environ["KARAOKE_PROJECTS"] = os.path.join(
-        os.path.dirname(os.path.abspath(sys.executable)), "projects")
+        P.windows_library_root(), "projects")
 PROJECTS = P.projects_root()
 JOBS: dict = {}
 JOBS_LOCK = threading.Lock()
@@ -520,7 +523,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"projects": P.list_all(PROJECTS),
                                    "uiLangs": extra_langs(),
                                    "caps": capabilities(),
-                                   "projectsDir": PROJECTS})
+                                   "projectsDir": PROJECTS,
+                                   "libraryDir": os.path.dirname(PROJECTS),
+                                   "outputDir": ready_dir()})
 
             if path == "/api/lifetime":
                 if not DESKTOP_SESSION:
@@ -2504,6 +2509,15 @@ def main(argv=None) -> int:
         close_stale_studio_windows()
     # Versions before 4.46.6 kept uploads in a second, hidden-looking store.
     # Fold anything a real project uses into that project before serving it.
+    if LEGACY_INSTALL_LIBRARY:
+        try:
+            P.migrate_installed_library(LEGACY_INSTALL_LIBRARY,
+                                        os.path.dirname(PROJECTS))
+        except Exception:
+            # Migration is best-effort and copy-first. A locked old folder or
+            # a full Documents drive must not prevent the Studio from opening;
+            # untouched data remains in its old location for the next attempt.
+            traceback.print_exc()
     P.migrate_legacy_incoming(PROJECTS, ready_dir())
     DESKTOP_SESSION = not no_browser and host in ("127.0.0.1", "localhost", "::1")
     with WINDOW_LINK_LOCK:

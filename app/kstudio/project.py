@@ -115,6 +115,184 @@ def projects_root(base: Optional[str] = None) -> str:
     return root
 
 
+def windows_documents() -> str:
+    """The user's real Documents folder, including redirects and localisation.
+
+    Explorer may display the same known folder as either ``Documents`` or
+    ``Документы``, and it may actually live on OneDrive or another drive.
+    Asking Windows is the only reliable way to find it; spelling the visible
+    name ourselves would create a second, unrelated folder on some machines.
+    """
+    if os.name == "nt":
+        try:
+            import ctypes
+            # CSIDL_PERSONAL is the compatibility name for FOLDERID_Documents.
+            # SHGetFolderPath follows the current user's Known Folder redirect.
+            buf = ctypes.create_unicode_buffer(32768)
+            if ctypes.windll.shell32.SHGetFolderPathW(None, 5, None, 0, buf) == 0 \
+                    and buf.value:
+                return os.path.abspath(buf.value)
+        except (AttributeError, OSError):
+            pass
+    home = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    return os.path.abspath(os.path.join(home, "Documents"))
+
+
+def windows_library_root() -> str:
+    """A visible, user-owned home for a normally installed Windows build."""
+    return os.path.join(windows_documents(), "KaraokeStudio")
+
+
+def _migration_target(root: str, name: str) -> str:
+    """A new name that never overwrites data already present in the library."""
+    dst = os.path.join(root, name)
+    if not os.path.exists(dst):
+        return dst
+    stem, ext = os.path.splitext(name)
+    n = 2
+    while True:
+        dst = os.path.join(root, f"{stem}-old-{n}{ext}")
+        if not os.path.exists(dst):
+            return dst
+        n += 1
+
+
+def migrate_installed_library(old_library: str, new_library: str) -> Dict[str, int]:
+    """Move portable-era projects/exports out of the application directory.
+
+    Releases up to 4.47.5 kept ``projects`` and ``output`` beside the EXE.  A
+    folder copied into Program Files may be readable but not writable, so copy
+    first, repair project-local absolute paths, verify, and only then try to
+    remove the old copy.  Failure to clean Program Files is harmless: a marker
+    prevents the data being duplicated again on every launch.
+    """
+    old_library, new_library = map(os.path.abspath, (old_library, new_library))
+    result = {"projects": 0, "outputs": 0, "left": 0}
+    if os.path.normcase(old_library) == os.path.normcase(new_library):
+        return result
+
+    os.makedirs(new_library, exist_ok=True)
+    new_projects = os.path.join(new_library, "projects")
+    new_output = os.path.join(new_library, "output")
+    os.makedirs(new_projects, exist_ok=True)
+    os.makedirs(new_output, exist_ok=True)
+
+    marker_path = os.path.join(new_library, ".migrated-install-folders.json")
+    migrated = []
+    try:
+        with open(marker_path, encoding="utf-8") as f:
+            saved = json.load(f)
+        if isinstance(saved, list):
+            migrated = [os.path.normcase(os.path.abspath(str(p))) for p in saved]
+    except (OSError, ValueError, TypeError):
+        pass
+    old_key = os.path.normcase(old_library)
+    if old_key in migrated:
+        return result
+
+    old_projects = os.path.join(old_library, "projects")
+    old_output = os.path.join(old_library, "output")
+    old_incoming = os.path.join(old_projects, "_incoming")
+    migrated_incoming = set()
+    complete = True
+    if os.path.isdir(old_projects):
+        for name in sorted(os.listdir(old_projects)):
+            src = os.path.join(old_projects, name)
+            if not os.path.isdir(src) or not os.path.isfile(os.path.join(src, PROJECT_FILE)):
+                continue
+            dst = _migration_target(new_projects, name)
+            try:
+                shutil.copytree(src, dst)
+                data = load(dst)
+                # New projects keep their source files inside themselves, but
+                # the JSON records absolute paths. Rebase those two paths from
+                # the old project folder to its new home.
+                for key, stem in (("source_audio", "original"),
+                                  ("source_lyrics", "lyrics")):
+                    value = data.get(key) or ""
+                    try:
+                        relative = os.path.relpath(os.path.abspath(value), src)
+                        inside = relative != os.pardir and not relative.startswith(os.pardir + os.sep)
+                    except (OSError, ValueError):
+                        inside = False
+                    candidate = os.path.join(dst, relative) if inside else ""
+                    if candidate and os.path.isfile(candidate):
+                        data[key] = os.path.abspath(candidate)
+                    else:
+                        # Very old projects could point into projects/_incoming.
+                        # Bring that source into the copied project as well;
+                        # otherwise removing the old application later would
+                        # silently break re-timing.
+                        absolute = os.path.abspath(value)
+                        try:
+                            from_incoming = (os.path.commonpath(
+                                [absolute, os.path.abspath(old_incoming)])
+                                == os.path.abspath(old_incoming))
+                        except ValueError:
+                            from_incoming = False
+                        if from_incoming and os.path.isfile(absolute):
+                            data[key] = store_source(dst, absolute, stem)
+                            migrated_incoming.add(absolute)
+                save(dst, data)
+                load(dst)  # a readable record is the minimum safe verification
+                result["projects"] += 1
+                try:
+                    shutil.rmtree(src)
+                except OSError:
+                    result["left"] += 1
+            except (OSError, ValueError, TypeError):
+                complete = False
+                shutil.rmtree(dst, ignore_errors=True)
+
+    if os.path.isdir(old_output):
+        for name in sorted(os.listdir(old_output)):
+            src = os.path.join(old_output, name)
+            dst = _migration_target(new_output, name)
+            try:
+                if os.path.isdir(src):
+                    shutil.copytree(src, dst)
+                elif os.path.isfile(src):
+                    shutil.copy2(src, dst)
+                else:
+                    continue
+                result["outputs"] += 1
+                try:
+                    shutil.rmtree(src) if os.path.isdir(src) else os.remove(src)
+                except OSError:
+                    result["left"] += 1
+            except OSError:
+                complete = False
+                if os.path.isdir(dst):
+                    shutil.rmtree(dst, ignore_errors=True)
+                else:
+                    try:
+                        os.remove(dst)
+                    except OSError:
+                        pass
+
+    if complete:
+        migrated.append(old_key)
+        tmp = marker_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(sorted(set(migrated)), f, ensure_ascii=False, indent=2)
+        os.replace(tmp, marker_path)
+        for source in migrated_incoming:
+            try:
+                os.remove(source)
+            except OSError:
+                pass
+        try:
+            os.rmdir(old_incoming)
+        except OSError:
+            pass
+        for folder in (old_projects, old_output):
+            try:
+                os.rmdir(folder)
+            except OSError:
+                pass
+    return result
+
+
 def migrate_legacy_incoming(root: str, output_dir: Optional[str] = None) -> int:
     """Move sources used by old projects out of `_incoming` into each song.
 

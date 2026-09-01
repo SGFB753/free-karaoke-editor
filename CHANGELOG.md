@@ -7,6 +7,22 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.47.6
+
+**The Windows application no longer tries to write projects inside `Program
+Files`.** Projects and finished files now live in the visible system
+`Documents\KaraokeStudio` folder. Windows supplies its real name and location,
+so localisation, OneDrive redirection and another drive are all respected. An
+“Open files” button opens that folder directly. Source, Linux, macOS and Docker
+launches, as well as an explicit `KARAOKE_PROJECTS`, retain their existing
+behaviour.
+
+**The old library moves safely and only once.** Projects and exports beside an
+older EXE are copied first, their internal absolute paths are repaired and
+verified, and only then is the accessible old copy removed. A read-only remnant
+in `Program Files` neither blocks the application nor gets copied repeatedly.
+Empty `projects` and `output` folders are no longer shipped in the release ZIP.
+
 ## 4.47.5
 
 **Automatic updates no longer require permission to create folders in the

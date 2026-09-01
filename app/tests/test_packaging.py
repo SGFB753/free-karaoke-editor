@@ -60,6 +60,9 @@ def main():
         build_script = f.read()
     check("finished EXE gets a media dependency smoke test",
           "--internal-package-smoke" in build_script)
+    check("release archives do not contain writable user-data folders",
+          "@('projects', 'output')" in build_script
+          and "Remove-Item -LiteralPath $UserDataPath -Recurse -Force" in build_script)
     updater_spec_path = os.path.join(ROOT, "packaging", "KaraokeUpdater.spec")
     with open(updater_spec_path, encoding="utf-8") as f:
         updater_spec = f.read()
@@ -83,6 +86,56 @@ def main():
         release_workflow = f.read()
     check("normal GitHub releases leave model weights in the user cache",
           "-WithModels" not in release_workflow)
+
+    with open(os.path.join(ROOT, "kstudio", "project.py"), encoding="utf-8") as f:
+        project_source = f.read()
+    with open(os.path.join(ROOT, "studio.py"), encoding="utf-8") as f:
+        studio_source = f.read()
+    check("Windows asks for the real Documents known folder",
+          "SHGetFolderPathW" in project_source and "CSIDL_PERSONAL" in project_source)
+    check("only the frozen Windows app changes the default project home",
+          'getattr(sys, "frozen", False) and os.name == "nt"' in studio_source
+          and 'not os.environ.get("KARAOKE_PROJECTS")' in studio_source)
+
+    # A portable-era library beside the EXE must survive a move to Documents,
+    # including absolute source paths recorded inside project.json.
+    library_test = tempfile.mkdtemp(prefix="karaoke-library-migration-")
+    try:
+        old_library = os.path.join(library_test, "Program Files", "KaraokeStudio")
+        old_song = os.path.join(old_library, "projects", "old-song")
+        old_output = os.path.join(old_library, "output")
+        new_library = os.path.join(library_test, "Documents", "KaraokeStudio")
+        os.makedirs(old_song)
+        os.makedirs(old_output)
+        old_audio = os.path.join(old_song, "original.mp3")
+        old_incoming = os.path.join(old_library, "projects", "_incoming")
+        os.makedirs(old_incoming)
+        old_lyrics = os.path.join(old_incoming, "lyrics.txt")
+        with open(old_audio, "wb") as f:
+            f.write(b"audio")
+        with open(old_lyrics, "w", encoding="utf-8") as f:
+            f.write("words\n")
+        with open(os.path.join(old_song, "project.json"), "w", encoding="utf-8") as f:
+            json.dump({"title": "Old song", "source_audio": old_audio,
+                       "source_lyrics": old_lyrics, "lines": []}, f)
+        with open(os.path.join(old_output, "finished.mp4"), "wb") as f:
+            f.write(b"video")
+
+        moved = studio.P.migrate_installed_library(old_library, new_library)
+        new_song = os.path.join(new_library, "projects", "old-song")
+        migrated_data = studio.P.load(new_song)
+        check("old installed projects and exports move to the visible library",
+              moved["projects"] == 1 and moved["outputs"] == 1
+              and os.path.isfile(os.path.join(new_library, "output", "finished.mp4")))
+        check("migrated project-local source paths point at their new home",
+              migrated_data["source_audio"] == os.path.join(new_song, "original.mp3")
+              and migrated_data["source_lyrics"] == os.path.join(new_song, "lyrics.txt"))
+        again = studio.P.migrate_installed_library(old_library, new_library)
+        check("an old install folder is migrated only once",
+              again == {"projects": 0, "outputs": 0, "left": 0}
+              and os.listdir(os.path.join(new_library, "projects")) == ["old-song"])
+    finally:
+        shutil.rmtree(library_test, ignore_errors=True)
 
     check("a source checkout cannot overwrite itself", not update.supported())
     check("versions compare numerically",

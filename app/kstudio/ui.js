@@ -37,7 +37,8 @@ const STR = {
     exportHtml: "Standalone HTML", exportMp4: "MP4 video", exportMp3: "MP3 320",
     mp3Hint: "Export the same karaoke backing used by the video: the instrumental "
       + "plus the original voice only where it is marked, at 320 kbit/s",
-    summary: "Summary", check: "Check", openFolder: "Open folder", hide: "Hide",
+    summary: "Summary", check: "Check", openFolder: "Open folder",
+    openLibrary: "Open files", hide: "Hide",
     timeline: "Timeline", noLine: "no line selected",
     lineStartsHere: "⌖ Line starts here", andRest: "and all after it",
     lineText: "✎ Line text", textHint: "Fix the words of the selected line (or double-click it)",
@@ -473,6 +474,7 @@ const STR = {
     mp3Hint: "Вывести ту же караоке-минусовку, что звучит в видео: инструментал "
       + "и оригинальный голос только на отмеченных местах, 320 кбит/с",
     summary: "Сводка", check: "Проверить", openFolder: "Открыть папку",
+    openLibrary: "Открыть файлы",
     hide: "Скрыть", timeline: "Дорожка", noLine: "строка не выбрана",
     lineStartsHere: "⌖ Начало строки — сюда", andRest: "и все следующие",
     lineText: "✎ Текст строки",
@@ -981,7 +983,7 @@ function screen(name){
 }
 
 /* ================= song list ================= */
-let caps = {}, lastData = null;
+let caps = {}, lastData = null, libraryDir = "";
 let updateInfo = null, updateChecked = false;
 let desktopLifetime = null;
 function keepDesktopProcessWithThisWindow(){
@@ -1032,6 +1034,8 @@ $('btnUpdate').addEventListener('click', async () => {
 async function loadList(){
   const st = await api("/api/state");
   caps = st.caps;
+  libraryDir = st.libraryDir || st.projectsDir || "";
+  $("btnLibrary").title = libraryDir;
   keepDesktopProcessWithThisWindow();
   extraLangs = st.uiLangs || [];
   labelLang();
@@ -1072,6 +1076,7 @@ async function loadList(){
   });
   screen("scrList");
 }
+$("btnLibrary").addEventListener("click", () => reveal(libraryDir));
 // Mark which models are already on disk: the difference between “here” and
 // “will download now” is minutes of waiting before the first alignment, and the
 // size in megabytes alone does not show it.

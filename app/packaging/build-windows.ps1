@@ -69,6 +69,19 @@ $Dist = Join-Path $ReleaseRoot 'KaraokeStudio'
 $UpdaterDist = Join-Path $BuildDir 'updater-dist\KaraokeUpdater'
 $UpdaterTarget = Join-Path $Dist 'updater'
 Copy-Item -LiteralPath $UpdaterDist -Destination $UpdaterTarget -Recurse -Force
+# Old staging builds could leave these empty folders behind. User data belongs
+# in the Windows Documents known folder and must never be shipped inside the
+# read-only application directory.
+foreach ($UserDataName in @('projects', 'output')) {
+    $UserDataPath = [IO.Path]::GetFullPath((Join-Path $Dist $UserDataName))
+    $DistPrefix = [IO.Path]::GetFullPath($Dist).TrimEnd('\') + '\'
+    if (-not $UserDataPath.StartsWith($DistPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to clean a path outside the release staging folder: $UserDataPath"
+    }
+    if (Test-Path -LiteralPath $UserDataPath) {
+        Remove-Item -LiteralPath $UserDataPath -Recurse -Force
+    }
+}
 Copy-Item -LiteralPath (Join-Path $RepoRoot 'LICENSE') -Destination $Dist -Force
 Copy-Item -LiteralPath (Join-Path $RepoRoot 'README.ru.md') -Destination $Dist -Force
 Copy-Item -LiteralPath (Join-Path $BuildDir 'build-info.json') -Destination $Dist -Force
