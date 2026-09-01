@@ -8,6 +8,7 @@ import errno
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import traceback
@@ -17,6 +18,38 @@ import zipfile
 PRESERVED = {"projects", "output", "settings.ini"}
 RETRY_SECONDS = 20.0
 RETRY_DELAY = 0.25
+STATUS_FILE = "karaoke-update.log"
+
+
+def prepare_console() -> None:
+    """Make the temporary progress window readable on Russian Windows."""
+    if os.name != "nt":
+        return
+    try:
+        ctypes.windll.kernel32.SetConsoleTitleW(
+            "Karaoke Studio — обновление / update")
+        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        ctypes.windll.kernel32.SetConsoleCP(65001)
+        for stream in (sys.stdout, sys.stderr):
+            if stream is not None and hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+
+def status(message: str) -> None:
+    """Leave a visible and persistent breadcrumb for the silent hand-off."""
+    line = time.strftime("%H:%M:%S  ") + message
+    try:
+        print(line, flush=True)
+    except Exception:
+        pass
+    try:
+        with open(os.path.join(tempfile.gettempdir(), STATUS_FILE), "a",
+                  encoding="utf-8") as log:
+            log.write(line + "\n")
+    except OSError:
+        pass
 
 
 def safe_extract(archive: str, target: str) -> str:
@@ -33,6 +66,23 @@ def safe_extract(archive: str, target: str) -> str:
     if not os.path.isfile(os.path.join(candidate, "KaraokeStudio.exe")):
         raise RuntimeError("KaraokeStudio.exe is missing from update archive")
     return candidate
+
+
+def make_stage_root() -> str:
+    """A writable staging folder that does not require Program Files rights.
+
+    ``tempfile.mkdtemp(dir=r"C:\Program Files")`` can spin through billions of
+    candidate names on Windows when ``os.access`` claims that directory is
+    writable but ``CreateDirectory`` denies it.  Replacement already copies
+    entries one by one, so staging does not need to be beside the installation.
+    """
+    return tempfile.mkdtemp(prefix="karaoke-stage-")
+
+
+def make_backup_path() -> str:
+    """A not-yet-created rollback path below a writable temporary root."""
+    root = tempfile.mkdtemp(prefix="karaoke-rollback-")
+    return os.path.join(root, "previous")
 
 
 def wait_for(pid: int, seconds: int = 90) -> None:
@@ -158,7 +208,8 @@ def _same_file(src: str, dst: str) -> bool:
         return False
 
 
-def replace_in_place(staged: str, install: str, backup: str) -> None:
+def replace_in_place(staged: str, install: str, backup: str,
+                     log=None) -> None:
     """Replace program entries without renaming the directory they live in.
 
     Explorer, Chrome or a terminal may hold a directory handle to the install
@@ -169,9 +220,13 @@ def replace_in_place(staged: str, install: str, backup: str) -> None:
     os.makedirs(install, exist_ok=True)
     os.makedirs(backup)
     old_names = [n for n in os.listdir(install) if n not in PRESERVED]
+    if log:
+        log("Creating the rollback copy / Создаю резервную копию…")
     for name in old_names:
         _copy_entry(os.path.join(install, name), os.path.join(backup, name))
     try:
+        if log:
+            log("Replacing application files / Заменяю файлы программы…")
         for name in old_names:
             _remove_retry(os.path.join(install, name))
         for name in os.listdir(staged):
@@ -207,25 +262,30 @@ def replace_in_place(staged: str, install: str, backup: str) -> None:
 
 
 def apply(archive: str, install: str, exe: str, pid: int) -> None:
+    status("Waiting for Karaoke Studio to close / Жду закрытия Студии…")
     wait_for(pid)
+    status("The old process has closed / Старый процесс закрыт.")
     install = os.path.abspath(install)
-    parent = os.path.dirname(install)
-    stage_root = tempfile.mkdtemp(prefix="karaoke-stage-", dir=parent)
+    stage_root = make_stage_root()
+    status("Unpacking the update / Распаковываю обновление…")
     staged = safe_extract(archive, stage_root)
-    backup = install + ".previous"
-    if os.path.exists(backup):
-        shutil.rmtree(backup, ignore_errors=True)
+    # The user may own C:\Program Files\KaraokeStudio without permission to
+    # create its sibling KaraokeStudio.previous. Keep rollback data in Temp as
+    # well; replacement only touches entries inside the writable install root.
+    backup = make_backup_path()
+    backup_root = os.path.dirname(backup)
     try:
-        replace_in_place(staged, install, backup)
+        replace_in_place(staged, install, backup, status)
         env = os.environ.copy()
         env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+        status("Starting the new version / Запускаю новую версию…")
         subprocess.Popen([os.path.join(install, exe)], cwd=tempfile.gettempdir(),
                          env=env)
     except Exception:
         raise
     finally:
         shutil.rmtree(stage_root, ignore_errors=True)
-    shutil.rmtree(backup, ignore_errors=True)
+    shutil.rmtree(backup_root, ignore_errors=True)
     try:
         shutil.rmtree(os.path.dirname(archive), ignore_errors=True)
     except OSError:
@@ -233,6 +293,7 @@ def apply(archive: str, install: str, exe: str, pid: int) -> None:
 
 
 def main() -> int:
+    prepare_console()
     p = argparse.ArgumentParser()
     p.add_argument("--pid", type=int, required=True)
     p.add_argument("--archive", required=True)
@@ -240,16 +301,32 @@ def main() -> int:
     p.add_argument("--exe", default="KaraokeStudio.exe")
     a = p.parse_args()
     error_path = os.path.join(tempfile.gettempdir(), "karaoke-update-error.txt")
+    status_path = os.path.join(tempfile.gettempdir(), STATUS_FILE)
+    try:
+        os.remove(status_path)
+    except (FileNotFoundError, OSError):
+        pass
     try:
         os.remove(error_path)
     except (FileNotFoundError, OSError):
         pass
     try:
+        status("Karaoke Studio update / Обновление Караоке-студии")
         apply(a.archive, a.install, a.exe, a.pid)
+        status("Done / Готово.")
         return 0
     except Exception:
         with open(error_path, "w", encoding="utf-8") as f:
             f.write(traceback.format_exc())
+        status("Update failed; details: " + error_path)
+        if os.name == "nt":
+            try:
+                ctypes.windll.user32.MessageBoxW(
+                    None,
+                    "Не удалось обновить Караоке-студию.\n\nПодробности:\n" + error_path,
+                    "Karaoke Studio — update failed", 0x10)
+            except Exception:
+                pass
         return 1
 
 

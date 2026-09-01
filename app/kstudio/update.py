@@ -213,5 +213,8 @@ def launch(archive: str) -> None:
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
     subprocess.Popen([updater, "--pid", str(os.getpid()), "--archive", archive,
                       "--install", _bundle_root(), "--exe", "KaraokeStudio.exe"],
-                     creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                     # Replacement can take tens of seconds even on an SSD.
+                     # A small progress console is better than an apparently
+                     # hung background process with no visible explanation.
+                     creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
                      close_fds=True, env=env)

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import ctypes
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -65,6 +66,16 @@ def main():
     check("the updater starts from a one-folder runtime",
           "exclude_binaries=True" in updater_spec and "COLLECT(" in updater_spec
           and "updater-dist\\KaraokeUpdater" in build_script)
+    update_source_path = os.path.join(ROOT, "kstudio", "update.py")
+    with open(update_source_path, encoding="utf-8") as f:
+        update_source = f.read()
+    updater_source_path = os.path.join(ROOT, "updater.py")
+    with open(updater_source_path, encoding="utf-8") as f:
+        updater_source = f.read()
+    check("a long update stays visible instead of looking hung",
+          "console=True" in updater_spec
+          and "CREATE_NEW_CONSOLE" in update_source
+          and "karaoke-update.log" in updater_source)
 
     workflow_path = os.path.join(os.path.dirname(ROOT), ".github", "workflows",
                                  "windows-release.yml")
@@ -88,6 +99,41 @@ def main():
     studio.close_desktop_window()
     check("an update closes the native Studio window",
           native.destroyed and studio.DESKTOP_NATIVE_WINDOW is None)
+
+    class FakeServer:
+        stopped = False
+
+        def shutdown(self):
+            self.stopped = True
+
+    class FakeTimer:
+        made = []
+
+        def __init__(self, interval, function, args=()):
+            self.interval, self.function, self.args = interval, function, args
+            self.daemon = False
+            self.started = False
+            self.made.append(self)
+
+        def start(self):
+            self.started = True
+
+    old_timer = studio.threading.Timer
+    try:
+        studio.threading.Timer = FakeTimer
+        server = FakeServer()
+        native = NativeWindow()
+        studio.DESKTOP_NATIVE_WINDOW = native
+        scheduled = studio.schedule_update_shutdown(server)
+        scheduled.function(*scheduled.args)
+        check("a WebView2 update has a forced-exit watchdog",
+              server.stopped and native.destroyed
+              and len(FakeTimer.made) == 2
+              and FakeTimer.made[1].function is studio.os._exit
+              and FakeTimer.made[1].interval == studio.UPDATE_FORCE_EXIT_GRACE
+              and all(timer.started and timer.daemon for timer in FakeTimer.made))
+    finally:
+        studio.threading.Timer = old_timer
 
     options = studio.native_window_options("http://127.0.0.1:8770/")
     check("the native window permits selecting and editing lyrics",
@@ -206,6 +252,27 @@ def main():
         check("a release archive is unpacked",
               os.path.isfile(os.path.join(app, "KaraokeStudio.exe")))
 
+        stage_root = updater.make_stage_root()
+        try:
+            check("staging an update needs no write access beside Program Files",
+                  os.path.dirname(stage_root) == os.path.abspath(
+                      tempfile.gettempdir())
+                  and os.path.basename(stage_root).startswith("karaoke-stage-"))
+        finally:
+            shutil.rmtree(stage_root)
+
+        backup_path = updater.make_backup_path()
+        backup_root = os.path.dirname(backup_path)
+        try:
+            check("rollback needs no sibling folder in Program Files",
+                  os.path.dirname(backup_root) == os.path.abspath(
+                      tempfile.gettempdir())
+                  and os.path.basename(backup_root).startswith(
+                      "karaoke-rollback-")
+                  and not os.path.exists(backup_path))
+        finally:
+            shutil.rmtree(backup_root)
+
         bad = os.path.join(tmp, "bad.zip")
         with zipfile.ZipFile(bad, "w") as z:
             z.writestr("../outside.txt", b"no")
@@ -251,8 +318,9 @@ def main():
         open(os.path.join(staged, "_internal", "current.dll"), "wb").write(b"new")
         holder = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(10)"],
                                   cwd=locked)
+        progress = []
         try:
-            updater.replace_in_place(staged, locked, backup)
+            updater.replace_in_place(staged, locked, backup, progress.append)
         finally:
             holder.terminate(); holder.wait()
         check("an open install root does not prevent an in-place update",
@@ -263,6 +331,10 @@ def main():
         check("in-place updates never move projects or finished files",
               os.path.isfile(os.path.join(locked, "projects", "song.json"))
               and os.path.isfile(os.path.join(locked, "output", "video.mp4")))
+        check("the visible updater names its slow replacement stages",
+              len(progress) == 2
+              and "rollback" in progress[0].lower()
+              and "replacing" in progress[1].lower())
 
         # Defender and Explorer can retain an image/DLL for a fraction of a
         # second after the process exits.  One temporary denial must not turn

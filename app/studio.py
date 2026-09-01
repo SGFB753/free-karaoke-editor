@@ -103,6 +103,7 @@ WINDOW_LINK_LOCK = threading.Lock()
 WINDOW_LINKS = 0
 WINDOW_LINK_GENERATION = 0
 WINDOW_CLOSE_GRACE = 2.5
+UPDATE_FORCE_EXIT_GRACE = 4.0
 
 
 def window_link_opened() -> None:
@@ -710,7 +711,10 @@ class Handler(BaseHTTPRequestHandler):
                 UP.launch(archive)
                 # Let the JSON reply reach the window, then release every DLL
                 # so the external updater can replace the application folder.
-                threading.Timer(0.5, self.server.shutdown).start()
+                # A native WebView2 host can keep pythonnet/.NET threads alive
+                # after its visible window has gone; the updater waits for the
+                # PID, not the window, so use the dedicated two-stage exit.
+                schedule_update_shutdown(self.server)
                 return self._json({"ok": True})
 
             if path == "/api/report":
@@ -2233,6 +2237,32 @@ def close_desktop_window() -> None:
             proc.wait(timeout=2)
         except Exception:
             pass
+
+
+def finish_update_shutdown(server) -> None:
+    """End the old release even if WebView2 keeps a hidden thread alive.
+
+    The external updater has already been copied to Temp and is waiting on our
+    process handle.  Usually shutting down the server and destroying the native
+    window lets Python exit normally.  pythonnet/WebView2 may nevertheless keep
+    a runtime thread alive with no window; a short daemon watchdog then exits
+    only this obsolete process, allowing the updater to continue safely.
+    """
+    force_exit = threading.Timer(UPDATE_FORCE_EXIT_GRACE, os._exit, args=(0,))
+    force_exit.daemon = True
+    force_exit.start()
+    try:
+        server.shutdown()
+    finally:
+        close_desktop_window()
+
+
+def schedule_update_shutdown(server, delay: float = 0.5):
+    """Return the graceful shutdown timer, primarily for regression tests."""
+    timer = threading.Timer(delay, finish_update_shutdown, args=(server,))
+    timer.daemon = True
+    timer.start()
+    return timer
 
 
 def native_window_options(url: str) -> dict:

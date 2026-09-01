@@ -7,6 +7,22 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.47.5
+
+**Automatic updates no longer require permission to create folders in the
+root of `Program Files`.** The new release and its rollback copy are now staged
+in the user's temporary directory, while only writable entries inside
+`KaraokeStudio` are replaced. This removes the endless `karaoke-stage-*` loop
+that consumed one CPU core and left `KaraokeUpdater.exe` running without an
+error. Projects, finished files and `settings.ini` remain untouched.
+
+**A long update now says what it is doing.** A separate updater window reports
+waiting for the old process, unpacking, creating the rollback copy, replacing
+files and starting the new version; the same stages are saved to
+`%TEMP%\karaoke-update.log`. If WebView2 closes its window but leaves the old
+process alive, a short watchdog guarantees that the updater can obtain the
+application files.
+
 ## 4.47.4
 
 **Karaoke Studio looks like a standalone Windows application again.** The
