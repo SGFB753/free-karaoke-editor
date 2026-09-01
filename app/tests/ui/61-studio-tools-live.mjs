@@ -341,7 +341,7 @@ console.log('\n--- a clip can stand behind the lyrics ---');
   ok('a path to nothing is refused, not swallowed', !!bad.error, JSON.stringify(bad));
 }
 
-console.log('\n--- a video source becomes the moving backdrop by itself ---');
+console.log('\n--- a video source becomes the moving backdrop when selected ---');
 {
   const fsx = await import('fs');
   const os = await import('os');
@@ -359,7 +359,8 @@ console.log('\n--- a video source becomes the moving backdrop by itself ---');
   if (made){
     const auto = await finish((await post('/api/new', {
       audio: sourceVideo, lyrics: process.env.KARAOKE_TEXT, align: 'energy',
-      separate: false, title: 'Moving Backdrop', titleSet: true})).job);
+      separate: false, title: 'Moving Backdrop', titleSet: true,
+      backgroundMode: 'video'})).job);
     ok('a project from that video builds', auto.ok, (auto.log || []).slice(-2).join(' | '));
     if (auto.ok){
       const rec = await get('/api/project/' + encodeURIComponent(auto.result));

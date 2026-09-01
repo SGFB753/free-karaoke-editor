@@ -287,6 +287,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
                               isolated=False, skip=holes)
         if vocals and engine == "whisper":
             A.refine_leading_silence(lyr, vocals, log=log)
+            A.refine_uncertain_word_onsets(lyr, vocals, log=log)
         log(tr(f"Timing ready ({B.ENGINE_LABEL.get(engine, engine)}).",
            f"Разметка готова ({B.ENGINE_LABEL.get(engine, engine)})."))
 

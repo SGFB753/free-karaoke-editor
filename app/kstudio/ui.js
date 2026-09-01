@@ -122,10 +122,11 @@ const STR = {
     model_turbo: "large-v3-turbo — 1.6 GB, nearly large at medium’s speed",
     model_large_v3: "large-v3 — 3 GB",
     fineSep: "separate finely",
-    coverBg: "clip cover as backdrop",
-    coverHint: "Put the clip's cover behind the lyrics — blurred hard and "
-      + "darkened, so the words stay readable — on the finished page and in "
-      + "the MP4. It appears when the song comes from a link.",
+    backgroundLabel: "background",
+    backgroundCover: "clip cover",
+    backgroundVideo: "video footage",
+    backgroundHint: "Choose one background source. The cover is blurred, darkened "
+      + "and given a subtle pulse to the music; video footage keeps the clip moving.",
     fineSepHint: "Four passes over the song instead of one (htdemucs_ft): the "
       + "instrumental and voice stem come out cleaner; timing still uses the "
       + "original. "
@@ -554,10 +555,11 @@ const STR = {
     model_turbo: "large-v3-turbo — 1,6 ГБ, почти large на скорости medium",
     model_large_v3: "large-v3 — 3 ГБ",
     fineSep: "отделять тщательно",
-    coverBg: "фон — обложка клипа",
-    coverHint: "Подложить обложку клипа под текст — сильно размытую и "
-      + "затемнённую, чтобы слова читались, — на готовой странице и в MP4. "
-      + "Появляется, когда песня пришла по ссылке.",
+    backgroundLabel: "фон",
+    backgroundCover: "обложка клипа",
+    backgroundVideo: "видеоряд",
+    backgroundHint: "Можно выбрать только один фон. Обложка размывается, затемняется "
+      + "и слегка пульсирует под музыку; видеоряд остаётся движущимся.",
     fineSepHint: "Четыре прохода по песне вместо одного (htdemucs_ft): вокал "
       + "и минусовка выходят чище; разметка по-прежнему считается по оригиналу. "
       + "Примерно вчетверо "
@@ -1295,7 +1297,7 @@ async function usePickedFile(kind, file){
     } else {
       lastSong = null;                        // chosen by hand, not fetched by link
       $("grpCover").classList.add("hide");
-      $("chkCover").checked = false;
+      $("selBackground").value = "cover";
       $("inAudio").value = got.path;
       if (!$("inTitle").value.trim()) $("inTitle").value = fileStem(file.name);
     }
@@ -1451,7 +1453,7 @@ async function showDir(path){
     if (pickTarget !== "lyrics"){
       lastSong = null;                              // not the song from the link
       $("grpCover").classList.add("hide");          // and its cover goes with it
-      $("chkCover").checked = false;
+      $("selBackground").value = "cover";
     }
     $(pickTarget === "lyrics" ? "inLyrics" : "inAudio").value = x.path;
     if (pickTarget !== "lyrics" && !$("inTitle").value.trim())
@@ -1520,7 +1522,7 @@ window.addEventListener("drop", async e => {
     if (audio){ toast(T.taking(audio.name));
       lastSong = null;                              // dropped by hand, not fetched
       $("grpCover").classList.add("hide");
-      $("chkCover").checked = false;
+      $("selBackground").value = "cover";
       $("inAudio").value = (await upload(audio)).path;
       if (!$("inTitle").value.trim()) $("inTitle").value = fileStem(audio.name); }
     if (text){ $("inLyrics").value = (await upload(text)).path; }
@@ -1561,7 +1563,7 @@ function resetLink(){
   $("inArtist").value = "";
   nameTyped = false;
   $("grpCover").classList.add("hide");
-  $("chkCover").checked = false;
+  $("selBackground").value = "cover";
   $("lyricsFound").innerHTML = "";
   $("lyricsFound").classList.add("hide");
   $("pasteBox").classList.add("hide");
@@ -1622,7 +1624,7 @@ async function takeLink(){
     if (!$("inTitle").value.trim()) $("inTitle").value = got.track || got.title || "";
     if (!$("inArtist").value.trim()) $("inArtist").value = got.artist || "";
     $("grpCover").classList.toggle("hide", !got.cover);
-    $("chkCover").checked = !!got.cover;
+    $("selBackground").value = "cover";
     $("inAudio").value = got.path;
     note("linkNote", T.linkGot(got.name));
     askReport();
@@ -1767,7 +1769,11 @@ $("btnBuild").addEventListener("click", async () => {
       // outranks the “title:” inside a lyrics file, an offered one does not.
       titleSet: nameTyped,
       cover: (lastSong && lastSong.cover) || "",
-      coverBg: !!(lastSong && lastSong.cover && $("chkCover").checked)});
+      backgroundMode: (lastSong && lastSong.cover)
+        ? $("selBackground").value : "none",
+      // Kept for older servers which do not know backgroundMode yet.
+      coverBg: !!(lastSong && lastSong.cover
+        && $("selBackground").value === "cover")});
     watchJob(j.job, T.jobBuild, id => openProject(id));
   }catch(e){ toast(e.message); }
 });
@@ -4251,8 +4257,8 @@ async function takeCover(path, url){
   try{
     const r = await api(`/api/project/${encodeURIComponent(pid)}/cover`,
       url ? {url} : {path});
-    data.cover = "cover.jpg"; data.coverBg = true;
-    refreshCover(); toast(T.coverSet);
+    data.cover = "cover.jpg"; data.coverBg = true; data.backdrop = null;
+    refreshCover(); refreshBackdrop(); toast(T.coverSet);
     if (!$("stillBox").classList.contains("hide")) showStill(stillT, false);
   }catch(e){ toast(e.message); }
 }
@@ -4268,8 +4274,8 @@ async function takeBackdrop(path, url){
   try{
     await api(`/api/project/${encodeURIComponent(pid)}/backdrop`,
       url ? {url} : {path});
-    data.backdrop = "backdrop.mp4";
-    refreshBackdrop(); toast(T.backdropSet);
+    data.backdrop = "backdrop.mp4"; data.coverBg = false;
+    refreshBackdrop(); refreshCover(); toast(T.backdropSet);
     if (!$("stillBox").classList.contains("hide")) showStill(stillT, false);
   }catch(e){ toast(e.message); }
 }

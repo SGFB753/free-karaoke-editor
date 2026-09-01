@@ -774,6 +774,10 @@ class Handler(BaseHTTPRequestHandler):
                 for f in (audio, lyrics):
                     if not os.path.isfile(f):
                         return self._err(400, tr(f"file not found: {f}", f"файл не найден: {f}"))
+                background_mode = str(body.get("backgroundMode") or
+                                      ("cover" if body.get("coverBg") else "none"))
+                if background_mode not in ("none", "cover", "video"):
+                    background_mode = "cover"
                 opts = dict(align_engine=body.get("align", "auto"),
                             whisper_model=body.get("model", "small"),
                             language=body.get("lang", "auto"),
@@ -793,36 +797,40 @@ class Handler(BaseHTTPRequestHandler):
                             title_set=bool(body.get("titleSet")),
                             # the clip's cover as the backdrop, if asked for
                             cover=body.get("cover") or None,
-                            cover_bg=bool(body.get("coverBg")))
+                            cover_bg=background_mode == "cover")
                 def build_project(log):
                     folder = P.create(audio, lyrics, PROJECTS, log=log, **opts)
-                    # A real video source is better than turning one thumbnail
-                    # into a motionless background.  Local MP4/WebM files can
-                    # be reduced directly; links downloaded as audio-only get
-                    # their smallest video stream in one extra lightweight
-                    # request.  Failure is only a missing luxury: the cover
-                    # remains a perfectly usable fallback.
+                    # Only the background chosen in the form is made. Local
+                    # MP4/WebM files can be reduced directly; links downloaded
+                    # as audio-only get their smallest video stream in one
+                    # extra lightweight request. If that fails, the cover is a
+                    # safe fallback rather than a failed song.
                     source_url = (body.get("sourceUrl") or "").strip()
                     got_clip = None
-                    try:
-                        project_data = P.load(folder)
-                        source_video = project_data.get("source_audio") or audio
+                    if background_mode == "video":
                         try:
-                            backdrop = set_backdrop(folder, source_video)
-                        except Exception:
-                            if not source_url:
-                                raise
-                            got_clip = FE.clip(source_url, staging_dir(), log)
-                            backdrop = set_backdrop(folder, got_clip)
-                        project_data["backdrop"] = backdrop
-                        P.save(folder, project_data)
-                        log(tr("The source video will move behind the lyrics.",
-                               "Исходный видеоряд будет двигаться за текстом."))
-                    except Exception as e:
-                        log(tr(f"  no moving backdrop ({e}) — using the cover",
-                               f"  движущийся фон недоступен ({e}) — остаётся обложка"))
-                    finally:
-                        discard_staged(got_clip or "")
+                            project_data = P.load(folder)
+                            source_video = project_data.get("source_audio") or audio
+                            try:
+                                backdrop = set_backdrop(folder, source_video)
+                            except Exception:
+                                if not source_url:
+                                    raise
+                                got_clip = FE.clip(source_url, staging_dir(), log)
+                                backdrop = set_backdrop(folder, got_clip)
+                            project_data["backdrop"] = backdrop
+                            project_data["coverBg"] = False
+                            P.save(folder, project_data)
+                            log(tr("The source video will move behind the lyrics.",
+                                   "Исходный видеоряд будет двигаться за текстом."))
+                        except Exception as e:
+                            project_data = P.load(folder)
+                            project_data["coverBg"] = bool(project_data.get("cover"))
+                            P.save(folder, project_data)
+                            log(tr(f"  no moving backdrop ({e}) — using the cover",
+                                   f"  движущийся фон недоступен ({e}) — остаётся обложка"))
+                        finally:
+                            discard_staged(got_clip or "")
                     # Only after both copies and project.json are safely in the
                     # song can temporary uploads be consumed.
                     for src in (audio, lyrics, opts.get("cover") or ""):
@@ -908,6 +916,15 @@ class Handler(BaseHTTPRequestHandler):
                 data = P.load(folder)
                 data["cover"] = "cover.jpg"
                 data["coverBg"] = True
+                # A project has one visual background. Choosing a still cover
+                # replaces an older moving clip, including its now-unused file.
+                for old in os.listdir(folder):
+                    if old.startswith("backdrop."):
+                        try:
+                            os.remove(os.path.join(folder, old))
+                        except OSError:
+                            pass
+                data["backdrop"] = None
                 # a clip gives several frames: the video plays them as a slow
                 # slideshow; a single picture stays a single picture
                 data["coverSet"] = names if len(names) > 1 else None
@@ -957,6 +974,7 @@ class Handler(BaseHTTPRequestHandler):
                             pass
                 data = P.load(folder)
                 data["backdrop"] = name
+                data["coverBg"] = False
                 P.save(folder, data)
                 discard_staged(src)
                 return self._json({"ok": True, "backdrop": True})
@@ -1177,6 +1195,7 @@ def realign_part(folder: str, opts: dict, log) -> dict:
     onset_audio = vocal_timing_audio(folder, data)
     if onset_audio and engine == "whisper":
         A.refine_leading_silence(piece, onset_audio, log=log)
+        A.refine_uncertain_word_onsets(piece, onset_audio, log=log)
 
     fresh = [ln.to_json() for ln in piece.lines]
     moved = 0
@@ -1275,6 +1294,7 @@ def realign(folder: str, opts: dict, log) -> dict:
     onset_audio = vocal_timing_audio(folder, data)
     if onset_audio and engine == "whisper":
         A.refine_leading_silence(lyr, onset_audio, log=log)
+        A.refine_uncertain_word_onsets(lyr, onset_audio, log=log)
     fresh = [ln.to_json() for ln in lyr.lines]
     # A line put right by hand outweighs anything a model returns for it.
     P.keep_locked(data.get("lines") or [], fresh, log)

@@ -869,6 +869,131 @@ def refine_leading_silence(lyrics: Lyrics, vocal_audio: str,
     return fixed
 
 
+def refine_uncertain_word_onsets(lyrics: Lyrics, vocal_audio: str,
+                                 log: Log = _noop, max_shift: float = 0.95) -> int:
+    """Snap doubtful internal word starts to a fresh vocal attack.
+
+    On a held vowel forced alignment can paint the following word while the
+    previous one is still being sung. It can also miss a quiet first particle
+    and start the whole line a few hundred milliseconds late. A separated
+    vocal exposes both attacks clearly. This pass is deliberately narrow:
+    internal words still need to be at least half a second long, while a line
+    start is moved only backwards, only below 15% confidence, and never into
+    the preceding line. Confident melismas are left exactly where Whisper put
+    them.
+    """
+    try:
+        from . import audio as AU
+        env, hop = AU.rms_envelope(vocal_audio, hop_ms=20)
+    except Exception:
+        return 0
+    if len(env) < 12 or hop <= 0:
+        return 0
+
+    # A short before/after average reveals consonant attacks without reacting
+    # to every sample. Keep only local maxima; several syllables may live in
+    # the window, and the confidence decides how selective to be below.
+    rise = [0.0] * len(env)
+    for i in range(3, len(env) - 3):
+        before = sum(env[i - 3:i + 1]) / 4.0
+        after = sum(env[i:i + 4]) / 4.0
+        rise[i] = max(0.0, after - before)
+
+    fixed = 0
+    for line_index, ln in enumerate(lyrics.lines):
+        ws = ln.words
+        # Whisper often hears a short opening conjunction only after its
+        # vowel has developed ("И, уходя" is a common shape). Look behind at
+        # most 450 ms for the strongest new vocal attack. Keeping the attack
+        # beyond the previous line prevents its final syllable being stolen.
+        if ws:
+            first = ws[0]
+            if first.start is not None and first.prob is not None \
+                    and first.prob < 0.15:
+                floor = max(0.0, first.start - min(max_shift, 0.45))
+                if line_index:
+                    previous_end = lyrics.lines[line_index - 1].end
+                    if previous_end is not None:
+                        floor = max(floor, previous_end + 0.04)
+                lo = max(1, int(floor / hop))
+                hi = min(len(env) - 2, int((first.start - 0.14) / hop) + 1)
+                peaks = [i for i in range(lo, hi)
+                         if rise[i] >= 0.075
+                         and rise[i] >= rise[i - 1] and rise[i] >= rise[i + 1]]
+                if peaks:
+                    pick = max(peaks, key=lambda i: (rise[i], -i))
+                    new_start = pick * hop
+                    if floor <= new_start <= first.start - 0.14:
+                        first.start = new_start
+                        ln.start = new_start
+                        fixed += 1
+
+        for k in range(1, len(ws) - 1):
+            word = ws[k]
+            if word.start is None or word.end is None or word.prob is None:
+                continue
+            length = word.end - word.start
+            if word.prob >= 0.15 or length < 0.50:
+                continue
+            lo = max(1, int((word.start - 0.30) / hop))
+            hi = min(len(env) - 2,
+                     int(min(word.end + 0.10, word.start + max_shift) / hop) + 1)
+            if hi <= lo:
+                continue
+            peaks = [i for i in range(lo, hi)
+                     if rise[i] >= 0.075
+                     and rise[i] >= rise[i - 1] and rise[i] >= rise[i + 1]]
+            if not peaks:
+                continue
+            if word.prob < 0.03:
+                # With virtually no recognised phoneme, ignore a weak twitch
+                # at the guessed boundary and take the first clear attack.
+                strongest = max(rise[i] for i in peaks)
+                clear = [i for i in peaks if rise[i] >= 0.70 * strongest]
+                pick = clear[0]
+            else:
+                # A partly heard word is already nearby: take the closest
+                # plausible attack, preferring the earlier one on a tie.
+                pick = min(peaks, key=lambda i: (abs(i * hop - word.start), i))
+            new_start = pick * hop
+            if abs(new_start - word.start) < 0.08 \
+                    or abs(new_start - word.start) > max_shift:
+                continue
+            # Sometimes the true attack sits at the very end of the interval
+            # Whisper guessed for this word (the “потом” case in a held
+            # chorus). Give it room up to the next vocal attack and move the
+            # following boundary with it, instead of creating an 80 ms word.
+            if new_start >= word.end - 0.08:
+                nxt = ws[k + 1]
+                far = min(len(env) - 2,
+                          int(min((nxt.end or new_start + 0.8),
+                                  new_start + 0.9) / hop) + 1)
+                later = [i for i in range(pick + max(2, int(0.16 / hop)), far)
+                         if rise[i] >= 0.075
+                         and rise[i] >= rise[i - 1] and rise[i] >= rise[i + 1]]
+                if not later:
+                    continue
+                strongest_later = max(rise[i] for i in later)
+                clear_later = [i for i in later
+                               if rise[i] >= 0.70 * strongest_later]
+                boundary = clear_later[0] * hop
+                if boundary <= new_start + 0.10:
+                    continue
+                word.end = boundary
+                if nxt.start is not None:
+                    nxt.start = boundary
+            elif new_start < word.start:
+                prev = ws[k - 1]
+                if prev.end is not None and prev.end > new_start:
+                    prev.end = new_start
+            word.start = new_start
+            fixed += 1
+    if fixed:
+        log(tr(f"  doubtful word starts moved to vocal attacks: {fixed}",
+               f"  начал неуверенно распознанных слов перенесено на атаки вокала: {fixed}"))
+    return fixed
+
+
 def _interpolate_gaps(words: List[Word]) -> None:
     """Words left without a time (insertions in the text) are filled in between."""
     i = 0
@@ -1812,7 +1937,20 @@ def align_anchored(lyrics: Lyrics, audio_path: str, duration: float,
             ln.start = ln.end = None
             for w in ln.words:
                 w.start = w.end = None
-        outside = ([(0.0, t0)] if t0 > 0.05 else []) + \
+        # Library LRC times are useful landmarks, not sample-accurate truth.
+        # Some releases put every timestamp on the first strong syllable, up
+        # to about a second after the singer actually enters. Let Whisper hear
+        # a short lead-in and decide the real word boundary. The following peg
+        # still closes this stretch, so a line cannot drift through the song.
+        # Loudness fallback keeps the hard peg: without recognised words the
+        # overlap would be a guess rather than a correction.
+        hear_from = max(0.0, t0 - 1.5) if have_whisper else t0
+        if have_whisper and out and out[-1].end is not None:
+            # Do not mistake the tail of the preceding, already recognised
+            # line for the beginning of this one. A tiny overlap remains for
+            # natural legato and genuinely simultaneous syllables.
+            hear_from = max(hear_from, out[-1].end - 0.12)
+        outside = ([(0.0, hear_from)] if hear_from > 0.05 else []) + \
                   ([(t1, duration)] if t1 < duration - 0.05 else [])
         holes = spans((skip or []) + outside, duration)
         log(tr(f"  lines {a + 1}–{b + 1}, between {mmss(t0)} and {mmss(t1)}",

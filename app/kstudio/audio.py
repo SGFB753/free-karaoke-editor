@@ -270,9 +270,10 @@ def read_pcm_mono(path: str, sample_rate: int = 16000,
     return data
 
 
-def rms_envelope(path: str, hop_ms: int = 20, sample_rate: int = 16000):
+def rms_envelope(path: str, hop_ms: int = 20, sample_rate: int = 16000,
+                 af: Optional[str] = None):
     """Loudness envelope: (list of RMS in [0..1], step in seconds)."""
-    samples = read_pcm_mono(path, sample_rate)
+    samples = read_pcm_mono(path, sample_rate, af=af)
     hop = max(int(sample_rate * hop_ms / 1000), 1)
     try:
         import numpy as np

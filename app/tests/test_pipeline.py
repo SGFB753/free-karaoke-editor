@@ -1134,6 +1134,43 @@ You might also like
           A.refine_leading_silence(held_onset, held_wav) == 0
           and held_onset.lines[0].start == 2.0)
 
+    # A different failure happens inside a line: the previous word is held,
+    # while a barely recognised next word is painted before its new attack.
+    word_onset_wav = os.path.join(tmp, "word-onset.wav")
+    _tone_and_silence(word_onset_wav, [(0.0, 1.0), (1.75, 2.0), (2.10, 3.0)])
+    word_onset = L.parse("РґРѕР»РіРѕ РїРѕС‚РѕРј СЃСЋР¶РµС‚С‹")
+    for w, a, b, p in zip(word_onset.words,
+                          (0.0, 1.0, 1.8), (1.0, 1.8, 3.0),
+                          (0.9, 0.002, 0.9)):
+        w.start, w.end, w.prob = a, b, p
+    word_onset.lines[0].start, word_onset.lines[0].end = 0.0, 3.0
+    fixed_word = A.refine_uncertain_word_onsets(word_onset, word_onset_wav)
+    check("a doubtful word waits for its own vocal attack",
+          fixed_word == 1 and 1.65 < word_onset.words[1].start < 1.85,
+          [round(w.start, 2) for w in word_onset.words])
+    check("and the following word keeps a separate attack",
+          2.0 < word_onset.words[2].start < 2.2,
+          [round(w.start, 2) for w in word_onset.words])
+
+    # A quiet first particle can have the opposite error: Whisper marks the
+    # line after the voice has already entered. Recover the nearby attack, but
+    # do not let it cross the preceding line.
+    late_line_wav = os.path.join(tmp, "late-line-onset.wav")
+    _tone_and_silence(late_line_wav, [(0.0, 1.10), (1.26, 3.0)])
+    late_line = L.parse("one line here\nand leaving keys")
+    A._spread(late_line.lines[0].words, 0.0, 1.10)
+    A._spread(late_line.lines[1].words, 1.56, 3.0)
+    late_line.lines[0].start, late_line.lines[0].end = 0.0, 1.10
+    late_line.lines[1].start, late_line.lines[1].end = 1.56, 3.0
+    late_line.lines[1].words[0].prob = 0.03
+    fixed_late = A.refine_uncertain_word_onsets(late_line, late_line_wav)
+    check("a doubtful late line start moves back to its vocal attack",
+          fixed_late == 1 and 1.20 < late_line.lines[1].start < 1.34,
+          late_line.lines[1].start)
+    check("and it stays beyond the preceding line",
+          late_line.lines[1].start > late_line.lines[0].end,
+          [late_line.lines[0].end, late_line.lines[1].start])
+
     from kstudio import report as R
     older = R.quiet_stretches(env_q, hop_q, least=2.5)
     check("which is what the old measure got wrong", covers(older, 10.5, 19.5), older)
@@ -1222,8 +1259,8 @@ You might also like
 
     print("\nA time written in the text is a peg, not a timing")
     # “[2:27] Remember this day” says: this line is sung about here. A line
-    # cannot then wander into a vocalise three minutes away — the model is only
-    # ever shown the stretch between two pegs.
+    # cannot then wander into a vocalise three minutes away. Whisper gets only
+    # a short look behind each approximate peg, not the rest of the song.
     import types
 
     calls = []

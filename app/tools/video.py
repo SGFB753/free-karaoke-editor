@@ -835,6 +835,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     # frames cut from the clip. Each carries the song's name; the switch is a
     # slow crossfade, timed by the song's own length.
     cover_uris = [u for u in (payload.get("covers") or []) if u]
+    has_cover = bool(cover_uris or payload.get("cover"))
     if not cover_uris:
         cover_uris = [payload.get("cover") or ""]
     cover_dark = int(payload.get("coverDark") or 66)
@@ -846,6 +847,45 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     back_path = getattr(args, "backdrop", None)
     fields = (backdrop_fields(back_path, W, H, log=on_progress)
               if back_path and os.path.isfile(back_path) else [])
+
+    # A still cover should feel alive, without turning into a music visualiser.
+    # Listen only below 180 Hz (where kick drums live), keep distinct attacks,
+    # then let each one fall away quickly. A slow independent camera drift is
+    # added below; the beat remains only a small accent on top of it.
+    cover_hits = []
+    if has_cover and not fields and getattr(args, "still", None) is None:
+        try:
+            low, hit_hop = AU.rms_envelope(audio_wav, hop_ms=20,
+                                           af="lowpass=f=180")
+            fast = slow = 0.0
+            attacks = []
+            for value in low:
+                fast += (value - fast) * 0.48
+                slow += (value - slow) * 0.075
+                attacks.append(max(0.0, fast - slow * 1.08))
+            positive = sorted(x for x in attacks if x > 0)
+            if positive:
+                gate = max(0.012, positive[int(0.82 * (len(positive) - 1))])
+                ceiling = max(gate * 1.8,
+                              positive[int(0.985 * (len(positive) - 1))])
+                last = -1.0
+                for i in range(1, len(attacks) - 1):
+                    a = attacks[i]
+                    if a < gate or a < attacks[i - 1] or a < attacks[i + 1]:
+                        continue
+                    at = i * hit_hop
+                    if at - last < 0.16:
+                        if cover_hits and a > cover_hits[-1][1]:
+                            cover_hits[-1] = (at, a)
+                            last = at
+                        continue
+                    cover_hits.append((at, a))
+                    last = at
+                cover_hits = [(at, min(1.0, max(0.25, (a - gate) /
+                                max(ceiling - gate, 1e-6))))
+                              for at, a in cover_hits]
+        except Exception:
+            cover_hits = []
     small = ImageFont.truetype(font_path, int(H * 0.020))
     # The song's name deserves better than the caption size — and its own
     # font, so growing it does not swell every section heading with it.
@@ -1016,9 +1056,27 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                                      **edged(name_font))
         return img
 
-    if shown_name and not fields:
+    animate_cover = (has_cover and not fields
+                     and getattr(args, "still", None) is None)
+    if shown_name and not fields and not animate_cover:
         for one in bgs:
             stamp_name(one)
+
+    def cover_pulse_at(t):
+        if not cover_hits:
+            return 0
+        i = bisect.bisect_right(cover_hits, (t, float("inf"))) - 1
+        if i < 0:
+            return 0
+        age = t - cover_hits[i][0]
+        if age < 0 or age > 0.46:
+            return 0
+        strength = cover_hits[i][1] * math.exp(-age / 0.16)
+        if strength < 0.18:
+            return 0
+        # A clear hit gets the stronger frame; the rest still receive one
+        # visible, soft step instead of rounding down to no effect at all.
+        return 2 if strength >= 0.58 else 1
 
     def furniture(d, prog):
         """The bar along the bottom: on every frame, the opening included."""
@@ -1082,20 +1140,60 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             held["img"] = stamp_name(_lay_scrim(sm.resize((W, H), Image.BILINEAR)))
         return held["img"].copy()
 
+    # The motion is sampled at ten small steps per second. On an already
+    # blurred cover the sub-pixel difference between those steps is invisible,
+    # while avoiding a full-HD resize on every output frame keeps rendering
+    # practical. The 20-second cycle never has a visible beginning or end.
+    moving_cover = {"slot": None, "frames": {}}
+
+    def moving_cover_at(index, t, pulse_level):
+        if not animate_cover:
+            return bgs[index].copy()
+        hold = max(1, int(round(max(args.fps, 1) / 10.0)))
+        slot = int(max(0.0, t) * max(args.fps, 1)) // hold
+        if moving_cover["slot"] != slot:
+            moving_cover["slot"] = slot
+            moving_cover["frames"] = {}
+        key = (index, pulse_level)
+        if key in moving_cover["frames"]:
+            return moving_cover["frames"][key].copy()
+
+        tt = slot * hold / max(args.fps, 1)
+        phase = 2.0 * math.pi * tt / 20.0
+        # 1.1–1.7% slow breathing; the existing beat zoom stays at 1.1%.
+        beat = pulse_level / 2.0
+        scale = 1.014 + 0.003 * math.sin(phase) + 0.011 * beat
+        rw, rh = max(W + 2, int(math.ceil(W * scale))), \
+                 max(H + 2, int(math.ceil(H * scale)))
+        grown = bgs[index].resize((rw, rh), Image.BILINEAR)
+        room_x, room_y = rw - W, rh - H
+        left = room_x / 2.0 + math.sin(phase + 0.7) * room_x * 0.22
+        top = room_y / 2.0 + math.sin(2.0 * phase + 1.9) * room_y * 0.18
+        frame = grown.crop((int(round(left)), int(round(top)),
+                            int(round(left)) + W, int(round(top)) + H))
+        if beat:
+            frame = ImageEnhance.Brightness(frame).enhance(1.0 + 0.055 * beat)
+        stamp_name(frame)
+        moving_cover["frames"][key] = frame
+        return frame.copy()
+
     def bg_for(t):
         """The background under second `t` of the song: one picture, the
         slideshow frame due at that moment, or the clip standing behind."""
         if fields:
             return clip_bg(t)
+        pulse_level = cover_pulse_at(t)
         if len(bgs) < 2:
-            return bg.copy()
+            return moving_cover_at(0, t, pulse_level)
         step = duration / len(bgs)
         i = min(len(bgs) - 1, max(0, int(t / step)))
         into = t - i * step
         if i + 1 < len(bgs) and into > step - XFADE:
             k = (into - (step - XFADE)) / XFADE
-            return Image.blend(bgs[i], bgs[i + 1], min(max(k, 0.0), 1.0))
-        return bgs[i].copy()
+            return Image.blend(moving_cover_at(i, t, pulse_level),
+                               moving_cover_at(i + 1, t, pulse_level),
+                               min(max(k, 0.0), 1.0))
+        return moving_cover_at(i, t, pulse_level)
 
     opening_card = (title_card_image(payload, W, H, font_path)
                     if card_time else None)
@@ -1106,7 +1204,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             return opening_card.copy()
         # The opening stands on the clip's first field, not on a still it
         # would then jump away from when the music starts.
-        frame = clip_bg(0.0) if fields else bg.copy()
+        frame = clip_bg(0.0) if fields else bg_for(0.0)
         d = ImageDraw.Draw(frame)
         # The count starts after the optional title card. The first lyrics are
         # already visible, so the singer can prepare while 3-2-1 runs.

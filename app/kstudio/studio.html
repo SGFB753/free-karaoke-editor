@@ -481,6 +481,12 @@
     min-width:78px}
   .knob{display:flex; align-items:center; gap:8px; font-size:0.75rem; color:var(--muted);
     background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:5px 11px}
+  /* The background is one compact choice, visually the same height as the
+     checkbox knobs beside it. A normally padded select made this one control
+     bulge out of the row. */
+  .knob.bgchoice{gap:6px; padding:2px 4px 2px 10px}
+  .knob.bgchoice select{height:28px; padding:2px 25px 2px 8px;
+    border-radius:7px; font-size:0.75rem; max-width:170px}
   /* The track is styled as a pseudo-element of its own: styling the input
      alone leaves some browsers drawing their native slider, whose knob never
      reaches the ends — and 0% looked like 10%. */
@@ -597,7 +603,13 @@
           </select>
           <label class="knob"><input type="checkbox" id="chkSep" checked> <span data-t="instrumental">Instrumental</span></label>
           <label class="knob" data-tt="fineSepHint"><input type="checkbox" id="chkFine"> <span data-t="fineSep">separate finely</span></label>
-          <label class="knob hide" id="grpCover" data-tt="coverHint"><input type="checkbox" id="chkCover"> <span data-t="coverBg">clip cover as backdrop</span></label>
+          <label class="knob bgchoice hide" id="grpCover" data-tt="backgroundHint">
+            <span data-t="backgroundLabel">background</span>
+            <select id="selBackground">
+              <option value="cover" data-t="backgroundCover">clip cover</option>
+              <option value="video" data-t="backgroundVideo">video footage</option>
+            </select>
+          </label>
         </div>
         <div class="hint" id="modelNote"></div>
       </div>

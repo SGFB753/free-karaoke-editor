@@ -7,6 +7,27 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.47.3
+
+**A song now has one explicit background source.** When adding a song from a
+link, the compact Background selector chooses either the clip cover or its
+video footage; the two can no longer be enabled together. Changing the cover
+or footage later also replaces the other background cleanly instead of leaving
+an ambiguous combination in the project.
+
+**Still covers move gently without flashing at the viewer.** A cover now has a
+slow 20-second drift and very small breathing motion. Low-frequency musical
+attacks add only a restrained zoom and brightness accent, while the song title
+and lyrics remain fixed and readable. Still previews stay still, and moving
+video backgrounds are unaffected.
+
+**Doubtful Whisper boundaries follow the actual vocal attack more closely.**
+The separated vocal now corrects low-confidence words that begin on a held
+syllable and short first particles that Whisper placed a few hundred
+milliseconds late. Timed lyrics from a library are treated as bounded anchors
+rather than hard sample-accurate starts, so Whisper can recover an entrance
+slightly before an imprecise LRC timestamp without crossing the previous line.
+
 ## 4.47.2
 
 **Windows updates survive temporary executable locks and incomplete rollbacks.**
