@@ -2745,7 +2745,9 @@ You might also like
               all(f["text"].strip() for f in found), len(found))
         check("the lines are counted for the person reading",
               found[0]["lines"] == 3, found[0]["lines"])
-        check("the source is named", all(f["source"] == "LRCLIB" for f in found))
+        check("LRCLIB and Genius are both offered when both know the song",
+              {f["source"] for f in found} == {"LRCLIB", "Genius"},
+              [f["source"] for f in found])
         check("the same title by another artist is filtered out",
               FL._search_lrclib("Stub Song", "Entirely Different", 21, 5) == [])
         check("artist suffixes and joined spelling still match",

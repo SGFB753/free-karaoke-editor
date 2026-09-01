@@ -7,6 +7,25 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.47.4
+
+**Karaoke Studio looks like a standalone Windows application again.** The
+program now opens in its own WebView2 window with the Studio icon instead of a
+Chrome window. A `Studio.bat` launch no longer inherits Python's name and icon
+on the taskbar, and a pinned shortcut relaunches the Studio itself. Chrome or
+Edge remains available as a fallback when WebView2 is unavailable.
+
+**Found lyrics can be reviewed and corrected before realignment.** Selecting a
+result in the “Other lyrics” dialog now places it in the editable text box and
+does not apply it until it is confirmed. LRCLIB and Genius are searched in
+parallel and shown together even when LRCLIB has timed lyrics, making it
+possible to choose a better version of the words without an extra wait.
+
+**The Windows archive extracts normally in Explorer.** PyTorch's deeply nested
+third-party license notices are now preserved in one short-path text file.
+Their content stays in the distribution without triggering Windows' “Target
+Path Too Long” limit.
+
 ## 4.47.3
 
 **A song now has one explicit background source.** When adding a song from a

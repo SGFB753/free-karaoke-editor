@@ -137,8 +137,20 @@ await sleep(1500);
 ok('the “Other lyrics” button exists and is labelled plainly',
    !!$('btnLyrics') && /текст/i.test($('btnLyrics').textContent),
    ($('btnLyrics')||{}).textContent);
+// This suite's saved project deliberately has a different artist from the
+// lyrics stub. Supply one exact offer here; source matching itself is covered
+// by the Python search tests.
+const realFetch = w.fetch;
+w.fetch = (p2, o) => String(p2).includes('/api/lyrics/find')
+  ? Promise.resolve({ok:true, json:async () => ({found:[{
+      source:'Genius', title:'Редактируемая песня', artist:'Проверка Связи',
+      lines:2, text:'найденная первая строка\nнайденная вторая строка',
+      textTimed:'', timed:false
+    }]})})
+  : realFetch(p2, o);
 $('btnLyrics').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(400);
+w.fetch = realFetch;
 ok('it asks before replacing the timing',
    w.__asked.some(q => /правк/i.test(q)), w.__asked[0] || 'it did not ask');
 ok('the file browser opened', !$('browser').classList.contains('hide'));
@@ -146,6 +158,22 @@ ok('and it is labelled to the point', /новым текстом/i.test($('brTit
    $('brTitle').textContent);
 ok('the same window opens direct text pasting immediately',
    !$('brPaste').classList.contains('hide') && $('brPasteOpen').classList.contains('hide'));
+const foundOffer = doc.querySelector('#brBody .found2');
+ok('a found text names its source',
+   !!foundOffer && /LRCLIB|Genius/.test(foundOffer.textContent),
+   foundOffer ? foundOffer.textContent : 'no found text');
+if (foundOffer){
+  foundOffer.dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+  await sleep(100);
+  ok('a found text stays in the dialog for editing',
+     !$('browser').classList.contains('hide') && !!$('brPasteText').value.trim(),
+     $('brPasteText').value.slice(0, 40));
+  const offeredText = $('brPasteText').value;
+  $('brPasteText').value = offeredText + '\nисправленная вручную строка';
+  $('brPasteText').dispatchEvent(new w.Event('input',{bubbles:true}));
+  ok('the offered text is editable before it is applied',
+     /исправленная вручную строка/.test($('brPasteText').value));
+}
 $('brPasteText').value = 'первая вставленная строка\nвторая вставленная строка';
 $('brPasteText').dispatchEvent(new w.Event('input',{bubbles:true}));
 for (const [key, mods] of [['v',{ctrlKey:true}], ['z',{ctrlKey:true}],

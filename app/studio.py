@@ -57,6 +57,7 @@ if getattr(sys, "frozen", False):
 sys.path.insert(0, ROOT)
 
 from kstudio import winproc as WP            # noqa: E402
+from kstudio import winapp as WA             # noqa: E402
 
 # Whisper launches ffmpeg inside its own package, so wrapping only the calls in
 # our modules is not enough.  The policy affects redirected console helpers in
@@ -90,6 +91,7 @@ JOBS_LOCK = threading.Lock()
 PENDING_UPDATES: dict = {}
 DESKTOP_SESSION = False
 DESKTOP_WINDOW_PROC = None
+DESKTOP_NATIVE_WINDOW = None
 STAGING = tempfile.mkdtemp(prefix="KaraokeStudio-")
 atexit.register(lambda: shutil.rmtree(STAGING, ignore_errors=True))
 
@@ -2182,7 +2184,7 @@ def browser_command(exe: str, url: str, profile: str) -> list[str]:
 
 
 def open_window(url: str) -> None:
-    """An app window: no address bar, no tabs, if Chrome or Edge is around."""
+    """Fallback app window when the native WebView2 shell is unavailable."""
     global DESKTOP_WINDOW_PROC
     if os.name == "nt":
         candidates = [
@@ -2211,8 +2213,14 @@ def open_window(url: str) -> None:
 
 
 def close_desktop_window() -> None:
-    """Close only the browser process created for this Studio instance."""
-    global DESKTOP_WINDOW_PROC
+    """Close only the native/fallback window owned by this Studio instance."""
+    global DESKTOP_NATIVE_WINDOW, DESKTOP_WINDOW_PROC
+    window, DESKTOP_NATIVE_WINDOW = DESKTOP_NATIVE_WINDOW, None
+    if window is not None:
+        try:
+            window.destroy()
+        except Exception:
+            pass
     proc, DESKTOP_WINDOW_PROC = DESKTOP_WINDOW_PROC, None
     if proc is None or proc.poll() is not None:
         return
@@ -2225,6 +2233,94 @@ def close_desktop_window() -> None:
             proc.wait(timeout=2)
         except Exception:
             pass
+
+
+def native_window_options(url: str) -> dict:
+    """One place for the native window's visible and interaction settings."""
+    return {
+        "title": tr("Karaoke Studio", "Караоке-студия"),
+        "url": url,
+        "width": 1280,
+        "height": 860,
+        "min_size": (900, 620),
+        "background_color": "#080a14",
+        # Lyrics are edited and selected directly in the page. pywebview
+        # disables selection by default, which would make that UI feel broken.
+        "text_select": True,
+    }
+
+
+def set_windows_app_identity() -> bool:
+    """Keep a source launch from being grouped and painted as python.exe.
+
+    The frozen release already has its own executable resources. Studio.bat,
+    however, necessarily runs through python.exe, and Windows uses that host's
+    identity for the taskbar unless the process claims its application id
+    before creating a window. pywebview then supplies our .ico to that window.
+    """
+    return WA.set_process_identity()
+
+
+def run_desktop_window(server, url: str) -> None:
+    """Serve the Studio inside its own Windows WebView2 application window.
+
+    The HTTP server lives on a worker because pywebview requires its GUI loop
+    on the main thread. If either side stops (the user closes the window, or an
+    update shuts down the server), the other side is stopped as well. Systems
+    without pywebview/WebView2 retain the old Chrome/Edge app-window fallback.
+    """
+    global DESKTOP_NATIVE_WINDOW
+
+    worker = threading.Thread(target=server.serve_forever,
+                              name="karaoke-http", daemon=True)
+    worker.start()
+    try:
+        try:
+            set_windows_app_identity()
+            import webview
+            window = webview.create_window(**native_window_options(url))
+            if window is None:
+                raise RuntimeError("pywebview did not create a window")
+            DESKTOP_NATIVE_WINDOW = window
+
+            def close_when_server_stops():
+                worker.join()
+                current = DESKTOP_NATIVE_WINDOW
+                if current is not None:
+                    try:
+                        current.destroy()
+                    except Exception:
+                        pass
+
+            threading.Thread(target=close_when_server_stops,
+                             name="karaoke-window-closer", daemon=True).start()
+            webview.start(
+                func=WA.set_window_identity,
+                args=(window, ROOT),
+                gui="edgechromium",
+                private_mode=True,
+                storage_path=os.path.join(STAGING, "webview-profile"),
+                icon=os.path.join(ROOT, "kstudio", "favicon.ico"),
+            )
+        except Exception:
+            # WebView2 Runtime can be absent on stripped-down Windows images.
+            # A usable Studio is more important than a native title-bar there.
+            traceback.print_exc()
+            DESKTOP_NATIVE_WINDOW = None
+            open_window(url)
+            worker.join()
+            return
+
+        # Closing the native window is an explicit request to leave. Do not
+        # wait for the EventSource grace period before releasing the EXE.
+        if worker.is_alive():
+            server.shutdown()
+        worker.join(timeout=5)
+    finally:
+        DESKTOP_NATIVE_WINDOW = None
+        if worker.is_alive():
+            server.shutdown()
+            worker.join(timeout=5)
 
 
 def launched_by_updater(cwd: str | None = None) -> bool:
@@ -2332,6 +2428,11 @@ def main(argv=None) -> int:
         return int(yt_dlp.main(args[1:]) or 0)
     if args[:1] == ["--internal-package-smoke"]:
         try:
+            if os.name == "nt":
+                # The branded desktop shell is a release dependency, just as
+                # much as the renderer below. Importing it also exercises the
+                # bundled pythonnet/.NET bridge without opening a window.
+                import webview  # noqa: F401
             from PIL import (Image, ImageDraw, ImageEnhance, ImageFilter,
                              ImageFont, ImageStat)
             image = Image.new("RGB", (4, 4), "white")
@@ -2400,9 +2501,9 @@ def main(argv=None) -> int:
                          f"Откройте http://127.0.0.1:{port}/ или укажите другой "
                          f"порт: --port {port + 1}"), file=sys.stderr)
                 return 1
-    # Chrome --app caches a taskbar icon by application URL independently of
-    # normal HTTP caching. A content revision in both the page URL and favicon
-    # links makes a replaced icon visible on the next launch.
+    # The fallback Chrome --app caches a taskbar icon by application URL
+    # independently of normal HTTP caching. Keep the revision for machines
+    # where the native WebView2 shell cannot start.
     url = f"http://127.0.0.1:{port}/?icon={icon_revision()}"
 
     caps = capabilities()
@@ -2421,10 +2522,13 @@ def main(argv=None) -> int:
 
     srv = ThreadingHTTPServer((host, port), Handler)
     srv.daemon_threads = True
-    if not no_browser:
-        threading.Timer(0.6, lambda: open_window(url)).start()
     try:
-        srv.serve_forever()
+        if not no_browser and os.name == "nt":
+            run_desktop_window(srv, url)
+        else:
+            if not no_browser:
+                threading.Timer(0.6, lambda: open_window(url)).start()
+            srv.serve_forever()
     except KeyboardInterrupt:
         print(tr("\nClosing the studio.", "\nЗакрываю студию."))
     finally:

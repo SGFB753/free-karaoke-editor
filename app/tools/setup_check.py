@@ -189,7 +189,21 @@ def main() -> int:
         if ask(tr("   Install it?", "   Поставить?")):
             pip_install("yt-dlp")
 
-    print(tr("\n7. Your own settings file", "\n7. Свой файл настроек"))
+    if os.name == "nt":
+        print(tr("\n7. Native application window (WebView2)",
+                 "\n7. Нативное окно приложения (WebView2)"))
+        if installed("webview"):
+            print(tr("   Already installed.", "   Уже стоит."))
+        else:
+            print(tr("   Installing the window with the Karaoke Studio icon.",
+                     "   Ставлю окно со значком «Караоке-студии»."))
+            if not pip_install("pywebview>=6.0,<7"):
+                print(tr("   Chrome or Edge will be used as a fallback.",
+                         "   В качестве запасного окна будет использован Chrome или Edge."))
+
+    settings_step = "8" if os.name == "nt" else "7"
+    print(tr(f"\n{settings_step}. Your own settings file",
+             f"\n{settings_step}. Свой файл настроек"))
     # settings.ini belongs to whoever runs the program: it is not in the
     # repository, so an update can never overwrite what they chose. The example
     # next to it is the reference, and this is the copy made from it.

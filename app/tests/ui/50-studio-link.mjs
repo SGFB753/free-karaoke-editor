@@ -87,8 +87,9 @@ const found = await until(() => $('lyricsFound').children.length > 0);
 ok('there are texts to choose from', found, $('lyricsNote').textContent.slice(0, 70));
 const rows = [...$('lyricsFound').children];
 ok('each one says where it came from and how long it is',
-   rows.every(r => /LRCLIB/.test(r.textContent)) && /строк/.test(rows[0].textContent),
-   rows[0].textContent.slice(0, 80));
+   rows.every(r => /LRCLIB|Genius/.test(r.textContent) && /строк/.test(r.textContent)) &&
+   rows.some(r => /LRCLIB/.test(r.textContent)) && rows.some(r => /Genius/.test(r.textContent)),
+   rows.map(r => r.textContent.slice(0, 60)).join(' | '));
 ok('a record with no words at all is not among them',
    !rows.some(r => /Empty Records/.test(r.textContent)), rows.length + ' offered');
 ok('the person is asked to read before taking',

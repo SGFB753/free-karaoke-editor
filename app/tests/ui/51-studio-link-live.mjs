@@ -39,7 +39,9 @@ console.log('\n--- the words are offered, and one is taken ---');
 await p.waitForSelector('#lyricsFound .one button', {timeout: 60000});
 const offered = await p.$$eval('#lyricsFound .one', els => els.map(e => e.textContent));
 ok('there is something to choose from', offered.length > 0, offered.length + ' offered');
-ok('every offer names its source', offered.every(t => /LRCLIB/.test(t)));
+ok('LRCLIB and Genius are both offered when both know the song',
+   offered.some(t => /LRCLIB/.test(t)) && offered.some(t => /Genius/.test(t)),
+   offered.join(' | '));
 await p.click('#lyricsFound .one button');
 await p.waitForFunction("document.getElementById('inLyrics').value.length > 0",
                         {timeout: 30000});

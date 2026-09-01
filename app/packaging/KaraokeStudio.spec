@@ -76,6 +76,31 @@ a = Analysis(
     excludes=["tkinter", "matplotlib.tests", "numpy.tests"],
     noarchive=False,
 )
+
+# PyInstaller's torch hook copies the distribution metadata recursively.  New
+# torch wheels contain a deeply nested third-party license tree whose paths
+# exceed Explorer's legacy extraction limit below Downloads/Desktop.  Preserve
+# all notices in one short-path text file; the application does not need their
+# original directory layout at runtime.
+torch_notices = []
+kept_datas = []
+for entry in a.datas:
+    destination = entry[0].replace("/", "\\").lower()
+    if (destination.startswith("torch-") and
+            ".dist-info\\licenses\\third_party\\" in destination):
+        torch_notices.append(entry)
+    else:
+        kept_datas.append(entry)
+if torch_notices:
+    notices_path = os.path.join(ROOT, "build", "THIRD-PARTY-NOTICES-PYTORCH.txt")
+    os.makedirs(os.path.dirname(notices_path), exist_ok=True)
+    with open(notices_path, "w", encoding="utf-8", newline="\n") as notices:
+        for destination, source, _kind in sorted(torch_notices):
+            notices.write("\n\n===== " + destination.replace("\\", "/") + " =====\n\n")
+            with open(source, encoding="utf-8", errors="replace") as license_file:
+                notices.write(license_file.read())
+    kept_datas.append(("THIRD-PARTY-NOTICES-PYTORCH.txt", notices_path, "DATA"))
+a.datas = kept_datas
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, [], exclude_binaries=True,

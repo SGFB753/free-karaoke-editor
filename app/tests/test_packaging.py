@@ -34,6 +34,9 @@ def main():
           'collect_submodules("PIL")' in spec)
     check("model weights are opt-in for release archives",
           'KARAOKE_BUNDLE_MODELS") == "1"' in spec)
+    check("PyTorch notices cannot create overlong extraction paths",
+          'THIRD-PARTY-NOTICES-PYTORCH.txt' in spec
+          and '.dist-info\\\\licenses\\\\third_party\\\\' in spec)
     icon_path = os.path.join(ROOT, "packaging", "KaraokeStudio.ico")
     with open(icon_path, "rb") as f:
         icon_header = f.read(6)
@@ -45,6 +48,11 @@ def main():
           '"icon-32.png"' in spec and '"favicon.ico"' in spec
           and os.path.isfile(os.path.join(ROOT, "kstudio", "icon-32.png"))
           and os.path.isfile(os.path.join(ROOT, "kstudio", "favicon.ico")))
+    requirements_path = os.path.join(ROOT, "requirements.txt")
+    with open(requirements_path, encoding="utf-8") as f:
+        requirements = f.read()
+    check("Windows releases include the native WebView2 shell",
+          "pywebview>=6.0,<7" in requirements)
 
     build_path = os.path.join(ROOT, "packaging", "build-windows.ps1")
     with open(build_path, encoding="utf-8-sig") as f:
@@ -69,9 +77,31 @@ def main():
     check("versions compare numerically",
           update._version_tuple("v4.10.0") > update._version_tuple("4.9.9"))
 
-    # The app window is a separate Chromium process. During an update the old
-    # server must own and close exactly that process, or its completed restart
-    # screen remains beside the newly launched version forever.
+    class NativeWindow:
+        destroyed = False
+
+        def destroy(self):
+            self.destroyed = True
+
+    native = NativeWindow()
+    studio.DESKTOP_NATIVE_WINDOW = native
+    studio.close_desktop_window()
+    check("an update closes the native Studio window",
+          native.destroyed and studio.DESKTOP_NATIVE_WINDOW is None)
+
+    options = studio.native_window_options("http://127.0.0.1:8770/")
+    check("the native window permits selecting and editing lyrics",
+          options["text_select"] is True and options["min_size"] == (900, 620))
+    check("a Studio.bat window does not inherit Python's taskbar identity",
+          studio.WA.APP_ID == "KaraokeStudio.Desktop"
+          and studio.set_windows_app_identity() == (os.name == "nt"))
+    command, display, pin_icon = studio.WA.relaunch_details(studio.ROOT)
+    check("pinning a source window relaunches Studio.bat rather than Python",
+          (getattr(sys, "frozen", False) or command.endswith('Studio.bat"'))
+          and display == "Karaoke Studio" and pin_icon.endswith("favicon.ico,0"))
+
+    # Chrome/Edge remains a fallback for a Windows installation without the
+    # WebView2 Runtime. The old server must own and close exactly that process.
     owned = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     try:

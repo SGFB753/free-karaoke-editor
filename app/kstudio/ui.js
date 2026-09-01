@@ -1393,9 +1393,9 @@ $("brPasteUse").addEventListener("click", async () => {
   }catch(e){ toast(e.message); }
 });
 // Looking the words up worked only while building; picking “another text”
-// for a finished song sent a person back to files alone. The same search now
-// stands above the file list — and a record that knows its times is taken
-// with them, as pegs.
+// for a finished song sent a person back to files alone. A found result goes
+// into the same editable box as pasted text. Nothing is applied until the
+// person has read/corrected it and presses “Use this text”.
 async function foundRows(box){
   const name = songName || (data && data.title) || "";
   if (!name) return;
@@ -1405,7 +1405,7 @@ async function foundRows(box){
       {track: name, artist: songArtist || (data && data.artist) || "",
        duration: dur || 0});
   }catch(e){ return; }                  // no library — the files are still here
-  (got.found || []).slice(0, 3).forEach(f => {
+  (got.found || []).forEach(f => {
     const r = document.createElement("div");
     r.className = "row found2";
     const timed = !!(f.timed && f.textTimed);
@@ -1414,14 +1414,13 @@ async function foundRows(box){
     r.querySelector(".nm").textContent =
       (f.artist ? f.artist + " — " : "") + f.title +
       (timed ? " · " + T.lyricsHasTimes : "");
-    r.querySelector(".sz").textContent = T.countLines(f.lines);
-    r.addEventListener("click", async () => {
-      $("browser").classList.add("hide");
-      try{
-        const saved = await api("/api/lyrics/save",
-          {text: (timed ? f.textTimed : f.text) || "", name});
-        realign(saved.path);
-      }catch(e){ toast(e.message); }
+    r.querySelector(".sz").textContent =
+      [f.source, T.countLines(f.lines)].filter(Boolean).join(" · ");
+    r.addEventListener("click", () => {
+      $("brPasteText").value = (timed ? f.textTimed : f.text) || "";
+      $("brPaste").classList.remove("hide");
+      countOtherText();
+      $("brPasteText").focus();
     });
     box.appendChild(r);
   });

@@ -35,11 +35,13 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/search/multi":
             want = (q.get("q") or [""])[0].lower()
             hits = []
-            if "genius only" in want:
+            if "genius only" in want or "stub song" in want:
                 host = self.headers.get("Host")
                 hits = [{"type": "song", "result": {
-                    "title": "Genius Only", "url": f"http://{host}/stub-genius-lyrics",
-                    "primary_artist": {"name": "Fallback Artist"}}}]
+                    "title": "Genius Only" if "genius only" in want else "Stub Song",
+                    "url": f"http://{host}/stub-genius-lyrics",
+                    "primary_artist": {"name": "Fallback Artist" if "genius only" in want
+                                       else "Stub Artist"}}}]
             body = {"response": {"sections": [{"type": "song", "hits": hits}]}}
             data = json.dumps(body).encode("utf-8")
             self.send_response(200)

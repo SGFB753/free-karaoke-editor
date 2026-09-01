@@ -17,5 +17,8 @@ yt-dlp>=2024.1.1
 # --- rendering the MP4 video (tools/video.py) ---
 pillow>=9.0
 
+# --- a native Windows window with the application's own taskbar icon ---
+pywebview>=6.0,<7; platform_system == "Windows"
+
 # --- uncomment if you cannot install ffmpeg system-wide ---
 # imageio-ffmpeg

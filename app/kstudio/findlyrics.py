@@ -1,8 +1,9 @@
 """Looking the lyrics up by the name of the song.
 
-LRCLIB (lrclib.net) is tried first: it is open, fast, and can supply useful
-line timings. If it has nothing, Genius is used as a words-only fallback via
-the same public search its web site uses; no account or API token is required.
+LRCLIB (lrclib.net) is open, fast, and can supply useful line timings. Genius
+is also searched through the same public search its web site uses; no account
+or API token is required. Results from both are offered so a timed record does
+not hide a better version of the words.
 
 Whatever comes back is a suggestion and nothing more. The words are shown for
 a person to read before they are used, because a wrong text lays wrong lines
@@ -15,6 +16,7 @@ import json
 import os
 import re
 import difflib
+from concurrent.futures import ThreadPoolExecutor
 from html.parser import HTMLParser
 import urllib.error
 import urllib.parse
@@ -363,21 +365,31 @@ def search_genius(track: str, artist: str = "", limit: int = 5) -> list:
 
 
 def search(track: str, artist: str = "", duration: float = 0, limit: int = 5) -> list:
-    """Try timed/open LRCLIB first, then use Genius as a words-only fallback."""
+    """Offer both LRCLIB and Genius instead of hiding one successful source.
+
+    LRCLIB's timings are useful, but its words are not necessarily the version
+    a person wants to sing. Genius is therefore a genuine alternative, not
+    merely an error fallback. The independent requests run together so showing
+    both choices does not make the dialog wait for them one after another.
+    """
     track = (track or "").strip()
     if not track:
         raise LyricsError(tr("There is no song name to look for.",
                              "Нет названия песни, по которому искать."))
-    first_error = None
-    try:
-        found = _search_lrclib(track, artist, duration, limit)
-        if found:
-            return found
-    except LyricsError as e:
-        first_error = e
-    try:
-        return search_genius(track, artist, limit)
-    except LyricsError as e:
-        if first_error:
-            raise LyricsError(f"{first_error}; {e}")
-        raise
+    errors = []
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        jobs = (
+            pool.submit(_search_lrclib, track, artist, duration, limit),
+            pool.submit(search_genius, track, artist, limit),
+        )
+        found = []
+        for job in jobs:                         # LRCLIB stays first on screen
+            try:
+                found.extend(job.result())
+            except LyricsError as e:
+                errors.append(e)
+    if found:
+        return found
+    if errors:
+        raise LyricsError("; ".join(str(e) for e in errors))
+    return []
