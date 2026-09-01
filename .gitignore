@@ -3,7 +3,7 @@ projects/
 music/
 *.mp4
 *_karaoke.html
-
+output/
 karaoke.zip
 dist/
 build/
