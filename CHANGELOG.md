@@ -7,6 +7,23 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.47.7
+
+**Automatic updates now work from protected `Program Files` installations.**
+The updater performs a real write-access check and requests UAC before replacing
+files instead of retrying `WinError 5` as a temporary lock. Progress from the
+elevated worker remains visible in the main update window; cancelling the prompt
+or encountering an error now stops immediately with a complete report.
+
+**The updated application does not remain elevated.** Only the hidden replacement
+worker receives administrator rights; the regular updater then starts Studio
+with the standard user token. This was verified with a live update from
+`C:\Program Files\KaraokeStudio`.
+
+An existing 4.47.6 installation in protected `Program Files` still contains the
+old updater, which cannot request UAC. Moving to 4.47.7 may therefore require one
+final manual launch or extraction. Updates from 4.47.7 onward are automatic.
+
 ## 4.47.6
 
 **The Windows application no longer tries to write projects inside `Program

@@ -79,6 +79,13 @@ def main():
           "console=True" in updater_spec
           and "CREATE_NEW_CONSOLE" in update_source
           and "karaoke-update.log" in updater_source)
+    check("a read-only Program Files install asks for UAC before replacement",
+          "ShellExecuteExW" in updater_source and 'lpVerb = "runas"' in updater_source
+          and "install_writable" in updater_source and "--elevated" in updater_source)
+    check("the elevated worker cannot relaunch Studio as administrator",
+          "start_application(a.install, a.exe)" in updater_source
+          and "launch_after=not a.elevated" in updater_source
+          and "_relay_status_log" in updater_source)
 
     workflow_path = os.path.join(os.path.dirname(ROOT), ".github", "workflows",
                                  "windows-release.yml")
@@ -325,6 +332,13 @@ def main():
                   and not os.path.exists(backup_path))
         finally:
             shutil.rmtree(backup_root)
+
+        writable_install = os.path.join(tmp, "write-probe")
+        os.makedirs(writable_install)
+        check("updater tests real write access without leaving a probe behind",
+              updater.install_writable(writable_install)
+              and not any(n.startswith(".karaoke-update-write-")
+                          for n in os.listdir(writable_install)))
 
         bad = os.path.join(tmp, "bad.zip")
         with zipfile.ZipFile(bad, "w") as z:

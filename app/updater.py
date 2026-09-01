@@ -85,6 +85,136 @@ def make_backup_path() -> str:
     return os.path.join(root, "previous")
 
 
+def install_writable(install: str) -> bool:
+    """Test the real operation Program Files may deny, not ``os.access``.
+
+    On Windows ``os.access`` can report a Program Files directory as writable
+    even though CreateFile is rejected by its ACL.  A tiny exclusive probe is
+    exact and is removed before any application file is touched.
+    """
+    probe = os.path.join(os.path.abspath(install),
+                         f".karaoke-update-write-{os.getpid()}-{time.time_ns()}")
+    try:
+        fd = os.open(probe, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        os.close(fd)
+        os.remove(probe)
+        return True
+    except OSError:
+        try:
+            os.remove(probe)
+        except OSError:
+            pass
+        return False
+
+
+def _relay_status_log(offset: int) -> int:
+    """Print worker progress in the original non-elevated console."""
+    path = os.path.join(tempfile.gettempdir(), STATUS_FILE)
+    try:
+        with open(path, encoding="utf-8", errors="replace") as log:
+            log.seek(offset)
+            piece = log.read()
+            offset = log.tell()
+        if piece:
+            print(piece, end="", flush=True)
+    except OSError:
+        pass
+    return offset
+
+
+def elevate_and_wait(args) -> int:
+    """Run the replacement worker through UAC and return its exit code.
+
+    This non-elevated updater remains alive and later starts Studio itself, so
+    the new application does not accidentally inherit an administrator token.
+    The worker is hidden; its detailed stages still go to the shared log while
+    this console clearly says that administrator access is being used.
+    """
+    if os.name != "nt":
+        raise RuntimeError("administrator elevation is only available on Windows")
+    from ctypes import wintypes
+
+    class SHELLEXECUTEINFO(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", wintypes.DWORD), ("fMask", wintypes.ULONG),
+            ("hwnd", wintypes.HWND), ("lpVerb", wintypes.LPCWSTR),
+            ("lpFile", wintypes.LPCWSTR), ("lpParameters", wintypes.LPCWSTR),
+            ("lpDirectory", wintypes.LPCWSTR), ("nShow", ctypes.c_int),
+            ("hInstApp", wintypes.HINSTANCE), ("lpIDList", wintypes.LPVOID),
+            ("lpClass", wintypes.LPCWSTR), ("hkeyClass", wintypes.HKEY),
+            ("dwHotKey", wintypes.DWORD), ("hIcon", wintypes.HANDLE),
+            ("hProcess", wintypes.HANDLE),
+        ]
+
+    shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    shell32.ShellExecuteExW.argtypes = (ctypes.POINTER(SHELLEXECUTEINFO),)
+    shell32.ShellExecuteExW.restype = wintypes.BOOL
+    kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE,
+                                             ctypes.POINTER(wintypes.DWORD))
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+
+    executable = os.path.abspath(sys.executable)
+    worker_args = list(args)
+    if not getattr(sys, "frozen", False):
+        worker_args.insert(0, os.path.abspath(__file__))
+    parameters = subprocess.list2cmdline(worker_args)
+    info = SHELLEXECUTEINFO()
+    info.cbSize = ctypes.sizeof(info)
+    info.fMask = 0x00000040             # SEE_MASK_NOCLOSEPROCESS
+    info.lpVerb = "runas"
+    info.lpFile = executable
+    info.lpParameters = parameters
+    info.lpDirectory = tempfile.gettempdir()
+    info.nShow = 0                       # SW_HIDE: keep one progress window
+
+    status_path = os.path.join(tempfile.gettempdir(), STATUS_FILE)
+    try:
+        relay_offset = os.path.getsize(status_path)
+    except OSError:
+        relay_offset = 0
+    previous_reset = os.environ.get("PYINSTALLER_RESET_ENVIRONMENT")
+    os.environ["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    try:
+        if not shell32.ShellExecuteExW(ctypes.byref(info)):
+            error = ctypes.get_last_error()
+            if error == 1223:            # ERROR_CANCELLED: UAC was declined
+                raise RuntimeError(
+                    "administrator permission was cancelled / "
+                    "запрос прав администратора отменён")
+            raise ctypes.WinError(error)
+    finally:
+        if previous_reset is None:
+            os.environ.pop("PYINSTALLER_RESET_ENVIRONMENT", None)
+        else:
+            os.environ["PYINSTALLER_RESET_ENVIRONMENT"] = previous_reset
+
+    if not info.hProcess:
+        raise RuntimeError("the elevated updater did not start")
+    try:
+        deadline = time.monotonic() + 10 * 60
+        while True:
+            result = kernel32.WaitForSingleObject(info.hProcess, 250)
+            relay_offset = _relay_status_log(relay_offset)
+            if result == 0:
+                break
+            if result != 0x102:
+                raise ctypes.WinError(ctypes.get_last_error())
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    "the elevated update did not finish within 10 minutes")
+        _relay_status_log(relay_offset)
+        code = wintypes.DWORD()
+        if not kernel32.GetExitCodeProcess(info.hProcess, ctypes.byref(code)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return int(code.value)
+    finally:
+        kernel32.CloseHandle(info.hProcess)
+
+
 def wait_for(pid: int, seconds: int = 90) -> None:
     if os.name == "nt":
         # os.kill(pid, 0) is the usual POSIX liveness probe, but on Windows it
@@ -261,11 +391,15 @@ def replace_in_place(staged: str, install: str, backup: str,
         raise original
 
 
-def apply(archive: str, install: str, exe: str, pid: int) -> None:
+def apply(archive: str, install: str, exe: str, pid: int,
+          launch_after: bool = True) -> None:
     status("Waiting for Karaoke Studio to close / Жду закрытия Студии…")
     wait_for(pid)
     status("The old process has closed / Старый процесс закрыт.")
     install = os.path.abspath(install)
+    if not install_writable(install):
+        raise PermissionError(
+            f"administrator permission is required to update {install}")
     stage_root = make_stage_root()
     status("Unpacking the update / Распаковываю обновление…")
     staged = safe_extract(archive, stage_root)
@@ -276,11 +410,8 @@ def apply(archive: str, install: str, exe: str, pid: int) -> None:
     backup_root = os.path.dirname(backup)
     try:
         replace_in_place(staged, install, backup, status)
-        env = os.environ.copy()
-        env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
-        status("Starting the new version / Запускаю новую версию…")
-        subprocess.Popen([os.path.join(install, exe)], cwd=tempfile.gettempdir(),
-                         env=env)
+        if launch_after:
+            start_application(install, exe)
     except Exception:
         raise
     finally:
@@ -292,6 +423,15 @@ def apply(archive: str, install: str, exe: str, pid: int) -> None:
         pass
 
 
+def start_application(install: str, exe: str) -> None:
+    """Start Studio from a non-elevated updater process."""
+    env = os.environ.copy()
+    env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+    status("Starting the new version / Запускаю новую версию…")
+    subprocess.Popen([os.path.join(install, exe)], cwd=tempfile.gettempdir(),
+                     env=env)
+
+
 def main() -> int:
     prepare_console()
     p = argparse.ArgumentParser()
@@ -299,27 +439,47 @@ def main() -> int:
     p.add_argument("--archive", required=True)
     p.add_argument("--install", required=True)
     p.add_argument("--exe", default="KaraokeStudio.exe")
+    p.add_argument("--elevated", action="store_true",
+                   help=argparse.SUPPRESS)
     a = p.parse_args()
     error_path = os.path.join(tempfile.gettempdir(), "karaoke-update-error.txt")
     status_path = os.path.join(tempfile.gettempdir(), STATUS_FILE)
+    if not a.elevated:
+        try:
+            os.remove(status_path)
+        except (FileNotFoundError, OSError):
+            pass
+        try:
+            os.remove(error_path)
+        except (FileNotFoundError, OSError):
+            pass
     try:
-        os.remove(status_path)
-    except (FileNotFoundError, OSError):
-        pass
-    try:
-        os.remove(error_path)
-    except (FileNotFoundError, OSError):
-        pass
-    try:
-        status("Karaoke Studio update / Обновление Караоке-студии")
-        apply(a.archive, a.install, a.exe, a.pid)
+        if not a.elevated:
+            status("Karaoke Studio update / Обновление Караоке-студии")
+        if (os.name == "nt" and not a.elevated
+                and not install_writable(a.install)):
+            status("Administrator access is required for Program Files; "
+                   "confirm the Windows prompt / Для Program Files нужны "
+                   "права администратора — подтвердите запрос Windows…")
+            worker = ["--pid", str(a.pid), "--archive", a.archive,
+                      "--install", a.install, "--exe", a.exe, "--elevated"]
+            code = elevate_and_wait(worker)
+            if code:
+                raise RuntimeError(f"the elevated updater failed ({code})")
+            start_application(a.install, a.exe)
+        else:
+            apply(a.archive, a.install, a.exe, a.pid,
+                  launch_after=not a.elevated)
         status("Done / Готово.")
         return 0
     except Exception:
-        with open(error_path, "w", encoding="utf-8") as f:
+        already_reported = os.path.isfile(error_path) and os.path.getsize(error_path) > 0
+        with open(error_path, "a" if already_reported else "w", encoding="utf-8") as f:
+            if already_reported:
+                f.write("\n\n--- parent updater ---\n")
             f.write(traceback.format_exc())
         status("Update failed; details: " + error_path)
-        if os.name == "nt":
+        if os.name == "nt" and not a.elevated:
             try:
                 ctypes.windll.user32.MessageBoxW(
                     None,
