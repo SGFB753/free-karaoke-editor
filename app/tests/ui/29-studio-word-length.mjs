@@ -12,9 +12,16 @@ await new Promise(r => setTimeout(r, 600));
 await p.click('.card');
 await new Promise(r => setTimeout(r, 2500));
 
-const PID = (await (await fetch(API + '/api/state')).json()).projects[0].id;
-const line = async i => (await (await fetch(API + '/api/project/' +
-  encodeURIComponent(PID))).json()).lines[i];
+// Keep the test's API reads in Chromium as well.  Using Node's separate
+// Undici pool here made a long mouse scenario occasionally strand one stale
+// HTTP/1.0 connection on Windows: the page and studio were both healthy, but
+// the next global fetch waited until UND_ERR_HEADERS_TIMEOUT.  The real editor
+// talks to the API from this browser context, so this is also the faithful path.
+const PID = await p.evaluate(async () =>
+  (await (await fetch('/api/state')).json()).projects[0].id);
+const line = async i => p.evaluate(async (pid, index) =>
+  (await (await fetch('/api/project/' + encodeURIComponent(pid))).json()).lines[index],
+  PID, i);
 let fail = 0;
 const ok = (n, c, e = '') => { console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c) fail++; };
 
