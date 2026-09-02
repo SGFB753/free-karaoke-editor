@@ -574,6 +574,7 @@
           <input id="inLyrics" data-tp="lyricsPh" placeholder="txt — one line of the song per line of the file">
           <button data-pick="lyrics" data-t="choose">Choose…</button>
           <button id="btnPasteText" data-t="pasteText">Paste the text</button>
+          <button id="btnTranscribe" data-t="transcribeText">Recognise from song</button>
         </div>
         <div class="hint" id="lyricsNote"></div>
         <div class="found hide" id="lyricsFound"></div>
@@ -595,12 +596,12 @@
           </select>
           <select id="selLang" data-tt="langTitle" title="Language of the lyrics"></select>
           <select id="selModel">
-            <option value="tiny" data-t="model_tiny">tiny — 75 MB</option>
-            <option value="base" data-t="model_base">base — 140 MB</option>
-            <option value="small" selected data-t="model_small">small — 480 MB</option>
-            <option value="medium" data-t="model_medium">medium — 1.5 GB</option>
-            <option value="large-v3-turbo" data-t="model_turbo">large-v3-turbo — 1.6 GB, nearly large at medium's speed</option>
-            <option value="large-v3" data-t="model_large_v3">large-v3 — 3 GB</option>
+            <option value="tiny" data-t="model_tiny">tiny — 75 MB (fastest, rough draft)</option>
+            <option value="base" data-t="model_base">base — 140 MB (fast, for clear recordings)</option>
+            <option value="small" selected data-t="model_small">small — 480 MB (recommended balance)</option>
+            <option value="medium" data-t="model_medium">medium — 1.5 GB (more accurate, slower)</option>
+            <option value="large-v3-turbo" data-t="model_turbo">large-v3-turbo — 1.6 GB (fast large model; not always better for songs)</option>
+            <option value="large-v3" data-t="model_large_v3">large-v3 — 3 GB (best chance of accuracy, very demanding)</option>
           </select>
           <label class="knob"><input type="checkbox" id="chkSep" checked> <span data-t="instrumental">Instrumental</span></label>
           <label class="knob" data-tt="fineSepHint"><input type="checkbox" id="chkFine"> <span data-t="fineSep">separate finely</span></label>
@@ -613,6 +614,10 @@
           </label>
         </div>
         <div class="hint" id="modelNote"></div>
+        <div class="opts" style="margin-top:7px">
+          <button id="btnModelFolder" data-t="openModelFolder">Open model folder</button>
+          <span class="hint" data-t="modelDeleteHint">Delete an unused .pt file there to free space; it will download again when selected.</span>
+        </div>
       </div>
       <div class="field">
         <label data-t="nameLabel" data-tt="nameNewHint">What the song is

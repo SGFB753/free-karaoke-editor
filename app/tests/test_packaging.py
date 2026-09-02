@@ -198,6 +198,20 @@ def main():
     options = studio.native_window_options("http://127.0.0.1:8770/")
     check("the native window permits selecting and editing lyrics",
           options["text_select"] is True and options["min_size"] == (900, 620))
+    with open(os.path.join(ROOT, "kstudio", "studio.html"), encoding="utf-8") as f:
+        ui_html = f.read()
+    with open(os.path.join(ROOT, "kstudio", "ui.js"), encoding="utf-8") as f:
+        ui_source = f.read()
+    check("a missing lyrics file can be drafted by Whisper and edited first",
+          "/api/lyrics/transcribe" in studio_source
+          and 'id="btnTranscribe"' in ui_html
+          and "T.transcribeReview" in ui_source
+          and '$("inLyrics").value = ""' in ui_source)
+    check("people can find and safely remove downloaded Whisper models",
+          "/api/models/open-folder" in studio_source
+          and 'id="btnModelFolder"' in ui_html
+          and "modelDeleteHint" in ui_source
+          and "M.whisper_dir()" in studio_source)
     check("a Studio.bat window does not inherit Python's taskbar identity",
           studio.WA.APP_ID == "KaraokeStudio.Desktop"
           and studio.set_windows_app_identity() == (os.name == "nt"))

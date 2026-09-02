@@ -74,6 +74,7 @@ from kstudio import findlyrics as FL       # noqa: E402
 from kstudio import lang as LG            # noqa: E402
 from kstudio import project as P           # noqa: E402
 from kstudio import separate as S          # noqa: E402
+from kstudio import transcribe as TR        # noqa: E402
 from kstudio import update as UP            # noqa: E402
 
 UI = os.path.join(ROOT, "kstudio", "studio.html")
@@ -693,6 +694,18 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     return self._err(500, tr(f"could not open the folder: {e}", f"не вышло открыть папку: {e}"))
 
+            if path == "/api/models/open-folder":
+                from kstudio import models as M
+                folder = M.whisper_dir()
+                try:
+                    os.makedirs(folder, exist_ok=True)
+                    reveal(folder)
+                    return self._json({"ok": True})
+                except Exception as e:
+                    return self._err(500, tr(
+                        f"could not open the model folder: {e}",
+                        f"не вышло открыть папку моделей: {e}"))
+
             if path == "/api/update/download":
                 if not UP.supported():
                     return self._err(400, tr("updates are available in the Windows application",
@@ -779,6 +792,24 @@ class Handler(BaseHTTPRequestHandler):
                 with open(dst, "w", encoding="utf-8") as f:
                     f.write(text.replace("\r\n", "\n").rstrip() + "\n")
                 return self._json({"path": dst, "name": os.path.basename(dst)})
+
+            if path == "/api/lyrics/transcribe":
+                audio = body.get("audio", "")
+                if not os.path.isfile(audio):
+                    return self._err(400, tr(f"file not found: {audio}",
+                                             f"файл не найден: {audio}"))
+                if not capabilities()["whisper"]:
+                    return self._err(400, tr("Whisper is not installed",
+                                             "Whisper не установлен"))
+                model = str(body.get("model") or "small")
+                if model not in ("tiny", "base", "small", "medium",
+                                 "large-v3-turbo", "large-v3"):
+                    model = "small"
+                language = str(body.get("lang") or "auto")
+                jid = start_job(
+                    tr("Recognising lyrics", "Распознаю текст"),
+                    lambda log: TR.draft(audio, model, language, log=log))
+                return self._json({"job": jid})
 
             if path == "/api/new":
                 audio, lyrics = body.get("audio", ""), body.get("lyrics", "")

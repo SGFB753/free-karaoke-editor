@@ -21,6 +21,7 @@ from kstudio import align as A
 from kstudio import audio as AU
 from kstudio import build as B
 from kstudio import lyrics as L
+from kstudio import transcribe as TR
 
 # 6 phrases of 2.6 s with pauses between them
 PHRASES = [(2.0, 4.6), (5.0, 7.6), (8.0, 10.6), (11.0, 13.6), (16.0, 18.6), (19.0, 21.6)]
@@ -164,6 +165,62 @@ def main():
     # now follows the system. Pin Russian; a check below looks at English.
     from kstudio import i18n
     i18n.set_lang("ru")
+
+    print("Whisper transcription becomes editable karaoke lines")
+    class Heard:
+        def __init__(self, word, start, end):
+            self.word, self.start, self.end = word, start, end
+
+    class Segment:
+        text = ""
+        start = 10.0
+        words = [Heard("Проснись", 10.0, 10.5),
+                 Heard("со", 10.55, 10.7), Heard("мной,", 10.75, 11.2),
+                 Heard("уснув", 12.3, 12.8), Heard("в", 12.85, 12.95),
+                 Heard("чужих", 13.0, 13.4), Heard("домах", 13.45, 14.0)]
+
+    class Result:
+        segments = [Segment()]
+
+    heard_lines = TR._result_lines(Result())
+    check("a clear pause splits recognised words into two lines",
+          [x[1] for x in heard_lines] ==
+          ["Проснись со мной,", "уснув в чужих домах"], heard_lines)
+    draft_lrc = TR._editable_lrc(heard_lines)
+    parsed_draft = L.parse(draft_lrc)
+    check("recognised lines retain sparse editable LRC time pegs",
+          [x.start for x in parsed_draft.lines] == [10.0, None], draft_lrc)
+    import types as _types
+    import numpy as _np
+    transcribe_calls = []
+
+    class DraftModel:
+        def transcribe(self, samples, **kwargs):
+            transcribe_calls.append((len(samples), kwargs))
+            kwargs["progress_callback"](1, 2)
+            result = Result()
+            result.language = "ru"
+            return result
+
+    fake_stable = _types.ModuleType("stable_whisper")
+    fake_stable.load_model = lambda *args, **kwargs: DraftModel()
+    real_stable = sys.modules.get("stable_whisper")
+    real_read_pcm = AU.read_pcm_mono
+    sys.modules["stable_whisper"] = fake_stable
+    AU.read_pcm_mono = lambda *args, **kwargs: _np.zeros(16000, dtype="int16")
+    try:
+        recognised = TR.draft("unused.wav", "small", "auto")
+    finally:
+        AU.read_pcm_mono = real_read_pcm
+        if real_stable is not None:
+            sys.modules["stable_whisper"] = real_stable
+        else:
+            sys.modules.pop("stable_whisper", None)
+    check("the installed stable-ts transcription path returns an editable draft",
+          recognised["language"] == "ru" and recognised["lines"] == 2
+          and recognised["text"] == draft_lrc, recognised)
+    check("automatic language detection is left to Whisper when there is no text",
+          "language" not in transcribe_calls[0][1], transcribe_calls[0][1])
 
     print("Parsing the lyrics")
     lyr = L.parse(TEXT)

@@ -7,6 +7,23 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.48.0
+
+**Lyrics can now be recognised directly from the recording when no ready text
+is available.** The “Recognise from song” button uses the selected Whisper model
+and language, or detects the language from the recording in automatic mode. The
+result is never accepted blindly: Studio opens the draft in the normal editor
+so words and line breaks can be corrected before building.
+
+**The draft retains the location of verses without blocking precise alignment.**
+Whisper adds sparse timing pegs every few lines and after long pauses. They keep
+the lyrics from drifting into another part of the song, while word-level timing
+is still recomputed after manual corrections. Very short recognition fragments
+are joined into lines that are easier to read and edit.
+A button below the model list now opens their real folder on disk and explains
+that an unused `.pt` file can be deleted to reclaim space; selecting that model
+later simply downloads it again.
+
 ## 4.47.7
 
 **Automatic updates now work from protected `Program Files` installations.**

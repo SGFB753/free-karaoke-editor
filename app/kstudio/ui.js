@@ -118,10 +118,12 @@ const STR = {
     realignStats: (was, now) => `Done: ${was} lines before, ${now} now`,
     withModel: m => `\n\nThe timing is made with the “${m}” model, the same one it was built with.`,
     serverDown: "The server is not answering",
-    model_tiny: "tiny — 75 MB", model_base: "base — 140 MB",
-    model_small: "small — 480 MB", model_medium: "medium — 1.5 GB",
-    model_turbo: "large-v3-turbo — 1.6 GB, nearly large at medium’s speed",
-    model_large_v3: "large-v3 — 3 GB",
+    model_tiny: "tiny — 75 MB (fastest, rough draft)",
+    model_base: "base — 140 MB (fast, for clear recordings)",
+    model_small: "small — 480 MB (recommended balance)",
+    model_medium: "medium — 1.5 GB (more accurate, slower)",
+    model_turbo: "large-v3-turbo — 1.6 GB (fast large model; not always better for songs)",
+    model_large_v3: "large-v3 — 3 GB (best chance of accuracy, very demanding)",
     fineSep: "separate finely",
     backgroundLabel: "background",
     backgroundCover: "clip cover",
@@ -162,6 +164,9 @@ const STR = {
     noteDownload: "The model is not here yet: it downloads before timing, which can take a few minutes. The progress shows in the build log.",
     noteSlow: " — this will be very slow. A smaller model is safer, or close other programs.",
     noteLangAuto: " The language will be worked out from the text — the build log will name it.",
+    openModelFolder: "Open model folder",
+    modelDeleteHint: "Delete an unused .pt file there to free space; it will download again when selected.",
+    modelFolderOpened: "The Whisper model folder is open",
     detectByText: "work out from the text",
     rLength: "Length",
     rQuiet: "No singing",
@@ -273,6 +278,10 @@ const STR = {
     linkFail: m => "It did not download: " + m +
       " — try another link, or choose a file on the disk",
     pasteText: "Paste the text",
+    transcribeText: "Recognise from song",
+    transcribeNeedAudio: "Choose the song file first",
+    transcribeReview: n => `Whisper made a ${n}-line draft. Read it, fix the words and line breaks, then press “Use this text”.`,
+    jobTranscribe: "Recognising the lyrics",
     pastePh: "One line of the song per line. Repeats written out as many times as they are sung.",
     useText: "Use this text",
     hideText: "Hide",
@@ -552,10 +561,12 @@ const STR = {
     realignStats: (was, now) => `Готово: строк было ${was}, стало ${now}`,
     withModel: m => `\n\nРазметка считается моделью «${m}» — той же, что и при сборке.`,
     serverDown: "Сервер не отвечает",
-    model_tiny: "tiny — 75 МБ", model_base: "base — 140 МБ",
-    model_small: "small — 480 МБ", model_medium: "medium — 1,5 ГБ",
-    model_turbo: "large-v3-turbo — 1,6 ГБ, почти large на скорости medium",
-    model_large_v3: "large-v3 — 3 ГБ",
+    model_tiny: "tiny — 75 МБ (самая быстрая, грубый черновик)",
+    model_base: "base — 140 МБ (быстро, для чистых записей)",
+    model_small: "small — 480 МБ (рекомендуется: баланс качества и скорости)",
+    model_medium: "medium — 1,5 ГБ (точнее, но медленнее)",
+    model_turbo: "large-v3-turbo — 1,6 ГБ (быстрая большая; на песнях не всегда лучше)",
+    model_large_v3: "large-v3 — 3 ГБ (максимум шансов на точность, очень требовательна)",
     fineSep: "отделять тщательно",
     backgroundLabel: "фон",
     backgroundCover: "обложка клипа",
@@ -596,6 +607,9 @@ const STR = {
     noteDownload: "Модели ещё нет: перед разметкой она скачается, это может занять несколько минут. Прогресс будет видно в логе сборки.",
     noteSlow: " — считать будет очень долго. Надёжнее взять модель поменьше или закрыть лишние программы.",
     noteLangAuto: " Язык определится по тексту — он будет назван в логе сборки.",
+    openModelFolder: "Открыть папку моделей",
+    modelDeleteHint: "Чтобы освободить место, удалите там ненужный файл .pt. При следующем выборе модель скачается заново.",
+    modelFolderOpened: "Папка моделей Whisper открыта",
     detectByText: "определить по тексту",
     rLength: "Длина",
     rQuiet: "Без пения",
@@ -705,6 +719,10 @@ const STR = {
     linkFail: m => "Не скачалось: " + m +
       " — попробуйте другую ссылку или выберите файл на диске",
     pasteText: "Вставить текст",
+    transcribeText: "Распознать из песни",
+    transcribeNeedAudio: "Сначала выберите файл песни",
+    transcribeReview: n => `Whisper сделал черновик на ${n} строк. Проверьте слова и переносы, затем нажмите «Взять этот текст».`,
+    jobTranscribe: "Распознаю текст",
     pastePh: "Строка песни — строка файла. Повторы выписаны столько раз, сколько поются.",
     useText: "Взять этот текст",
     hideText: "Свернуть",
@@ -1208,6 +1226,12 @@ function humanTime(sec){
 $("selLang").addEventListener("change", modelNote);
 $("selModel").addEventListener("change", modelNote);
 $("selAlign").addEventListener("change", modelNote);
+$("btnModelFolder").addEventListener("click", async () => {
+  try{
+    await api("/api/models/open-folder", {});
+    toast(T.modelFolderOpened);
+  }catch(e){ toast(e.message); }
+});
 
 $("btnAdd").addEventListener("click", () => {
   $("newWarn").textContent = caps.whisper ? "" :
@@ -1705,6 +1729,29 @@ $("btnPasteText").addEventListener("click", () => {
   box.classList.toggle("hide");
   if (!box.classList.contains("hide")){ $("taLyrics").focus(); countPasted(); }
 });
+$("btnTranscribe").addEventListener("click", async () => {
+  const audio = $("inAudio").value.trim();
+  if (!audio) return note("lyricsNote", T.transcribeNeedAudio, true);
+  try{
+    const j = await api("/api/lyrics/transcribe", {audio,
+      model: $("selModel").value, lang: $("selLang").value});
+    watchJob(j.job, T.jobTranscribe, result => {
+      screen("scrNew");
+      $("taLyrics").value = result.text || "";
+      $("pasteBox").classList.remove("hide");
+      // A draft is not silently accepted. Leaving the file field empty makes
+      // it impossible to build until the person has read it and pressed Use.
+      $("inLyrics").value = "";
+      reportKey = "";
+      $("report").classList.add("hide");
+      countPasted();
+      if (result.language && [...$("selLang").options].some(o => o.value === result.language))
+        $("selLang").value = result.language;
+      note("lyricsNote", T.transcribeReview(result.lines || 0));
+      $("taLyrics").focus();
+    }, () => screen("scrNew"));
+  }catch(e){ note("lyricsNote", e.message, true); }
+});
 $("btnPasteHide").addEventListener("click", () => $("pasteBox").classList.add("hide"));
 $("taLyrics").addEventListener("input", countPasted);
 function countPasted(){
@@ -1782,7 +1829,9 @@ $("btnBuild").addEventListener("click", async () => {
   }catch(e){ toast(e.message); }
 });
 
-function watchJob(jid, title, onDone){
+let jobBack = loadList;
+function watchJob(jid, title, onDone, onBack=loadList){
+  jobBack = onBack;
   $("jobTitle").textContent = title;
   $("jobLog").textContent = "";
   $("btnJobBack").classList.add("hide");
@@ -1803,7 +1852,7 @@ function watchJob(jid, title, onDone){
   };
   tick();
 }
-$("btnJobBack").addEventListener("click", loadList);
+$("btnJobBack").addEventListener("click", () => jobBack());
 $("btnBack").addEventListener("click", async () => {
   stop(); await flush();            // leave only once the edit is written
   loadList();
