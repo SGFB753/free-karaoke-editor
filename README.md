@@ -805,5 +805,5 @@ yours, and nothing in this program lays a claim to them.
 ## Support
 
 If this saved you some time, you can send a coffee:
-
-- **TON / USDT (TON):** `UQBQ4Ghnv2pl7R9b9AlTFpWV3tVbfhRXV4tVRTPux_Seg4SV`
+- The fork developer with some snacks and soda — [DonationAlerts](https://www.donationalerts.com/r/segefebe)
+- The original utility developer with a coffee - **TON / USDT (TON):** `UQBQ4Ghnv2pl7R9b9AlTFpWV3tVbfhRXV4tVRTPux_Seg4SV`
