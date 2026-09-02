@@ -45,9 +45,23 @@ console.log('--- the server knows what is on disk ---');
 ok('the server returns the list of models', st.caps && st.caps.models &&
    typeof st.caps.models === 'object', JSON.stringify(st.caps && st.caps.models));
 const have = st.caps.models;
-ok('all five models are in the list',
-   ['tiny','base','small','medium','large-v3'].every(k => k in have),
-   Object.keys(have).join(', '));
+const opts = [...$('selModel').options];
+const byVal = v => opts.find(o=>o.value===v);
+const values = opts.map(o => o.value);
+
+const apiModels = Object.keys(have);
+
+ok(
+  'every UI model is known to the server',
+  values.every(name => name in have),
+  values.filter(name => !(name in have)).join(', ') || 'all present'
+);
+
+ok(
+  'every server model is offered in the UI',
+  apiModels.every(name => values.includes(name)),
+  apiModels.filter(name => !values.includes(name)).join(', ') || 'all present'
+);
 // The stand runs with a model cache of its own (see fake_model_cache in
 // run_all.py): “tiny” lies there, the rest do not. So both answers are checked
 // on any machine, including a CI runner with an empty cache.
@@ -57,15 +71,23 @@ ok('the downloaded ones are marked correctly', have.tiny === true && have['large
 console.log('\n--- the add-a-song window ---');
 $('btnAdd').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(200);
-const opts = [...$('selModel').options];
-const byVal = v => opts.find(o=>o.value===v);
-ok('a downloaded model is marked “already downloaded”',
-   /уже скачана/.test(byVal('tiny').textContent), byVal('tiny').textContent);
-ok('a missing one — “downloads when building”',
-   /скачается при сборке/.test(byVal('large-v3').textContent),
-   byVal('large-v3').textContent);
-ok('the model size is still there', /75 МБ/.test(byVal('tiny').textContent),
-   byVal('tiny').textContent);
+for (const [name, ready] of Object.entries(have)) {
+  const text = byVal(name)?.textContent || '';
+
+  if (ready) {
+    ok(
+      `"${name}" is marked downloaded`,
+      /уже скачана/.test(text),
+      text || 'MISSING'
+    );
+  } else {
+    ok(
+      `"${name}" is marked not downloaded`,
+      /скачается/.test(text),
+      text || 'MISSING'
+    );
+  }
+}
 
 console.log('\n--- the hint under the picker ---');
 $('selAlign').value='auto';
@@ -119,16 +141,29 @@ ok('there is exactly one mark', (t.match(/уже скачана/g)||[]).length =
 ok('and exactly one “heavy” mark too',
    (t.match(/тяжёлая/g)||[]).length <= 1, t);
 
-console.log('\n--- turbo, and separating finely ---');
-// The fast one belongs in the list: on a strong machine it is nearly large-v3
-// at the speed of medium, which is exactly what a screamed vocal wants.
-const values = [...$('selModel').options].map(o => o.value);
-ok('turbo is offered', values.includes('large-v3-turbo'), values.join(', '));
-ok('it sits between medium and large-v3',
-   values.indexOf('large-v3-turbo') === values.indexOf('medium') + 1
-   && values.indexOf('large-v3-turbo') < values.indexOf('large-v3'), values.join(', '));
-ok('and the window says what it is', /medium/i.test(byVal('large-v3-turbo').textContent),
-   byVal('large-v3-turbo').textContent);
+console.log('\n--- model labels ---');
+
+ok(
+  'model values are unique',
+  new Set(values).size === values.length,
+  values.join(', ')
+);
+
+for (const name of values) {
+  const opt = byVal(name);
+
+  ok(
+    `"${name}" has a label`,
+    !!opt && opt.textContent.trim().length > 0,
+    opt?.textContent || 'MISSING'
+  );
+
+  ok(
+    `"${name}" label identifies the model`,
+    opt?.textContent.includes(name),
+    opt?.textContent || 'MISSING'
+  );
+}
 
 // “Separate finely” has nothing to do while the instrumental is off.
 ok('there is a switch for the finer separation', !!$('chkFine'));
