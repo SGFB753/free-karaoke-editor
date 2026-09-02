@@ -1264,5 +1264,5 @@ MIT — см. [LICENSE](LICENSE). Делайте что хотите: польз
 ## Поддержать
 
 Если программа сэкономила вам время, можно кинуть:
-- Разработчику форка на кириешки с газировкой - https://www.donationalerts.com/r/segefebe
+- Разработчику форка на кириешки с газировкой - [DonationAlerts](https://www.donationalerts.com/r/segefebe)
 - Разработчику оригинальной утилиты на кофе - **TON / USDT (TON):** `UQBQ4Ghnv2pl7R9b9AlTFpWV3tVbfhRXV4tVRTPux_Seg4SV`
