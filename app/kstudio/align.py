@@ -1981,8 +1981,32 @@ def align(lyrics: Lyrics, audio_path: str, duration: float, engine: str = "auto"
     """Returns (lyrics, engine_used)."""
     timed = sum(1 for ln in lyrics.lines if ln.start is not None)
     if lyrics.has_manual_times and timed == len(lyrics.lines):
-        log(tr("The text already has [mm:ss.dd] timings — skipping alignment.",
-            "В тексте уже есть тайминги [мм:сс.дд] — выравнивание пропускаю."))
+        # A synced library knows the exact beginning of every line, but not
+        # the words inside it. Keep those line starts immutable and let
+        # Whisper improve only the word rhythm. “energy” remains the explicit
+        # no-neural-net choice, and missing/broken Whisper falls back safely.
+        starts = [float(ln.start) for ln in lyrics.lines]
+        if engine in ("auto", "whisper"):
+            try:
+                import stable_whisper  # noqa: F401
+                align_whisper(lyrics, audio_path, duration, model_name,
+                              language, device, log, isolated=isolated,
+                              skip=skip)
+                _pin_line_starts(lyrics, starts, duration)
+                lyrics.fixed_line_starts = True
+                return lyrics, "whisper"
+            except Exception as e:
+                if engine == "whisper":
+                    raise
+                log(tr(f"Whisper could not lay out the words inside the timed "
+                       f"lines ({e}) — spreading them by syllable instead.",
+                       f"Whisper не смог разложить слова внутри готовых строк "
+                       f"({e}) — распределяю их по слогам."))
+        else:
+            log(tr("The text already has [mm:ss.dd] line timings.",
+                   "В тексте уже есть тайминги строк [мм:сс.дд]."))
+        for ln, start in zip(lyrics.lines, starts):
+            ln.start, ln.end = start, None
         _spread_manual(lyrics, duration)
         return lyrics, "manual"
     if lyrics.has_manual_times and engine in ("auto", "whisper"):
@@ -2051,3 +2075,35 @@ def _spread_manual(lyrics: Lyrics, duration: float) -> None:
             acc += w.syllables
             w.end = start + (end - start) * acc / total
     _fill_lines(lyrics, duration)
+
+
+def _pin_line_starts(lyrics: Lyrics, starts: List[float], duration: float) -> None:
+    """Keep ready LRC line starts while retaining Whisper's word rhythm.
+
+    Whisper may place the whole phrase a little before or after the library's
+    stamp. Translate its word timings to the fixed start; if that would cross
+    the next fixed line, compress the rhythm just enough to stay inside it.
+    Thus ``line.start`` and the first ``word.start`` can never disagree.
+    """
+    for i, (ln, fixed) in enumerate(zip(lyrics.lines, starts)):
+        limit = starts[i + 1] if i + 1 < len(starts) else duration
+        limit = max(fixed + 0.02, min(float(limit), duration))
+        words = ln.words
+        valid = (words and words[0].start is not None
+                 and words[-1].end is not None
+                 and words[-1].end > words[0].start)
+        if not valid:
+            ln.start, ln.end = fixed, limit
+            _spread(words, fixed, limit)
+            continue
+        raw_start, raw_end = words[0].start, words[-1].end
+        shifted_end = fixed + (raw_end - raw_start)
+        scale = min(1.0, (limit - fixed) / max(shifted_end - fixed, 1e-6))
+        for word in words:
+            a = fixed + (word.start - raw_start) * scale
+            b = fixed + (word.end - raw_start) * scale
+            word.start = min(max(a, fixed), limit)
+            word.end = min(max(b, word.start + 0.01), limit)
+        words[0].start = fixed
+        ln.start = fixed
+        ln.end = min(max(words[-1].end, fixed + 0.02), limit)

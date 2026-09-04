@@ -56,8 +56,9 @@
   header .sp{flex:1}
 
   /* ---------- song list ---------- */
-  .list{flex:1; overflow:auto; padding:20px}
-  .cards{display:grid; gap:10px; max-width:860px; margin:0 auto}
+  .list{flex:1; overflow:auto; padding:20px; scrollbar-gutter:stable both-edges;
+    display:flex; flex-direction:column; align-items:center}
+  .cards{display:grid; gap:10px; max-width:860px; width:100%; grid-template-columns:1fr}
   .card{display:flex; align-items:center; gap:14px; padding:14px 16px; cursor:pointer;
     background:var(--panel); border:1px solid var(--line); border-radius:12px}
   .card:hover{background:rgba(255,255,255,.1)}
@@ -75,12 +76,15 @@
   .empty h2{color:var(--text); font-size:1.25rem; margin-bottom:10px}
 
   /* ---------- adding a song ---------- */
-  .form{max-width:640px; margin:0 auto; padding:22px; display:grid; gap:16px}
-  .field{display:grid; gap:6px}
+  .form{max-width:640px; width:100%; padding:22px; display:grid; grid-template-columns:1fr; gap:16px}
+  .form > *{min-width:0}
+  .field{display:grid; gap:6px; grid-template-columns:minmax(0,1fr)}
+  .field > *{min-width:0}
   .field label{font-size:0.8438rem; color:var(--muted)}
   .pickrow{display:flex; gap:8px}
   .pickrow input{flex:1}
   .opts{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+  .field .opts select{min-width:0; max-width:100%}
   .warn{font-size:0.8438rem; color:var(--accent2); line-height:1.6}
   /* Marking wordless stretches with the timeline in front of you */
   .tlhead .notext{width:14rem; font-size:0.75rem; padding:5px 9px}
@@ -101,6 +105,13 @@
   .found .one{display:flex; align-items:center; gap:12px; padding:10px 12px;
     border:1px solid var(--line); border-radius:10px; background:rgba(0,0,0,.22)}
   .found .one .t{flex:1; min-width:0}
+  .found .one .acts{display:flex; flex:0 0 auto; flex-direction:column; gap:6px;
+    align-items:stretch}
+  .found .one .acts button{white-space:nowrap}
+  .audio-preview{display:flex; align-items:center; gap:10px; margin-top:8px}
+  .audio-preview audio{width:min(100%,34rem); height:34px}
+  .audio-preview .clock{font-size:.7812rem; color:var(--muted);
+    font-variant-numeric:tabular-nums; white-space:nowrap}
   /* The doorway to the other formats: one narrow button, a menu underneath. */
   .moreexp{position:relative}
   /* the export dialog: four choices and a button */
@@ -147,7 +158,7 @@
   .sum .qchip.taken u{opacity:.5; text-decoration-style:dotted}
   /* “words only” stands next to “take it with the timing”: quieter, because
      the timed one is nearly always the better answer. */
-  .found .one button.words{font-size:0.7812rem; padding:.3rem .5rem; opacity:.75}
+  .found .one button.words-only{font-size:0.7812rem; padding:.3rem .5rem}
   .found .one .t b{display:block; font-size:0.875rem; font-weight:600}
   .found .one .t span{font-size:0.7812rem; color:var(--muted)}
   .found .one .first{font-size:0.7812rem; color:var(--muted); font-style:italic;
@@ -567,6 +578,10 @@
           <button id="btnFetch" data-t="fetchGo">Take the sound</button>
         </div>
         <div class="hint" id="linkNote"></div>
+        <div class="audio-preview hide" id="newAudioPreview">
+          <audio id="newAudioPlayer" controls preload="metadata"></audio>
+          <span class="clock" id="newAudioClock">0:00.000 / 0:00.000</span>
+        </div>
       </div>
       <div class="field">
         <label data-t="fileLyrics">Lyrics file</label>

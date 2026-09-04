@@ -202,6 +202,10 @@ class Lyrics:
     title: Optional[str] = None
     artist: Optional[str] = None
     has_manual_times: bool = False
+    # Every line start came from a complete synced text. Whisper may arrange
+    # words inside those bounds, but later onset refinements must not move the
+    # bounds themselves.
+    fixed_line_starts: bool = False
     # stretches the person marked as holding no words: [Solo 3:10-3:50]
     skips: List[tuple] = field(default_factory=list)
     # Lines copied from a lyrics site's recommendation widget, not from a song.

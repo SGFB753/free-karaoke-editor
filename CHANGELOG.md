@@ -7,6 +7,42 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.48.1
+
+**Ready LRC timing is now kept exactly when it is selected.** Every library
+timestamp remains the fixed start of its line, while Whisper lays out the words
+inside that line and trims its real ending. Later vocal-onset refinements cannot
+silently move those fixed starts. A regression test covers the real case where
+`18.16` previously turned into about `17.14`.
+
+**Found lyrics are easier to choose and verify before building.** LRCLIB and
+Genius are searched and shown together, including collaborations for which
+Genius names only the primary artist. Every timed result visibly offers either
+the complete line timing or clean words for a fresh Whisper alignment. The
+new-song screen also plays the selected recording and displays its current time
+to the millisecond, so a library timing can be checked immediately. This player
+also accepts the WebM/Opus files downloaded from YouTube. Search metadata now
+strips `prod. by`, `feat.` and `ft.` notes, and treats reordered artist lists
+separated by `feat`, `x` or commas as the same collaboration.
+
+**The new-song form is centred again and no longer protrudes from its column.**
+The layout is checked at several window sizes. Opening “New song” also clears
+paths, links, lyrics, names, wordless intervals and options left by the previous
+project.
+
+**The interface no longer turns black after entering and leaving a project.**
+Returning to the list restores the default blue gradient, theme and voice
+colours instead of leaking the opened project's appearance into the main window.
+
+**The Windows source launcher now uses the same library as the packaged app.**
+`Studio.bat` opens the visible `Documents\KaraokeStudio` folder instead of
+`free-karaoke-editor\projects`. Development and packaged windows have separate
+taskbar identities, so a pinned EXE no longer relaunches the Python server or
+replaces the development shortcut.
+
+**Locked lines are protected during editing as well as re-timing.** Their text
+cannot be changed accidentally until the line is explicitly unlocked.
+
 ## 4.48.0
 
 **Lyrics can now be recognised directly from the recording when no ready text

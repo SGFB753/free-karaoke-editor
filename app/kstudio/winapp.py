@@ -9,7 +9,21 @@ import time
 import uuid
 from ctypes import wintypes
 
-APP_ID = "KaraokeStudio.Desktop"
+
+def app_id() -> str:
+    """Return a process-specific taskbar identity.
+
+    Frozen (production) and source (dev) builds must never share an ID:
+    Windows groups taskbar pins by AppUserModelId, so sharing one would
+    let a pinned Studio.bat overwrite a frozen EXE's relaunch command.
+    """
+    return (
+        "KaraokeStudio.Desktop.App"
+        if getattr(sys, "frozen", False)
+        else "KaraokeStudio.Desktop.Dev"
+    )
+
+
 _APP_FMTID = "9f4c2855-9f79-4b39-a8d0-e1d42de1d5f3"
 _IID_PROPERTY_STORE = "886d8eeb-8cf2-4446-8d02-cdba1dbdcf99"
 _VT_LPWSTR = 31
@@ -48,7 +62,7 @@ def set_process_identity() -> bool:
         set_id = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID
         set_id.argtypes = (ctypes.c_wchar_p,)
         set_id.restype = ctypes.c_long
-        return set_id(APP_ID) == 0
+        return set_id(app_id()) == 0
     except Exception:
         return False
 
@@ -117,7 +131,7 @@ def set_window_identity(window, root: str) -> bool:
     commit = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p)(table[7])
     fmtid = _guid(_APP_FMTID)
     command, display, icon = relaunch_details(root)
-    values = ((5, APP_ID), (2, command), (4, display), (3, icon))
+    values = ((5, app_id()), (2, command), (4, display), (3, icon))
     try:
         for pid, text in values:
             key = _PROPERTYKEY(fmtid, pid)

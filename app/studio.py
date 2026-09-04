@@ -87,6 +87,10 @@ LEGACY_INSTALL_LIBRARY = ""
 if (getattr(sys, "frozen", False) and os.name == "nt"
         and not os.environ.get("KARAOKE_PROJECTS")):
     LEGACY_INSTALL_LIBRARY = os.path.dirname(os.path.abspath(sys.executable))
+# Source launches on Windows should also use the user's Documents folder,
+# not the repo's projects/ directory.  An explicit KARAOKE_PROJECTS (from
+# tests, servers, or --projects) always wins.
+if os.name == "nt" and not os.environ.get("KARAOKE_PROJECTS"):
     os.environ["KARAOKE_PROJECTS"] = os.path.join(
         P.windows_library_root(), "projects")
 PROJECTS = P.projects_root()
@@ -584,6 +588,13 @@ class Handler(BaseHTTPRequestHandler):
                 except (UnicodeEncodeError, UnicodeDecodeError):
                     pass
                 return self._json(browse(raw, q.get("kind", ["audio"])[0]))
+
+            if path == "/api/audio-preview":
+                raw = q.get("path", [""])[0]
+                candidate = os.path.abspath(os.path.expanduser(raw))
+                if os.path.splitext(candidate)[1].lower() not in AUDIO_EXT:
+                    return self._err(400, tr("not an audio file", "это не аудиофайл"))
+                return self._file(candidate)
 
             m = re.match(r"^/api/project/([^/]+)$", path)
             if m:
@@ -1101,7 +1112,8 @@ class Handler(BaseHTTPRequestHandler):
 
 # --------------------------------------------------------------------------- #
 
-AUDIO_EXT = {".mp3", ".wav", ".flac", ".m4a", ".ogg", ".opus", ".aac", ".wma", ".mp4"}
+AUDIO_EXT = {".mp3", ".wav", ".flac", ".m4a", ".ogg", ".opus", ".aac", ".wma",
+             ".mp4", ".webm"}
 TEXT_EXT = {".txt", ".lrc"}
 
 
@@ -1235,7 +1247,7 @@ def realign_part(folder: str, opts: dict, log) -> dict:
                             opts.get("lang", "auto"), None, log,
                             isolated=isolated, skip=outside)
     onset_audio = vocal_timing_audio(folder, data)
-    if onset_audio and engine == "whisper":
+    if onset_audio and engine == "whisper" and not piece.fixed_line_starts:
         A.refine_leading_silence(piece, onset_audio, log=log)
         A.refine_uncertain_word_onsets(piece, onset_audio, log=log)
 
@@ -1334,7 +1346,7 @@ def realign(folder: str, opts: dict, log) -> dict:
                           isolated=isolated,
                           skip=holes)
     onset_audio = vocal_timing_audio(folder, data)
-    if onset_audio and engine == "whisper":
+    if onset_audio and engine == "whisper" and not lyr.fixed_line_starts:
         A.refine_leading_silence(lyr, onset_audio, log=log)
         A.refine_uncertain_word_onsets(lyr, onset_audio, log=log)
     fresh = [ln.to_json() for ln in lyr.lines]

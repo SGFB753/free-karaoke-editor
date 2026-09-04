@@ -1498,19 +1498,19 @@ You might also like
           [t for t, _, _ in texts])
 
     print("\nA found text brings its own times along")
-    # LRCLIB answers with “[02:27.10] Remember this day” for every line. Those
-    # times used to be stripped off and the model left to rediscover them —
-    # badly. They come through as pegs now: sparse, so the model still lays
-    # out the words and a record from another master cannot bake in its drift.
+    # “With timing” means exactly that: every LRCLIB time survives. A short-lived
+    # sparse-peg conversion let Whisper hear 1.5 seconds before [00:18.16] and
+    # replaced it with 17.140. The editor, problem list, player and renderer all
+    # then faithfully used the wrong new value. Keep this real regression here.
     from kstudio import findlyrics as FL
     rec = {"syncedLyrics": "\n".join(
         [f"[00:{10 + i * 3:02d}.00] line {i + 1}" for i in range(6)]
         + ["[01:30.00]", "[01:35.00] after the long pause", "[01:38.00] and one more"])}
-    pegged = FL.timed(rec)
-    lyr_p = L.parse(pegged)
+    timed_text = FL.timed(rec)
+    lyr_p = L.parse(timed_text)
     pegs = [ln.start for ln in lyr_p.lines if ln.start is not None]
     check("every line of the record is kept", len(lyr_p.lines) == 8, len(lyr_p.lines))
-    check("but only a few carry a time", 2 <= len(pegs) <= 4, pegs)
+    check("and every sung line keeps its own time", len(pegs) == 8, pegs)
     check("the first line is one of them", lyr_p.lines[0].start == 10.0,
           lyr_p.lines[0].start)
     check("and so is the line after a long pause",
@@ -1520,11 +1520,47 @@ You might also like
           FL.timed({"plainLyrics": "just words"}) == "")
     check("and the plain words are still the plain words",
           FL.plain(rec).splitlines()[0] == "line 1", FL.plain(rec)[:20])
-    # Pegs are what makes the difference: with them the aligner works stretch
-    # by stretch, and a line cannot wander across the whole song.
-    check("a text with pegs is aligned between them, not spread by hand",
-          lyr_p.has_manual_times and len(pegs) < len(lyr_p.lines),
-          f"{len(pegs)} pegs on {len(lyr_p.lines)} lines")
+    check("a fully timed library result is treated as finished timing",
+          lyr_p.has_manual_times and len(pegs) == len(lyr_p.lines),
+          f"{len(pegs)} times on {len(lyr_p.lines)} lines")
+
+    real_lrc = ("[00:18.16] Нацарапанные звёзды на потолке\n"
+                "[00:20.76] Горящее небо, как в страшном кино")
+    real = L.parse(FL.timed({"syncedLyrics": real_lrc}))
+    real_align_whisper = A.align_whisper
+    def _early_whisper(lyrics, *args, **kwargs):
+        # Reproduce the actual model result: it heard the first line at 17.140,
+        # before LRCLIB's fixed 18.160 line boundary, but did find useful
+        # non-uniform word rhythm inside the phrase.
+        spans = [(17.14, 18.00), (18.00, 18.42), (18.42, 18.61), (18.61, 19.36)]
+        for word, (a, b) in zip(lyrics.lines[0].words, spans):
+            word.start, word.end = a, b
+        lyrics.lines[0].start, lyrics.lines[0].end = spans[0][0], spans[-1][1]
+        A._spread(lyrics.lines[1].words, 20.50, 22.40)
+        lyrics.lines[1].start, lyrics.lines[1].end = 20.50, 22.40
+        return lyrics
+    A.align_whisper = _early_whisper
+    try:
+        real, real_engine = A.align(real, song, 26.0, engine="auto")
+    finally:
+        A.align_whisper = real_align_whisper
+    first = real.lines[0].to_json()
+    check("real LRCLIB 18.16 is not moved back to 17.14",
+          real_engine == "whisper" and first["start"] == 18.16
+          and first["words"][0]["t"] == 18.16,
+          (real_engine, first["start"], first["words"][0]["t"]))
+    check("Whisper still supplies the intermediate word rhythm",
+          first["words"][1]["t"] == 19.02
+          and first["words"][2]["t"] == 19.44,
+          [w["t"] for w in first["words"]])
+    check("the next ready line start is just as immutable",
+          real.lines[1].start == 20.76
+          and real.lines[1].words[0].start == 20.76,
+          (real.lines[1].start, real.lines[1].words[0].start))
+    # These are the canonical fields consumed respectively by the timeline and
+    # checks (line.start), and by karaoke highlighting/video (first word.t).
+    check("timeline, checks, player and video share the same first instant",
+          first["start"] == first["words"][0]["t"], first)
 
     print("\nThe clip's cover becomes the backdrop, when asked")
     # From a link the cover rides along; with the checkbox on it stands behind
@@ -2215,6 +2251,72 @@ You might also like
     check("a song with no locks is left entirely to the model",
           PJ.keep_locked([_ln(0), _ln(1)], [_ln(10), _ln(11)]) == 0)
 
+    # Regression: inserting a line before a locked line drops the lock
+    # because the line count changed.
+    msgs3 = []
+    before_ins = [_ln(0), _ln(1, lock=True), _ln(2)]
+    after_ins = [_ln(99), _ln(0), _ln(1, lock=False), _ln(2)]
+    kept_ins = PJ.keep_locked(before_ins, after_ins, msgs3.append)
+    check("inserting a line drops all locks (count changed)",
+          kept_ins == 0,
+          kept_ins)
+    check("the drop is logged",
+          any("замки" in m or "locks" in m for m in msgs3),
+          msgs3[:1])
+
+    # Regression: deleting a line around a locked line also drops locks.
+    msgs4 = []
+    before_del = [_ln(0), _ln(1, lock=True), _ln(2)]
+    after_del = [_ln(0)]
+    kept_del = PJ.keep_locked(before_del, after_del, msgs4.append)
+    check("deleting a line drops all locks (count changed)",
+          kept_del == 0,
+          kept_del)
+
+    # Regression: retext lock check — a locked line's timing is never
+    # modified.  (This is a Python-side proxy; the real test is in
+    # 24b-studio-retext-lock.mjs which exercises the JS retext function.)
+    locked_line = {"text": "запертая", "start": 5.0,
+                   "end": 7.0, "lock": True,
+                   "words": [{"w": "запертая", "t": 5.0,
+                              "d": 2.0, "s": 4}]}
+    check("a locked line carries lock=True",
+          locked_line["lock"] is True)
+
+    # Regression: section headings are attached to the next content line,
+    # not counted as a sung line.
+    heading_text = "[Verse]\nFirst line\n[Chorus]\nChorus line 1\nChorus line 2"
+    parsed = L.parse(heading_text)
+    check("section headings are not sung lines",
+          len(parsed.lines) == 3,
+          [l.text for l in parsed.lines])
+    check("the heading is attached to the next line",
+          getattr(parsed.lines[0], "section", None) == "Verse",
+          getattr(parsed.lines[0], "section", None))
+    check("the second heading is attached too",
+          getattr(parsed.lines[1], "section", None) == "Chorus",
+          getattr(parsed.lines[1], "section", None))
+
+    # Regression: x4 repeat expands repeated lines.
+    repeat_x4 = "Line A\nLine B x4\nLine C"
+    parsed_x4 = L.parse(repeat_x4)
+    check("x4 expands the repeated line to 4 copies",
+          len(parsed_x4.lines) == 6,
+          [l.text for l in parsed_x4.lines])
+    check("the repeated lines are identical",
+          all(l.text == "Line B" for l in parsed_x4.lines[1:5]),
+          [l.text for l in parsed_x4.lines[1:5]])
+
+    # Regression: backing vocals in round brackets are flagged.
+    backing_text = "(Backing vocal)\nLead line"
+    parsed_backing = L.parse(backing_text)
+    check("round brackets make a backing line",
+          parsed_backing.lines[0].backing is True,
+          parsed_backing.lines[0].backing)
+    check("the lead line is not backing",
+          parsed_backing.lines[1].backing is False,
+          parsed_backing.lines[1].backing)
+
     print("\nHow sure the model was, carried through to the eye")
     # The aligner returns a probability per word. It used to be averaged into a
     # single line in the log and thrown away, though it points straight at the
@@ -2523,6 +2625,13 @@ You might also like
           FE.split_name("Кино - Группа крови (Remastered 2021)") == ("Кино", "Группа крови"))
     check("a name with no dash stays whole",
           FE.split_name("Плачу на техно") == ("", "Плачу на техно"))
+    check("production credits in brackets are stripped",
+          FE.clean_title("РЭЙДИ X PYROKINESIS - БАЛ КРОВАВОЙ ЛУНЫ (PROD BY ВНЕВЕСОМОСТИ)")
+          == "РЭЙДИ X PYROKINESIS - БАЛ КРОВАВОЙ ЛУНЫ")
+    check("feat and ft in brackets are stripped",
+          FE.clean_title("Song (feat. Artist)") == "Song"
+          and FE.clean_title("Song (ft. Artist)") == "Song"
+          and FE.clean_title("Song [prod. by Someone]") == "Song")
     for bad in ("", "   ", "ftp://example.com/x", "file:///etc/passwd", "-x"):
         try:
             FE.check_url(bad)
@@ -2811,9 +2920,28 @@ You might also like
               FL.artist_matches("Mickey Mouse", "MickeyMouse (RUS)"))
         check("an unrelated artist is not mistaken for the requested one",
               not FL.artist_matches("MickeyMouse", "Helldorado"))
+        check("reversed multi-artist lists match",
+              FL.artist_matches("PYROKINESIS, РЭЙДИ",
+                              "РЭЙДИ x PYROKINESIS"))
+        check("reversed order is symmetric",
+              FL.artist_matches("РЭЙДИ x PYROKINESIS",
+                              "PYROKINESIS, РЭЙДИ"))
+        check("comma-separated reversed order matches",
+              FL.artist_matches("РЭЙДИ, pyrokinesis",
+                              "pyrokinesis, РЭЙДИ"))
+        check("Genius may name only the primary artist of a collaboration",
+              FL.artist_matches("РЭЙДИ, pyrokinesis", "РЭЙДИ (RAY-D)"))
+        check("that exception still rejects an unrelated primary artist",
+              not FL.artist_matches("РЭЙДИ, pyrokinesis", "Helldorado"))
+        check("the letter x inside an artist name is not a separator",
+              FL._artist_parts("Xzibit") == ["xzibit"]
+              and FL._artist_parts("Artist x Xzibit") == ["artist", "xzibit"],
+              FL._artist_parts("Artist x Xzibit"))
         fallback = FL.search("Genius Only", "Fallback Artist")
         check("Genius is tried when LRCLIB has no song",
               fallback and fallback[0]["source"] == "Genius", fallback)
+        check("Genius does not offer another song by the right artist",
+              all("Different Song" not in f["title"] for f in fallback), fallback)
         check("the Genius page yields lyrics rather than page furniture",
               fallback[0]["text"] ==
               "[Verse]\nGenius first line\nGenius second line\n[Chorus]\nGenius final line",

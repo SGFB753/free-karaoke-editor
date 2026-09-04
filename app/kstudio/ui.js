@@ -256,6 +256,7 @@ const STR = {
       + "what you put right by hand outweighs anything the model returns for it.",
     lockedN: n => `Locked: ${n}. Re-timing will leave them alone.`,
     unlockedN: n => `Unlocked: ${n}.`,
+      lineLocked: "This line is locked \u2014 unlock it first to edit its text.",
     markHint: "Mark the stretches on the waveform: press and drag over a "
       + "vocalise or an intro, click a mark to take it off. Then “Re-time”.",
     markOn: "Drag over the waveform to mark where there are no words. Click a mark to remove it.",
@@ -296,13 +297,12 @@ const STR = {
       ". Choose a file, or paste the text by hand.",
     lyricsUse: "Take it",
     lyricsUseTimed: "Take it with the timing",
-    lyricsWordsOnly: "words only",
+    lyricsWordsOnly: "Use words only",
     lyricsHasTimes: "comes with a timing",
     lyricsTook: "The text is in the box below — read it, correct it if need be.",
-    lyricsTookTimed: "Taken with the library's own times: they are pegs — every "
-      + "few lines is fixed to its place, and the words in between are laid "
-      + "out by the model. If the recording is another take, look the pegs "
-      + "over before building.",
+    lyricsTookTimed: "Taken with the library's complete line timing. Whisper "
+      + "will time the words inside each line without moving its start. If this is another recording or master, use "
+      + "“words only” instead.",
     pastedIntoBox: "That is the lyrics, not a path to a file: the lines are in the "
       + "box below, whole, and saved as a text file.",
     linkMoved: "That is a link — it has gone into the field below, press “Take the sound”.",
@@ -698,6 +698,7 @@ const STR = {
       + "руками важнее всего, что вернёт про них модель.",
     lockedN: n => `Заперто строк: ${n}. Переразметка их не тронет.`,
     unlockedN: n => `Отперто строк: ${n}.`,
+      lineLocked: "Эта строка заперта \u2014 сначала разблокируйте, чтобы редактировать текст.",
     markHint: "Отметить куски прямо на волне: нажать и провести по вокализу или "
       + "вступлению, щелчок по отметке — снять её. Потом «Разметить заново».",
     markOn: "Проведите мышью по волне там, где текста нет. Щелчок по отметке — снять.",
@@ -739,12 +740,12 @@ const STR = {
       " ничего не нашлось. Выберите файл или вставьте текст руками.",
     lyricsUse: "Взять",
     lyricsUseTimed: "Взять с разметкой",
-    lyricsWordsOnly: "только слова",
+    lyricsWordsOnly: "Взять только текст",
     lyricsHasTimes: "есть готовая разметка",
     lyricsTook: "Текст в поле ниже — прочитайте, поправьте, если надо.",
-    lyricsTookTimed: "Взято вместе с временами библиотеки: это опоры — каждые "
-      + "несколько строк привязаны к своему месту, а слова между ними разложит "
-      + "модель. Если запись другая версия, просмотрите опоры перед сборкой.",
+    lyricsTookTimed: "Взята полная разметка строк библиотеки. Whisper разложит "
+      + "слова внутри каждой строки, не двигая её начало. Если это другая запись или мастер, выберите "
+      + "«только слова».",
     pastedIntoBox: "Это текст песни, а не путь к файлу: строки целиком лежат в поле "
       + "ниже и сохранены текстовым файлом.",
     linkMoved: "Это ссылка — она перенесена в поле ниже, нажмите «Достать звук».",
@@ -1092,6 +1093,10 @@ async function loadList(){
     });
     box.appendChild(el);
   });
+  theme = ["#0a0b14", "#e8ebf5"];
+  colors = ["#4de1ff", "#ff8ad1"];
+  const rs = document.documentElement.style;
+  ["--accent","--accent-2","--bg","--bg2","--text","--dim"].forEach(p => rs.removeProperty(p));
   screen("scrList");
 }
 $("btnLibrary").addEventListener("click", () => reveal(libraryDir));
@@ -1218,8 +1223,37 @@ function humanTime(sec){
   const m = sec/60|0;
   return m < 60 ? T.aboutMin(m) : T.aboutHour(m/60|0, m%60);
 }
-["inAudio","inLyrics"].forEach(id =>
-  $(id).addEventListener("input", askReport));
+let previewAudioPath = "";
+function previewTime(sec){
+  if (!Number.isFinite(sec)) return "0:00.000";
+  const m = Math.floor(sec / 60), s = sec - m * 60;
+  return m + ":" + s.toFixed(3).padStart(6, "0");
+}
+function updateNewAudioPreview(){
+  const path = $("inAudio").value.trim();
+  const box = $("newAudioPreview"), player = $("newAudioPlayer");
+  if (!path){
+    player.removeAttribute("src");
+    previewAudioPath = ""; box.classList.add("hide");
+    $("newAudioClock").textContent = "0:00.000 / 0:00.000";
+    return;
+  }
+  box.classList.remove("hide");
+  if (path !== previewAudioPath){
+    previewAudioPath = path;
+    player.src = "/api/audio-preview?path=" + encodeURIComponent(path);
+  }
+}
+function updateNewAudioClock(){
+  const player = $("newAudioPlayer");
+  $("newAudioClock").textContent = previewTime(player.currentTime) + " / " +
+    previewTime(player.duration);
+}
+$("newAudioPlayer").addEventListener("timeupdate", updateNewAudioClock);
+$("newAudioPlayer").addEventListener("loadedmetadata", updateNewAudioClock);
+$("newAudioPlayer").addEventListener("durationchange", updateNewAudioClock);
+$("inAudio").addEventListener("input", () => { updateNewAudioPreview(); askReport(); });
+$("inLyrics").addEventListener("input", askReport);
 ["selAlign","selModel","selLang","chkSep"].forEach(id =>
   $(id).addEventListener("change", askReport));
 
@@ -1234,16 +1268,8 @@ $("btnModelFolder").addEventListener("click", async () => {
 });
 
 $("btnAdd").addEventListener("click", () => {
-  $("newWarn").textContent = caps.whisper ? "" :
-    T.noStableWarn;
-  $("selAlign").value = caps.whisper ? "auto" : "energy";
-  $("selLang").value = "auto";        // every song starts from its own text
-  $("chkSep").checked = !!caps.demucs;
-  $("chkFine").checked = false;
-  $("chkFine").disabled = !caps.demucs;
-  fillLangs(); markModels(); modelNote();
-  resetLink();
-  reportKey = ""; askReport();
+  resetNewSongForm();
+  askReport();
   screen("scrNew");
 });
 // “Separate finely” has nothing to do while the instrumental is off: the timing
@@ -1290,8 +1316,8 @@ document.addEventListener("keydown", e => {
 }, true);
 
 const PICK_ACCEPT = {
-  audio: ".mp3,.wav,.flac,.m4a,.ogg,.opus,.aac,.wma,.mp4",
-  track: ".mp3,.wav,.flac,.m4a,.ogg,.opus,.aac,.wma,.mp4",
+  audio: ".mp3,.wav,.flac,.m4a,.ogg,.opus,.aac,.wma,.mp4,.webm",
+  track: ".mp3,.wav,.flac,.m4a,.ogg,.opus,.aac,.wma,.mp4,.webm",
   lyrics: ".txt,.lrc", lyrics2: ".txt,.lrc",
   pack: ".zip",
   cover: "image/*,video/mp4,video/webm,.mkv,.mov",
@@ -1328,6 +1354,7 @@ async function usePickedFile(kind, file){
       $("grpCover").classList.add("hide");
       $("selBackground").value = "cover";
       $("inAudio").value = got.path;
+      updateNewAudioPreview();
       if (!$("inTitle").value.trim()) $("inTitle").value = fileStem(file.name);
     }
     askReport();
@@ -1484,6 +1511,7 @@ async function showDir(path){
       $("selBackground").value = "cover";
     }
     $(pickTarget === "lyrics" ? "inLyrics" : "inAudio").value = x.path;
+    if (pickTarget !== "lyrics") updateNewAudioPreview();
     if (pickTarget !== "lyrics" && !$("inTitle").value.trim())
       $("inTitle").value = fileStem(x.path);
     askReport();
@@ -1552,6 +1580,7 @@ window.addEventListener("drop", async e => {
       $("grpCover").classList.add("hide");
       $("selBackground").value = "cover";
       $("inAudio").value = (await upload(audio)).path;
+      updateNewAudioPreview();
       if (!$("inTitle").value.trim()) $("inTitle").value = fileStem(audio.name); }
     if (text){ $("inLyrics").value = (await upload(text)).path; }
     toast(audio && text ? T.filesOk
@@ -1585,23 +1614,36 @@ function fileStem(path){
   return name.replace(/\.[a-z0-9]{1,5}$/i, "").trim();
 }
 
-function resetLink(){
+function resetNewSongForm(){
+  $("inAudio").value = "";
+  updateNewAudioPreview();
+  $("inLyrics").value = "";
+  $("inNoText").value = "";
   $("inLink").value = "";
   $("inTitle").value = "";
   $("inArtist").value = "";
+  $("taLyrics").value = "";
+  const defModel = [...$("selModel").options].find(o => o.defaultSelected);
+  if (defModel) $("selModel").value = defModel.value;
+  $("selAlign").value = caps.whisper ? "auto" : "energy";
+  $("selLang").value = "auto";
+  $("chkSep").checked = !!caps.demucs;
+  $("chkFine").checked = false;
+  $("chkFine").disabled = !caps.demucs;
   nameTyped = false;
+  lastSong = null;
+  reportKey = "";
+  clearTimeout(reportT);
   $("grpCover").classList.add("hide");
   $("selBackground").value = "cover";
   $("lyricsFound").innerHTML = "";
   $("lyricsFound").classList.add("hide");
   $("pasteBox").classList.add("hide");
-  $("taLyrics").value = "";
   $("pasteCount").textContent = "";
   $("lyricsNote").textContent = "";
-  lastSong = null;
-  // Without yt-dlp the link cannot be taken, and saying so beforehand is
-  // better than letting a person paste one and wait for the refusal.
   note("linkNote", caps.fetch === false ? (caps.fetchHelp || "") : "", true);
+  $("newWarn").textContent = caps.whisper ? "" : T.noStableWarn;
+  fillLangs(); markModels(); modelNote();
 }
 function note(id, msg, warn){
   const e = $(id);
@@ -1654,6 +1696,7 @@ async function takeLink(){
     $("grpCover").classList.toggle("hide", !got.cover);
     $("selBackground").value = "cover";
     $("inAudio").value = got.path;
+    updateNewAudioPreview();
     note("linkNote", T.linkGot(got.name));
     askReport();
     findLyrics(got);
@@ -1690,7 +1733,7 @@ function foundRow(f){
   const e = document.createElement("div");
   e.className = "one";
   e.innerHTML = '<div class="t"><b></b><span></span><div class="first"></div></div>' +
-                '<button></button>';
+                '<div class="acts"><button></button></div>';
   e.querySelector("b").textContent = f.artist ? f.artist + " — " + f.title : f.title;
   e.querySelector("span").textContent =
     [T.countLines(f.lines), f.duration ? fmt(f.duration) : "", f.source]
@@ -1700,17 +1743,18 @@ function foundRow(f){
   // only knows the words: those times become pegs, and the model no longer
   // has to guess the places — which is the one thing it gets badly wrong.
   const timed = !!(f.timed && f.textTimed);
-  const btn = e.querySelector("button");
+  const actions = e.querySelector(".acts");
+  const btn = actions.querySelector("button");
   btn.textContent = timed ? T.lyricsUseTimed : T.lyricsUse;
   if (timed) btn.classList.add("pri");
   btn.addEventListener("click", () => takeFound(f, timed));
   if (timed){
     e.querySelector("span").textContent += " · " + T.lyricsHasTimes;
     const words = document.createElement("button");
-    words.className = "words";
+    words.className = "words-only";
     words.textContent = T.lyricsWordsOnly;
     words.addEventListener("click", () => takeFound(f, false));
-    e.appendChild(words);
+    actions.appendChild(words);
   }
   return e;
 }
@@ -3418,6 +3462,8 @@ function retext(i, text){
   const parts = text.trim().split(/\s+/).filter(Boolean);
   const ln = lines[i];
   if (!parts.length || parts.join(" ") === ln.text) return false;
+  // A locked line must not be silently remapped: unlock it first.
+  if (ln.lock){ toast(T.lineLocked); return false; }
   ln.text = parts.join(" ");
   // Editing the text can turn a line into backing vocals and back.
   ln.backing = /^\(.*\)$/.test(ln.text.trim());

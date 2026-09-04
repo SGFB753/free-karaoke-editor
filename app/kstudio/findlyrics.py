@@ -34,11 +34,8 @@ SOURCE = "LRCLIB / Genius"
 WEB_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
           "AppleWebKit/537.36 Chrome/138.0 Safari/537.36")
 
-# [00:12.34] in front of every line: that is a timed text, and the timing is
-# ours to make — the words are what is wanted here.
+# Used only by the words-only choice: remove [00:12.34] without touching text.
 LRC_TAG = re.compile(r"^\s*(\[[0-9]{1,3}:[0-9]{2}(?:[.:][0-9]{1,3})?\]\s*)+")
-# The first stamp of a line, the one that says when it is sung.
-ONE_TAG = re.compile(r"^\[(\d{1,3}):(\d{1,2}(?:[.:]\d{1,3})?)\]")
 
 
 class LyricsError(RuntimeError):
@@ -49,65 +46,79 @@ def _clean_name(value: str) -> str:
     return " ".join(re.findall(r"[\w]+", (value or "").casefold(), re.UNICODE))
 
 
+def _artist_parts(name):
+    """A list of normalized artist names from a combined label.
+
+    ``PYROKINESIS, РЭЙДИ`` and ``РЭЙДИ x PYROKINESIS`` are two ways of
+    saying the same thing; the individual parts sorted alphabetically give
+    a canonical form for comparison.
+    """
+    # Split on separators before cleaning, because _clean_name removes
+    # punctuation (commas) and joins with spaces, losing the split points.
+    # Comma/ampersand are punctuation separators; x means “with” only when it
+    # is a word of its own. Matching a bare x used to split names such as
+    # Xzibit and could make an unrelated result pass the artist filter.
+    parts = re.split(r"\s*[,&]\s*|(?:\s+x\s+)|(?:\s+(?:feat|ft)\.?\s+)",
+                     name or "", flags=re.I)
+    return sorted(_clean_name(p) for p in parts if _clean_name(p))
+
+
 def artist_matches(wanted: str, got: str) -> bool:
     """Whether two artist labels plausibly name the same act.
 
     Video metadata often says ``MickeyMouse`` while a lyrics site says
     ``MickeyMouse (RUS)``; spaces, punctuation and such suffixes must not turn
-    that into a mismatch. A completely different act with the same song title
-    must not be offered as if it were the requested recording.
+    that into a mismatch.  Two artists listed in a different order --
+    ``PYROKINESIS, РЭЙДИ`` vs ``РЭЙДИ x PYROKINESIS`` -- are the same act.
+    A completely different act with the same song title must not be offered
+    as if it were the requested recording.
     """
-    wanted, got = _clean_name(wanted), _clean_name(got)
-    if not wanted:
+    if not _clean_name(wanted):
         return True
-    if not got:
+    if not _clean_name(got):
         return False
-    a, b = wanted.replace(" ", ""), got.replace(" ", "")
+    a = _clean_name(wanted).replace(" ", "")
+    b = _clean_name(got).replace(" ", "")
     if min(len(a), len(b)) >= 4 and (a in b or b in a):
         return True
-    return difflib.SequenceMatcher(None, a, b).ratio() >= 0.68
+    if difflib.SequenceMatcher(None, a, b).ratio() >= 0.68:
+        return True
+    # The same set of artists in a different order is the same act.
+    # Split on separators BEFORE cleaning, because _clean_name removes
+    # punctuation (commas) and joins with spaces, losing the split points.
+    wp, gp = _artist_parts(wanted), _artist_parts(got)
+    if wp and gp and wp == gp:
+        return True
+    # Genius exposes only ``primary_artist`` in its search result even when
+    # the page and URL credit several performers.  A requested collaboration
+    # must therefore accept a primary artist which matches one of its named
+    # participants.  This remains deliberately component-to-component: a
+    # random artist with the same song title still does not pass.
+    for want_part in wp:
+        for got_part in gp:
+            a = want_part.replace(" ", "")
+            b = got_part.replace(" ", "")
+            if min(len(a), len(b)) >= 4 and (a in b or b in a):
+                return True
+            if min(len(a), len(b)) >= 4 and difflib.SequenceMatcher(None, a, b).ratio() >= 0.68:
+                return True
+    return False
 
 
 def timed(item: dict, every: int = 4, gap: float = 4.0) -> str:
-    """The words of a found record with a few of the library's own times.
+    """The found record exactly as timed by its lyrics library.
 
-    A synced record carries “[02:27.10]” for every single line. Kept on every
-    line they stop being pegs and become the timing itself: the model is never
-    asked, the words inside a line are merely spread — and a record made from
-    another master drifts, with the drift baked in for good.
+    The UI deliberately offers two different actions for a synced result:
+    “with timing” and “words only”.  The former must therefore keep every LRC
+    timestamp.  Turning a fully timed record into sparse alignment pegs made
+    Whisper move even the first timestamp (18.16 became 17.14 in a real
+    project), despite the person explicitly choosing the library's timing.
 
-    So they are kept sparsely: at the start, wherever a real pause opens
-    (`gap` seconds — the places where a line goes wandering), and otherwise
-    once `every` lines have gone by without one. Between them the song is
-    aligned as usual, so the places are the library's and the words are the
-    model's.
+    ``every`` and ``gap`` remain accepted for compatibility with callers from
+    older releases; sparsifying is now solely the job of the words-only path.
     """
     synced = (item.get("syncedLyrics") or "").strip()
-    if not synced:
-        return ""
-    out, prev, since, pegged = [], None, 0, False
-    for raw in synced.splitlines():
-        m = ONE_TAG.match(raw.strip())
-        words = LRC_TAG.sub("", raw).strip()
-        if not words:
-            # An empty stamp marks a pause: it holds nothing to sing, so it
-            # cannot be a peg. The pause still shows — as the distance to the
-            # next line that does have words.
-            continue
-        t = None
-        if m:
-            t = int(m.group(1)) * 60 + float(m.group(2).replace(":", "."))
-        take = t is not None and (not pegged or since >= every
-                                  or (prev is not None and t - prev >= gap))
-        if take:
-            out.append(f"[{int(t // 60)}:{t % 60:05.2f}] {words}")
-            since, pegged = 0, True
-        else:
-            out.append(words)
-            since += 1
-        if t is not None:
-            prev = t
-    return "\n".join(out).strip()
+    return synced
 
 
 def plain(item: dict) -> str:
@@ -171,17 +182,17 @@ def _search_lrclib(track: str, artist: str, duration: float, limit: int) -> list
         found_artist = item.get("artistName") or ""
         if artist.strip() and not artist_matches(artist, found_artist):
             continue
-        # The same words with the library's own times, when it has them: the
-        # window offers to take them as pegs.
-        pegged = timed(item)
+        # The same words with the library's complete line times, when it has
+        # them: the window offers that and words-only as separate choices.
+        timed_text = timed(item)
         out.append({"source": LRCLIB_SOURCE,
                     "title": item.get("trackName") or track,
                     "artist": found_artist,
                     "duration": item.get("duration") or 0,
                     "lines": len([ln for ln in words.splitlines() if ln.strip()]),
                     "text": words,
-                    "timed": bool(pegged),
-                    "textTimed": pegged})
+                    "timed": bool(timed_text),
+                    "textTimed": timed_text})
     if duration:
         # Same name, different recording: a live take runs minutes longer, and
         # its words are laid out differently.
@@ -291,9 +302,14 @@ def search_genius(track: str, artist: str = "", limit: int = 5) -> list:
     simple_track = re.sub(r"\s*[\[(][^)\]]*[)\]]", "", track).strip()
     queries = []
     for title in (track.strip(), simple_track):
-        query = " ".join(x for x in (artist.strip(), title) if x)
-        if query and query not in queries:
-            queries.append(query)
+        # Genius search is surprisingly sensitive to collaboration spelling:
+        # “A X B title” can return nothing while the title alone finds the
+        # exact page. Query both forms, then apply the artist filter below.
+        # The title-only fallback therefore cannot admit a namesake by an
+        # unrelated performer.
+        for query in (" ".join(x for x in (artist.strip(), title) if x), title):
+            if query and query not in queries:
+                queries.append(query)
     for query in queries:
         url = GENIUS_BASE + "/api/search/multi?" + urllib.parse.urlencode({"q": query})
         raw = _genius_get(url, "application/json, text/plain, */*")
@@ -329,6 +345,18 @@ def search_genius(track: str, artist: str = "", limit: int = 5) -> list:
                 0 if unwanted_cover else 1, title_score)
 
     candidates.sort(key=relevance, reverse=True)
+    # A title-only fallback returns the artist's other songs as well. Keep the
+    # translated/suffixed spelling of the requested title, but never offer a
+    # different song merely because its performer is correct.
+    def same_title(item: dict) -> bool:
+        got = _clean_name(item.get("title") or "")
+        if not wanted_title or not got:
+            return False
+        a, b = wanted_title.replace(" ", ""), got.replace(" ", "")
+        return (min(len(a), len(b)) >= 4 and (a in b or b in a)) \
+            or difflib.SequenceMatcher(None, a, b).ratio() >= 0.68
+
+    candidates = [item for item in candidates if same_title(item)]
     if artist.strip():
         candidates = [item for item in candidates
                       if artist_matches(

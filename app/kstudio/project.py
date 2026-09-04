@@ -463,7 +463,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
         lyr, engine = A.align(lyr, align_src, dur, align_engine,
                               whisper_model, language, device, log,
                               isolated=False, skip=holes)
-        if vocals and engine == "whisper":
+        if vocals and engine == "whisper" and not lyr.fixed_line_starts:
             A.refine_leading_silence(lyr, vocals, log=log)
             A.refine_uncertain_word_onsets(lyr, vocals, log=log)
         log(tr(f"Timing ready ({B.ENGINE_LABEL.get(engine, engine)}).",

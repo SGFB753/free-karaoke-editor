@@ -42,7 +42,8 @@ NOISE = re.compile(
         (?:official\s*|music\s*|the\s*)*
         (?:video|audio|lyrics?|lyric\s*video|visuali[sz]er|clip|mv|live|
            hd|hq|4k|8k|full\s*hd|remaster(?:ed)?(?:\s*\d{4})?|
-           audio\s*only|sound|explicit|cover|karaoke)
+           audio\s*only|sound|explicit|cover|karaoke|
+           prod(?:\s*(?:\.|by))?|feat(?:\.|uring)?|ft\.?)
         [^)\]]*[\)\]]""",
     re.I | re.X)
 

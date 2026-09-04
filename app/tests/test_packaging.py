@@ -100,9 +100,10 @@ def main():
         studio_source = f.read()
     check("Windows asks for the real Documents known folder",
           "SHGetFolderPathW" in project_source and "CSIDL_PERSONAL" in project_source)
-    check("only the frozen Windows app changes the default project home",
+    check("Windows source and frozen launches use KaraokeStudio/projects in Documents",
           'getattr(sys, "frozen", False) and os.name == "nt"' in studio_source
-          and 'not os.environ.get("KARAOKE_PROJECTS")' in studio_source)
+          and 'not os.environ.get("KARAOKE_PROJECTS")' in studio_source
+          and 'P.windows_library_root(), "projects"' in studio_source)
 
     # A portable-era library beside the EXE must survive a move to Documents,
     # including absolute source paths recorded inside project.json.
@@ -212,13 +213,27 @@ def main():
           and 'id="btnModelFolder"' in ui_html
           and "modelDeleteHint" in ui_source
           and "M.whisper_dir()" in studio_source)
-    check("a Studio.bat window does not inherit Python's taskbar identity",
-          studio.WA.APP_ID == "KaraokeStudio.Desktop"
+    check("a source window gets a dev taskbar identity",
+          studio.WA.app_id() == "KaraokeStudio.Desktop.Dev"
           and studio.set_windows_app_identity() == (os.name == "nt"))
     command, display, pin_icon = studio.WA.relaunch_details(studio.ROOT)
     check("pinning a source window relaunches Studio.bat rather than Python",
           (getattr(sys, "frozen", False) or command.endswith('Studio.bat"'))
           and display == "Karaoke Studio" and pin_icon.endswith("favicon.ico,0"))
+    old_frozen_id = getattr(studio.sys, "frozen", None)
+    try:
+        studio.sys.frozen = True
+        check("a frozen window gets the production taskbar identity",
+              studio.WA.app_id() == "KaraokeStudio.Desktop.App")
+        fcmd, fdis, ficon = studio.WA.relaunch_details(studio.ROOT)
+        check("pinning a frozen window relaunches the EXE, not Studio.bat",
+              not fcmd.endswith('Studio.bat"')
+              and fdis == "Karaoke Studio" and not ficon.endswith("favicon.ico,0"))
+    finally:
+        if old_frozen_id is None:
+            delattr(studio.sys, "frozen")
+        else:
+            studio.sys.frozen = old_frozen_id
 
     # Chrome/Edge remains a fallback for a Windows installation without the
     # WebView2 Runtime. The old server must own and close exactly that process.

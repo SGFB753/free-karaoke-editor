@@ -12,6 +12,29 @@ const post = async (path, body) => (await (await fetch(API + path, {method:'POST
   headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})).json());
 const get = async path => (await (await fetch(API + path)).json());
 
+console.log('--- the new-song player can seek through the chosen recording ---');
+const preview = await fetch(API + '/api/audio-preview?path=' +
+  encodeURIComponent(process.env.KARAOKE_SONG), {headers:{Range:'bytes=0-1023'}});
+const previewBytes = Buffer.from(await preview.arrayBuffer());
+ok('the preview endpoint honours a byte range', preview.status === 206 &&
+   previewBytes.length === 1024 && /^bytes 0-1023\//.test(preview.headers.get('content-range') || ''),
+   `${preview.status} / ${previewBytes.length} / ${preview.headers.get('content-range')}`);
+const notAudio = await fetch(API + '/api/audio-preview?path=' +
+  encodeURIComponent(process.env.KARAOKE_TEXT));
+ok('the preview endpoint refuses a text file', notAudio.status === 400, notAudio.status);
+const fsPreview = await import('fs');
+const osPreview = await import('os');
+const pathPreview = await import('path');
+const downloadedWebm = pathPreview.join(osPreview.tmpdir(),
+  'karaoke-downloaded-' + process.pid + '.webm');
+fsPreview.copyFileSync(process.env.KARAOKE_SONG, downloadedWebm);
+const webmPreview = await fetch(API + '/api/audio-preview?path=' +
+  encodeURIComponent(downloadedWebm), {headers:{Range:'bytes=0-511'}});
+ok('a downloaded WebM is accepted by the new-song player',
+   webmPreview.status === 206 && (await webmPreview.arrayBuffer()).byteLength === 512,
+   webmPreview.status);
+try{ fsPreview.unlinkSync(downloadedWebm); }catch(e){}
+
 async function finish(jid, seconds = 180){
   for (let i = 0; i < seconds * 2; i++){
     const j = await get('/api/job?id=' + jid);
@@ -32,8 +55,9 @@ if (timedOne){
      !/^\s*\[\d+:/.test(timedOne.text || ''), (timedOne.text || '').slice(0, 24));
   const lines = (timedOne.textTimed || '').split('\n').filter(Boolean);
   const pegs = lines.filter(l => /^\s*\[\d+:\d/.test(l));
-  ok('and the timed copy carries pegs', pegs.length > 0, pegs.slice(0, 2).join(' | '));
-  ok('sparse ones, not a stamp on every line', pegs.length < lines.length,
+  ok('and the timed copy carries its complete timing', pegs.length === lines.length,
+     pegs.slice(0, 2).join(' | '));
+  ok('there is a stamp on every sung line', pegs.length === lines.length,
      `${pegs.length} of ${lines.length}`);
 }
 
@@ -105,6 +129,41 @@ await p.evaluateOnNewDocument(id => {
 }, encodeURIComponent(pid));
 await p.goto(API + '/', {waitUntil:'networkidle0'});
 await sleep(700);
+await p.evaluate(audioPath => {
+  document.querySelector('#btnAdd').click();
+  const input = document.querySelector('#inAudio');
+  input.value = audioPath;
+  input.dispatchEvent(new Event('input', {bubbles:true}));
+  const box = document.querySelector('#lyricsFound');
+  box.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'one';
+  row.innerHTML = '<div class="t"><b>Stub Artist — Stub Song</b>' +
+    '<span>2 lines · LRCLIB · comes with a timing</span>' +
+    '<div class="first">First line</div></div>' +
+    '<div class="acts"><button class="pri">Take it with the timing</button>' +
+    '<button class="words-only">Use words only</button></div>';
+  box.appendChild(row);
+  box.classList.remove('hide');
+}, process.env.KARAOKE_SONG);
+await p.waitForSelector('#newAudioPreview:not(.hide) audio[src]', {timeout:10000});
+const newSongTools = await p.evaluate(() => {
+  const row = document.querySelector('#lyricsFound .one');
+  const buttons = [...row.querySelectorAll('button')];
+  const rr = row.getBoundingClientRect();
+  return {buttons: buttons.map(b => b.textContent.trim()),
+    inside: buttons.every(b => { const r=b.getBoundingClientRect();
+      return r.left >= rr.left - 1 && r.right <= rr.right + 1; }),
+    bounds: {row:[rr.left,rr.right], buttons:buttons.map(b => {
+      const r=b.getBoundingClientRect(); return [r.left,r.right]; })},
+    player: !!document.querySelector('#newAudioPreview audio[src]')};
+});
+ok('timed lyrics visibly offer both the marks and clean words',
+   newSongTools.buttons.length === 2 && newSongTools.inside,
+   JSON.stringify(newSongTools));
+ok('the chosen recording has a player on the new-song screen', newSongTools.player);
+await p.evaluate(() => document.querySelector('#btnBackNew').click());
+await sleep(300);
 await p.waitForSelector('.card', {timeout:20000});
 await p.evaluate(id => {
   const card = [...document.querySelectorAll('.card')].find(c => c.dataset.id === id);

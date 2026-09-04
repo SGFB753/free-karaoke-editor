@@ -10,7 +10,9 @@ let fail = 0;
 const ok = (n, c, e='') => { console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c) fail++; };
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disable-dev-shm-usage']});
+const b = await puppeteer.launch({headless:'new',
+  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+  args:['--no-sandbox','--disable-dev-shm-usage']});
 const p = await b.newPage();
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('dialog', d => d.dismiss());
@@ -81,6 +83,59 @@ async function panelOverToolbar(){
   });
 }
 
+async function formCentering(){
+  return p.evaluate(() => {
+    const list = document.querySelector('.screen:not(.hide) .list');
+    if (!list) return null;
+    const form = list.querySelector('.form');
+    const cards = list.querySelector('.cards');
+    const container = form || cards;
+    if (!container) return null;
+    const viewportCenter = document.documentElement.clientWidth / 2;
+    // Measure visible children, not the wrapper
+    const children = [...container.children].filter(e => {
+      const s = getComputedStyle(e);
+      return s.display !== 'none' && s.visibility !== 'hidden' &&
+             e.getBoundingClientRect().width > 0;
+    });
+    if (children.length === 0) return null;
+    let minX = Infinity, maxX = -Infinity;
+    for (const el of children) {
+      const r = el.getBoundingClientRect();
+      minX = Math.min(minX, r.left);
+      maxX = Math.max(maxX, r.right);
+    }
+    const contentCenter = (minX + maxX) / 2;
+    return Math.abs(contentCenter - viewportCenter);
+  });
+}
+
+// Inside .field: do the children start at the same left edge as .field itself?
+async function fieldInternals(){
+  return p.evaluate(() => {
+    const fields = document.querySelectorAll('.screen:not(.hide) .form .field');
+    const issues = [];
+    for (const field of fields) {
+      const fr = field.getBoundingClientRect();
+      const fieldCs = getComputedStyle(field);
+      const label = (field.querySelector('label') || {}).textContent || '';
+      const fieldLeft = fr.left;
+      for (const child of field.children) {
+        const r = child.getBoundingClientRect();
+        if (r.width === 0 || r.height === 0) continue;
+        const drift = Math.abs(r.left - fieldLeft);
+        if (drift > 1) {
+          issues.push(label.trim().slice(0,20) + ' child ' + (child.className || child.tagName).toString().slice(0,15) +
+                     ': field.left=' + fieldLeft.toFixed(1) +
+                     ' child.left=' + r.left.toFixed(1) +
+                     ' drift=' + drift.toFixed(1));
+        }
+      }
+    }
+    return {issues, fieldCount: fields.length};
+  });
+}
+
 await p.goto(API + '/', {waitUntil:'networkidle0'});
 await sleep(600);
 
@@ -90,6 +145,9 @@ for (const [w, h] of SIZES){
   await sleep(300);
   const o = await overflows();
   ok(`${w}×${h}: nothing runs off sideways`, o.page <= 1 && o.body <= 1, JSON.stringify(o));
+  const center = await formCentering();
+  ok(`${w}×${h}: the cards are centered in the viewport`, center !== null && center <= 1,
+     center !== null ? `offset ${center.toFixed(1)}px` : 'elements not found');
 }
 
 console.log('\n--- the screen for a new song ---');
@@ -106,6 +164,13 @@ for (const [w, h] of SIZES){
   ok(`${w}×${h}: the options do not lie on each other`, clash.length === 0, clash.join('; '));
   const tiny = await tinyControls('#scrNew');
   ok(`${w}×${h}: nothing is squeezed to a sliver`, tiny.length === 0, tiny.join('; '));
+  const center = await formCentering();
+  ok(`${w}×${h}: the form is centered in the viewport`, center !== null && center <= 1,
+     center !== null ? `offset ${center.toFixed(1)}px` : 'elements not found');
+  const fi = await fieldInternals();
+  ok(`${w}×${h}: field children align to field left edge`,
+     fi.issues.length === 0,
+     fi.issues.length > 0 ? fi.issues.join('; ') : `${fi.fieldCount} fields OK`);
 }
 
 console.log('\n--- the editor, where both bugs happened ---');
@@ -161,6 +226,53 @@ for (const [w, h] of SIZES){
   const tiny = await tinyControls('#scrEdit');
   ok(`${w}×${h}: nothing is squeezed to a sliver`, tiny.length === 0, tiny.join('; '));
 }
+
+console.log('\n--- background survives entering and leaving a project ---');
+await p.setViewport({width: 1366, height: 820});
+await sleep(200);
+// Go back to list
+await p.evaluate(() => {
+  const back = document.querySelector('#btnBack');
+  if (back) back.click();
+});
+await sleep(500);
+await p.waitForSelector('.card', {timeout:20000});
+const bgBase = await p.evaluate(() => {
+  const cs = getComputedStyle(document.body);
+  return {
+    background: cs.background,
+    backgroundColor: cs.backgroundColor,
+    backgroundImage: cs.backgroundImage,
+  };
+});
+// The list screen must have a gradient, not a flat colour
+ok('the list background is a gradient (not flat)',
+   bgBase.backgroundImage.includes('linear-gradient'),
+   `backgroundImage: ${bgBase.backgroundImage}`);
+ok('the list background uses the default CSS values',
+   bgBase.background.includes('10, 11, 20') && bgBase.background.includes('20, 24, 48'),
+   `background: ${bgBase.background}`);
+const bgBefore = bgBase;
+await p.click('.card');
+await p.waitForSelector('#scrEdit:not(.hide)', {timeout:20000});
+await sleep(800);
+await p.evaluate(() => {
+  const back = document.querySelector('#btnBack');
+  if (back) back.click();
+});
+await sleep(500);
+await p.waitForSelector('#scrList:not(.hide)', {timeout:20000});
+const bgAfter = await p.evaluate(() => {
+  const cs = getComputedStyle(document.body);
+  return {
+    background: cs.background,
+    backgroundColor: cs.backgroundColor,
+    backgroundImage: cs.backgroundImage,
+  };
+});
+ok('the background is the same after leaving the project',
+   bgBefore.background === bgAfter.background,
+   `before: ${bgBefore.backgroundColor} ${bgBefore.backgroundImage}, after: ${bgAfter.backgroundColor} ${bgAfter.backgroundImage}`);
 
 ok('no errors in the browser console', errs.length === 0, errs[0] || '');
 await b.close();
