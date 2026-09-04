@@ -1528,6 +1528,12 @@ You might also like
                 "[00:20.76] Горящее небо, как в страшном кино")
     real = L.parse(FL.timed({"syncedLyrics": real_lrc}))
     real_align_whisper = A.align_whisper
+    # The ordinary CI job deliberately has no neural dependencies installed.
+    # This regression replaces the aligner below, so give the feature check a
+    # harmless module stand-in rather than accidentally testing the runner's
+    # Python environment.
+    real_stable_whisper = sys.modules.get("stable_whisper")
+    sys.modules["stable_whisper"] = type(sys)("stable_whisper")
     def _early_whisper(lyrics, *args, **kwargs):
         # Reproduce the actual model result: it heard the first line at 17.140,
         # before LRCLIB's fixed 18.160 line boundary, but did find useful
@@ -1544,6 +1550,10 @@ You might also like
         real, real_engine = A.align(real, song, 26.0, engine="auto")
     finally:
         A.align_whisper = real_align_whisper
+        if real_stable_whisper is None:
+            sys.modules.pop("stable_whisper", None)
+        else:
+            sys.modules["stable_whisper"] = real_stable_whisper
     first = real.lines[0].to_json()
     check("real LRCLIB 18.16 is not moved back to 17.14",
           real_engine == "whisper" and first["start"] == 18.16
