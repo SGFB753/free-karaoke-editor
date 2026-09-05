@@ -112,6 +112,7 @@ WINDOW_LINKS = 0
 WINDOW_LINK_GENERATION = 0
 WINDOW_CLOSE_GRACE = 2.5
 UPDATE_FORCE_EXIT_GRACE = 4.0
+WINDOW_STATE_LOCK = threading.Lock()
 
 
 def window_link_opened() -> None:
@@ -832,6 +833,7 @@ class Handler(BaseHTTPRequestHandler):
                 if background_mode not in ("none", "cover", "video"):
                     background_mode = "cover"
                 opts = dict(align_engine=body.get("align", "auto"),
+                            strip_backing=bool(body.get("stripBacking", False)),
                             whisper_model=body.get("model", "small"),
                             language=body.get("lang", "auto"),
                             separate=bool(body.get("separate", True)),
@@ -1278,8 +1280,55 @@ def realign(folder: str, opts: dict, log) -> dict:
     from kstudio import lyrics as L
 
     data = P.load(folder)
-    # The text can be swapped: people re-split lines for easier singing after
-    # the first build, and that is no reason to redo everything.
+    removed_backing = 0
+    if opts.get("removeBacking"):
+        # Rebuild from what is currently visible in the editor, rather than
+        # from the original LRC, which would bring every backing line back.
+        # Timestamps are deliberately omitted for a completely fresh timing.
+        kept = []
+        out = []
+        last_section = None
+        for line in data.get("lines") or []:
+            section = str(line.get("section") or "").strip()
+            if section:
+                last_section = section
+            if line.get("backing"):
+                removed_backing += 1
+                continue
+            text = str(line.get("text") or "").strip()
+            clean = text
+            while re.search(r"\([^()]*\)", clean):
+                clean = re.sub(r"\([^()]*\)", " ", clean)
+            if clean != text:
+                clean = re.sub(r"\s+", " ", clean).strip()
+                removed_backing += 1
+            text = clean
+            if not text:
+                continue
+            if last_section:
+                out.append(f"[{last_section}]")
+            kept.append(dict(line, text=text, section=last_section))
+            last_section = None
+            # Preserve a genuine second lead voice; only backing is removed.
+            if int(line.get("voice") or 1) == 2:
+                text = "2: " + text
+            out.append(text)
+        if not removed_backing:
+            raise ValueError(tr("there are no backing-vocal lines to remove",
+                                "нет строк бэк-вокала для удаления"))
+        if not kept:
+            raise ValueError(tr("removing backing vocals would leave no lyrics",
+                                "после удаления бэк-вокала текст останется пустым"))
+        src = os.path.join(folder, "lyrics-without-backing.txt")
+        tmp = src + ".tmp"
+        with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+            f.write("\n".join(out) + "\n")
+        os.replace(tmp, src)
+        opts = dict(opts)
+        opts["lyrics"] = src
+        log(tr(f"Removed backing-vocal lines: {removed_backing}. Timing the lead lyrics again.",
+               f"Удалено строк бэк-вокала: {removed_backing}. Размечаю основной текст заново."))
+    # The text can be swapped without rebuilding the audio tracks.
     fresh = (opts.get("lyrics") or "").strip()
     if fresh:
         if not os.path.isfile(fresh):
@@ -1295,7 +1344,17 @@ def realign(folder: str, opts: dict, log) -> dict:
                 ". Pick a file with the “Other lyrics” button.",
                 "исходный файл с текстом не найден: " + str(src) +
                 ". Выберите файл кнопкой «Заменить текст»."))
-    lyr = L.load(src)
+    strip_backing = bool(opts.get("stripBacking", data.get("stripBacking", False)))
+    lyr = L.load(src, strip_backing=strip_backing)
+    if removed_backing:
+        # These are already edited, expanded project lines. Do not interpret
+        # their text as repeat directives or new section headings.
+        lyr.lines = [L.Line(text=line["text"], words=L._split_words(line["text"]),
+                            section=line.get("section"),
+                            voice=int(line.get("voice") or 1))
+                     for line in kept]
+        lyr.has_manual_times = False
+        lyr.fixed_line_starts = False
     if lyr.ignored_junk:
         log(tr(f"Removed {lyr.ignored_junk} recommendation lines copied from Genius.",
                f"Убрано строк из рекомендаций Genius: {lyr.ignored_junk}."))
@@ -1317,7 +1376,10 @@ def realign(folder: str, opts: dict, log) -> dict:
     # wander off across the song, because the model is only ever shown the
     # stretch between two pegs. The line itself is put back exactly afterwards.
     old_lines = data.get("lines") or []
-    if len(old_lines) == len(lyr.lines):
+    if strip_backing:
+        old_lines = [dict(ln, lock=False) if L.strip_round_brackets(ln.get("text", "")) != ln.get("text", "")
+                     else ln for ln in old_lines]
+    if not removed_backing and len(old_lines) == len(lyr.lines):
         pegs = 0
         for i, was_ln in enumerate(old_lines):
             if was_ln.get("lock"):
@@ -1351,9 +1413,16 @@ def realign(folder: str, opts: dict, log) -> dict:
         A.refine_uncertain_word_onsets(lyr, onset_audio, log=log)
     fresh = [ln.to_json() for ln in lyr.lines]
     # A line put right by hand outweighs anything a model returns for it.
-    P.keep_locked(data.get("lines") or [], fresh, log)
+    if not removed_backing:
+        P.keep_locked(old_lines, fresh, log)
+    else:
+        for original, aligned in zip(kept, fresh):
+            for key in ("voice", "keep", "keepSoft", "section"):
+                if key in original:
+                    aligned[key] = original[key]
     data["lines"] = fresh
     data["engine"] = engine
+    data["stripBacking"] = strip_backing
     data["noText"] = ", ".join(f"{a:.1f}-{b:.1f}" for a, b in holes)
     data["keepSpans"] = P.keep_spans(data)
     data["model"] = model
@@ -1372,7 +1441,8 @@ def realign(folder: str, opts: dict, log) -> dict:
     P.save(folder, data)
     log(tr("The timing has been recomputed.", "Разметка пересчитана."))
     return {"kind": "realign", "engine": engine,
-            "lines": len(lyr.lines), "was": was}
+            "lines": len(lyr.lines), "was": was,
+            "removedBacking": removed_backing}
 
 
 def offset_between(a: list, b: list, hop: float, limit: float = 12.0) -> float:
@@ -2313,13 +2383,49 @@ def schedule_update_shutdown(server, delay: float = 0.5):
     return timer
 
 
-def native_window_options(url: str) -> dict:
+def window_state_path() -> str:
+    """A tiny preference beside the visible user library, never beside the EXE."""
+    return os.path.join(os.path.dirname(PROJECTS), "window-state.json")
+
+
+def load_window_maximized(path: Optional[str] = None) -> bool:
+    """Start large until the person explicitly chooses an ordinary window."""
+    try:
+        with open(path or window_state_path(), encoding="utf-8") as f:
+            value = json.load(f).get("maximized")
+        return value if isinstance(value, bool) else True
+    except (OSError, ValueError, AttributeError):
+        return True
+
+
+def save_window_maximized(maximized: bool, path: Optional[str] = None) -> None:
+    target = path or window_state_path()
+    with WINDOW_STATE_LOCK:
+        try:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            tmp = target + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump({"maximized": bool(maximized)}, f)
+            os.replace(tmp, target)
+        except OSError:
+            # A preference must never prevent the application from opening.
+            pass
+
+
+def remember_window_mode(window) -> None:
+    """Persist maximize/restore buttons exposed by every pywebview backend."""
+    window.events.maximized += lambda: save_window_maximized(True)
+    window.events.restored += lambda: save_window_maximized(False)
+
+
+def native_window_options(url: str, maximized: Optional[bool] = None) -> dict:
     """One place for the native window's visible and interaction settings."""
     return {
         "title": tr("Karaoke Studio", "Караоке-студия"),
         "url": url,
         "width": 1280,
         "height": 860,
+        "maximized": load_window_maximized() if maximized is None else maximized,
         "min_size": (900, 620),
         "background_color": "#080a14",
         # Lyrics are edited and selected directly in the page. pywebview
@@ -2360,6 +2466,7 @@ def run_desktop_window(server, url: str) -> None:
             if window is None:
                 raise RuntimeError("pywebview did not create a window")
             DESKTOP_NATIVE_WINDOW = window
+            remember_window_mode(window)
 
             def close_when_server_stops():
                 worker.join()
@@ -2383,7 +2490,12 @@ def run_desktop_window(server, url: str) -> None:
         except Exception:
             # WebView2 Runtime can be absent on stripped-down Windows images.
             # A usable Studio is more important than a native title-bar there.
-            traceback.print_exc()
+            details = traceback.format_exc()
+            print(details, file=sys.stderr)
+            # A packaged GUI executable has no visible stderr. Preserve the
+            # managed WebView/.NET exception where the existing error screen
+            # and the user can find it after the browser fallback opens.
+            save_error(details)
             DESKTOP_NATIVE_WINDOW = None
             open_window(url)
             worker.join()

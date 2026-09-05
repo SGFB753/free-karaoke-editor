@@ -45,6 +45,13 @@ def main():
           'icon=os.path.join(APP, "packaging", "KaraokeStudio.ico")' in spec
           and icon_header[:4] == b"\x00\x00\x01\x00"
           and int.from_bytes(icon_header[4:6], "little") >= 6)
+    manifest_path = os.path.join(ROOT, "packaging", "KaraokeStudio.manifest")
+    with open(manifest_path, encoding="utf-8") as f:
+        manifest = f.read()
+    check("the Windows EXE follows each monitor's DPI without losing its WebView",
+          'manifest=os.path.join(APP, "packaging", "KaraokeStudio.manifest")' in spec
+          and "PerMonitorV2,PerMonitor" in manifest
+          and "true/pm" in manifest)
     check("the packaged browser window carries taskbar-size icons",
           '"icon-32.png"' in spec and '"favicon.ico"' in spec
           and os.path.isfile(os.path.join(ROOT, "kstudio", "icon-32.png"))
@@ -54,7 +61,6 @@ def main():
         requirements = f.read()
     check("Windows releases include the native WebView2 shell",
           "pywebview>=6.0,<7" in requirements)
-
     build_path = os.path.join(ROOT, "packaging", "build-windows.ps1")
     with open(build_path, encoding="utf-8-sig") as f:
         build_script = f.read()
@@ -98,6 +104,9 @@ def main():
         project_source = f.read()
     with open(os.path.join(ROOT, "studio.py"), encoding="utf-8") as f:
         studio_source = f.read()
+    check("a silent native-window failure leaves a readable error report",
+          "details = traceback.format_exc()" in studio_source
+          and "save_error(details)" in studio_source)
     check("Windows asks for the real Documents known folder",
           "SHGetFolderPathW" in project_source and "CSIDL_PERSONAL" in project_source)
     check("Windows source and frozen launches use KaraokeStudio/projects in Documents",
@@ -196,9 +205,23 @@ def main():
     finally:
         studio.threading.Timer = old_timer
 
-    options = studio.native_window_options("http://127.0.0.1:8770/")
+    options = studio.native_window_options("http://127.0.0.1:8770/", maximized=True)
     check("the native window permits selecting and editing lyrics",
           options["text_select"] is True and options["min_size"] == (900, 620))
+    check("a new native window opens maximized", options["maximized"] is True)
+    state_path = os.path.join(tempfile.mkdtemp(prefix="karaoke-window-state-"),
+                              "window-state.json")
+    try:
+        check("a missing window preference defaults to maximized",
+              studio.load_window_maximized(state_path) is True)
+        studio.save_window_maximized(False, state_path)
+        check("choosing windowed mode is remembered",
+              studio.load_window_maximized(state_path) is False)
+        studio.save_window_maximized(True, state_path)
+        check("maximized mode is remembered too",
+              studio.load_window_maximized(state_path) is True)
+    finally:
+        shutil.rmtree(os.path.dirname(state_path), ignore_errors=True)
     with open(os.path.join(ROOT, "kstudio", "studio.html"), encoding="utf-8") as f:
         ui_html = f.read()
     with open(os.path.join(ROOT, "kstudio", "ui.js"), encoding="utf-8") as f:
@@ -208,6 +231,9 @@ def main():
           and 'id="btnTranscribe"' in ui_html
           and "T.transcribeReview" in ui_source
           and '$("inLyrics").value = ""' in ui_source)
+    check("the audio preview sits between found lyrics and their editable text",
+          ui_html.index('id="lyricsFound"') < ui_html.index('id="newAudioPreview"')
+          < ui_html.index('id="pasteBox"'))
     check("people can find and safely remove downloaded Whisper models",
           "/api/models/open-folder" in studio_source
           and 'id="btnModelFolder"' in ui_html
@@ -223,10 +249,13 @@ def main():
     old_frozen_id = getattr(studio.sys, "frozen", None)
     try:
         studio.sys.frozen = True
-        check("a frozen window gets the production taskbar identity",
-              studio.WA.app_id() == "KaraokeStudio.Desktop.App")
+        check("a frozen window keeps the EXE's natural taskbar identity",
+              studio.WA.uses_explicit_identity() is False)
+        check("a frozen EXE does not override its natural taskbar identity",
+              studio.WA.set_process_identity() is True
+              and studio.WA.set_window_identity(None, studio.ROOT) is True)
         fcmd, fdis, ficon = studio.WA.relaunch_details(studio.ROOT)
-        check("pinning a frozen window relaunches the EXE, not Studio.bat",
+        check("the frozen relaunch description still names the EXE",
               not fcmd.endswith('Studio.bat"')
               and fdis == "Karaoke Studio" and not ficon.endswith("favicon.ico,0"))
     finally:

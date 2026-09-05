@@ -107,6 +107,7 @@ exe = EXE(
     name="KaraokeStudio", debug=False, bootloader_ignore_signals=False,
     strip=False, upx=False, console=False, disable_windowed_traceback=False,
     icon=os.path.join(APP, "packaging", "KaraokeStudio.ico"),
+    manifest=os.path.join(APP, "packaging", "KaraokeStudio.manifest"),
 )
 coll = COLLECT(
     exe, a.binaries, a.datas, strip=False, upx=False,

@@ -127,6 +127,11 @@ ok('Space after changing volume starts playback',
 ok('the button applies the original to the sound immediately',
    !vocalGain || vocalGain.value > 0.95,
    vocalGain ? String(vocalGain.value) : 'no separate vocal in this fixture');
+ok('the preview uses the edited line bounds without hidden padding',
+   /if \(ln\.start <= t && t < ln\.end\) best = Math\.max\(best, lvl\)/.test(js) &&
+   !/const pad = humanAt/.test(js));
+ok('and no longer bridges the trimmed gap to another kept line',
+   !/bridge = Math\.max\(bridge/.test(js));
 ok('the line is marked', doc.querySelectorAll('#scroll .ln')[1].classList.contains('keep'));
 ok('it shows on the timeline too',
    doc.querySelectorAll('#blocks .blk')[1].classList.contains('keep'));

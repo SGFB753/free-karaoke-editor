@@ -393,10 +393,10 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
            title: Optional[str] = None, artist: Optional[str] = None,
            source_title: Optional[str] = None,
            cover: Optional[str] = None, cover_bg: bool = False,
-           title_set: bool = False,
+           title_set: bool = False, strip_backing: bool = False,
            log: Log = _noop) -> str:
     """Build a project. Returns the path to its folder."""
-    lyr = L.load(lyrics_path)
+    lyr = L.load(lyrics_path, strip_backing=strip_backing)
     if lyr.ignored_junk:
         log(tr(f"Removed {lyr.ignored_junk} recommendation lines copied from Genius.",
                f"Убрано строк из рекомендаций Genius: {lyr.ignored_junk}."))
@@ -506,6 +506,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             "model": whisper_model,
             "source_audio": local_audio,
             "source_lyrics": local_lyrics,
+            "stripBacking": strip_backing,
             "source_title": (source_title or "").strip()
                             or os.path.splitext(os.path.basename(audio_path))[0],
             "created": time.time(),

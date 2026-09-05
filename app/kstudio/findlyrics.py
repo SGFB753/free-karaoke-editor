@@ -21,6 +21,7 @@ from html.parser import HTMLParser
 import urllib.error
 import urllib.parse
 import urllib.request
+import time
 
 from . import __version__
 from .i18n import tr
@@ -28,6 +29,7 @@ from .i18n import tr
 BASE = (os.environ.get("KARAOKE_LYRICS_API") or "https://lrclib.net").rstrip("/")
 GENIUS_BASE = (os.environ.get("KARAOKE_GENIUS_URL") or "https://genius.com").rstrip("/")
 TIMEOUT = int(os.environ.get("KARAOKE_LYRICS_TIMEOUT") or 12)
+REQUEST_ATTEMPTS = 2
 LRCLIB_SOURCE = "LRCLIB"
 GENIUS_SOURCE = "Genius"
 SOURCE = "LRCLIB / Genius"
@@ -44,6 +46,47 @@ class LyricsError(RuntimeError):
 
 def _clean_name(value: str) -> str:
     return " ".join(re.findall(r"[\w]+", (value or "").casefold(), re.UNICODE))
+
+
+def title_variants(value: str) -> list[str]:
+    """Useful, conservative search spellings for a title from a media page.
+
+    The untouched value stays first.  Every destructive cleanup is merely an
+    additional query, so a real title containing punctuation is never lost.
+    """
+    original = re.sub(r"\s+", " ", (value or "").replace("_", " ")).strip()
+    variants = []
+
+    def add(candidate):
+        candidate = re.sub(r"\s+", " ", candidate or "").strip(" -–—_|/")
+        if candidate and _clean_name(candidate) and candidate not in variants:
+            variants.append(candidate)
+
+    add(original)
+    add(re.sub(r"\s*(?://+|[|\u2022])\s*.*$", "", original))
+    add(re.sub(r"\s*[\[(][^)\]]*[)\]]\s*$", "", original))
+    add(re.sub(
+        r"\s*(?:[-–—]|//+|[|\u2022])\s*(?:official(?:\s+music)?\s+video|"
+        r"official\s+audio|lyrics?|lyric\s+video|visuali[sz]er|clip|\u043a\u043b\u0438\u043f|"
+        r"album|\u0430\u043b\u044c\u0431\u043e\u043c|single|\u0441\u0438\u043d\u0433\u043b)\b.*$",
+        "", original, flags=re.I))
+    # Apply the bracket cleanup to already shortened forms too.
+    for candidate in list(variants):
+        add(re.sub(r"\s*[\[(][^)\]]*[)\]]\s*$", "", candidate))
+    return variants
+
+
+def title_matches(wanted: str | list[str], got: str) -> bool:
+    variants = title_variants(wanted) if isinstance(wanted, str) else wanted
+    b = _clean_name(got).replace(" ", "")
+    if not b:
+        return False
+    for variant in variants:
+        a = _clean_name(variant).replace(" ", "")
+        if min(len(a), len(b)) >= 4 and ((a in b or b in a)
+                or difflib.SequenceMatcher(None, a, b).ratio() >= 0.68):
+            return True
+    return False
 
 
 def _artist_parts(name):
@@ -139,20 +182,28 @@ def _ask(path: str, params: dict) -> list:
         # LRCLIB asks callers to name themselves, and it is only fair.
         "User-Agent": f"KaraokeStudio/{__version__} (open source karaoke maker)",
     })
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-            data = json.load(r)
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return []
-        raise LyricsError(tr(f"{LRCLIB_SOURCE} answered with {e.code}",
-                             f"{LRCLIB_SOURCE} ответил кодом {e.code}"))
-    except (urllib.error.URLError, OSError) as e:
-        raise LyricsError(tr(f"could not reach {LRCLIB_SOURCE}: {e.reason if hasattr(e, 'reason') else e}",
-                             f"не достучаться до {LRCLIB_SOURCE}: {e.reason if hasattr(e, 'reason') else e}"))
-    except ValueError:
-        raise LyricsError(tr(f"{LRCLIB_SOURCE} answered with something that is not a list of songs",
-                             f"{LRCLIB_SOURCE} ответил не списком песен"))
+    for attempt in range(REQUEST_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                data = json.load(r)
+            break
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return []
+            if attempt + 1 < REQUEST_ATTEMPTS and e.code in (408, 425, 429, 500, 502, 503, 504):
+                time.sleep(0.25)
+                continue
+            raise LyricsError(tr(f"{LRCLIB_SOURCE} answered with {e.code}",
+                                 f"{LRCLIB_SOURCE} ответил кодом {e.code}"))
+        except (urllib.error.URLError, OSError) as e:
+            if attempt + 1 < REQUEST_ATTEMPTS:
+                time.sleep(0.25)
+                continue
+            raise LyricsError(tr(f"could not reach {LRCLIB_SOURCE}: {e.reason if hasattr(e, 'reason') else e}",
+                                 f"не достучаться до {LRCLIB_SOURCE}: {e.reason if hasattr(e, 'reason') else e}"))
+        except ValueError:
+            raise LyricsError(tr(f"{LRCLIB_SOURCE} answered with something that is not a list of songs",
+                                 f"{LRCLIB_SOURCE} ответил не списком песен"))
     return data if isinstance(data, list) else [data]
 
 
@@ -166,15 +217,22 @@ def _search_lrclib(track: str, artist: str, duration: float, limit: int) -> list
     if not track:
         raise LyricsError(tr("There is no song name to look for.",
                              "Нет названия песни, по которому искать."))
-    params = {"track_name": track}
-    if artist.strip():
-        params["artist_name"] = artist.strip()
-    found = _ask("/api/search", params)
-    if not found and artist.strip():
-        # The artist from the video tags can be a channel name; without it the
-        # library often finds the song anyway.
-        found = _ask("/api/search", {"q": track})
+    variants = title_variants(track)
+    found, seen_queries = [], set()
+    for title in variants:
+        queries = [{"track_name": title, **({"artist_name": artist.strip()}
+                                            if artist.strip() else {})}]
+        if artist.strip():
+            queries.append({"q": f"{artist.strip()} {title}"})
+        queries.append({"q": title})
+        for params in queries:
+            key = tuple(sorted(params.items()))
+            if key in seen_queries:
+                continue
+            seen_queries.add(key)
+            found.extend(_ask("/api/search", params))
     out = []
+    seen_records = set()
     for item in found:
         words = plain(item)
         if not words:
@@ -182,6 +240,12 @@ def _search_lrclib(track: str, artist: str, duration: float, limit: int) -> list
         found_artist = item.get("artistName") or ""
         if artist.strip() and not artist_matches(artist, found_artist):
             continue
+        if not title_matches(variants, item.get("trackName") or ""):
+            continue
+        record_key = (item.get("trackName"), found_artist, item.get("duration"), words)
+        if record_key in seen_records:
+            continue
+        seen_records.add(record_key)
         # The same words with the library's complete line times, when it has
         # them: the window offers that and words-only as separate choices.
         timed_text = timed(item)
@@ -274,18 +338,25 @@ def _genius_get(url: str, accept: str) -> bytes:
         "Accept": accept,
         "Referer": GENIUS_BASE + "/",
     })
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as response:
-            return response.read()
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return b""
-        raise LyricsError(tr(f"{GENIUS_SOURCE} answered with {e.code}",
-                             f"{GENIUS_SOURCE} ответил кодом {e.code}"))
-    except (urllib.error.URLError, OSError) as e:
-        why = e.reason if hasattr(e, "reason") else e
-        raise LyricsError(tr(f"could not reach {GENIUS_SOURCE}: {why}",
-                             f"не достучаться до {GENIUS_SOURCE}: {why}"))
+    for attempt in range(REQUEST_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as response:
+                return response.read()
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return b""
+            if attempt + 1 < REQUEST_ATTEMPTS and e.code in (408, 425, 429, 500, 502, 503, 504):
+                time.sleep(0.25)
+                continue
+            raise LyricsError(tr(f"{GENIUS_SOURCE} answered with {e.code}",
+                                 f"{GENIUS_SOURCE} ответил кодом {e.code}"))
+        except (urllib.error.URLError, OSError) as e:
+            if attempt + 1 < REQUEST_ATTEMPTS:
+                time.sleep(0.25)
+                continue
+            why = e.reason if hasattr(e, "reason") else e
+            raise LyricsError(tr(f"could not reach {GENIUS_SOURCE}: {why}",
+                                 f"не достучаться до {GENIUS_SOURCE}: {why}"))
 
 
 def genius_page(url: str) -> str:
@@ -299,9 +370,9 @@ def genius_page(url: str) -> str:
 
 def search_genius(track: str, artist: str = "", limit: int = 5) -> list:
     candidates, seen = [], set()
-    simple_track = re.sub(r"\s*[\[(][^)\]]*[)\]]", "", track).strip()
+    variants = title_variants(track)
     queries = []
-    for title in (track.strip(), simple_track):
+    for title in variants:
         # Genius search is surprisingly sensitive to collaboration spelling:
         # “A X B title” can return nothing while the title alone finds the
         # exact page. Query both forms, then apply the artist filter below.
@@ -329,7 +400,7 @@ def search_genius(track: str, artist: str = "", limit: int = 5) -> list:
                 seen.add(page)
                 candidates.append(item)
 
-    wanted_title, wanted_artist = _clean_name(track), _clean_name(artist)
+    wanted_title, wanted_artist = _clean_name(variants[-1]), _clean_name(artist)
 
     def relevance(item: dict):
         primary = item.get("primary_artist") or {}
@@ -349,12 +420,7 @@ def search_genius(track: str, artist: str = "", limit: int = 5) -> list:
     # translated/suffixed spelling of the requested title, but never offer a
     # different song merely because its performer is correct.
     def same_title(item: dict) -> bool:
-        got = _clean_name(item.get("title") or "")
-        if not wanted_title or not got:
-            return False
-        a, b = wanted_title.replace(" ", ""), got.replace(" ", "")
-        return (min(len(a), len(b)) >= 4 and (a in b or b in a)) \
-            or difflib.SequenceMatcher(None, a, b).ratio() >= 0.68
+        return title_matches(variants, item.get("title") or "")
 
     candidates = [item for item in candidates if same_title(item)]
     if artist.strip():

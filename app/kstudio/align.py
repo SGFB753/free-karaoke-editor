@@ -841,7 +841,9 @@ def refine_leading_silence(lyrics: Lyrics, vocal_audio: str,
         return 0
 
     fixed = 0
-    for ln in lyrics.lines:
+    for line_index, ln in enumerate(lyrics.lines):
+        if line_index in lyrics.fixed_line_indices:
+            continue
         if ln.backing or not ln.words:
             continue
         first = ln.words[0]
@@ -901,6 +903,8 @@ def refine_uncertain_word_onsets(lyrics: Lyrics, vocal_audio: str,
 
     fixed = 0
     for line_index, ln in enumerate(lyrics.lines):
+        if line_index in lyrics.fixed_line_indices:
+            continue
         ws = ln.words
         # Whisper often hears a short opening conjunction only after its
         # vowel has developed ("И, уходя" is a common shape). Look behind at
@@ -1699,7 +1703,8 @@ def enforce_marks(lyrics: Lyrics, skip, duration: float, log: Log = _noop) -> in
     return moved
 
 
-def place_backing(lyrics: Lyrics, duration: float, log: Log = _noop) -> int:
+def place_backing(lyrics: Lyrics, duration: float, log: Log = _noop,
+                  indices=None) -> int:
     """Put the backing lines where backing is sung: with their lead, not after.
 
     The aligner is linear — it looks for the na-na-na BETWEEN the lead lines,
@@ -1712,6 +1717,8 @@ def place_backing(lyrics: Lyrics, duration: float, log: Log = _noop) -> int:
     lines = lyrics.lines
     placed = 0
     for i, ln in enumerate(lines):
+        if indices is not None and i not in indices:
+            continue
         if not ln.backing or not ln.words:
             continue
         j = i - 1
@@ -1725,12 +1732,23 @@ def place_backing(lyrics: Lyrics, duration: float, log: Log = _noop) -> int:
             k += 1
         nxt = lines[k].start if k < len(lines) else duration
         if ln.tail:
-            t0, t1 = lead.start, lead.end            # a duet with its own line
+            # Without recognition a bracketed tail is only an approximation,
+            # not evidence that one syllable lasts as long as the whole lead.
+            want = min(1.2, max(0.3, ln.syllables * 0.22))
+            if nxt - lead.end >= 0.25:
+                t0, t1 = lead.end, min(nxt, lead.end + want)
+            else:
+                t1 = min(nxt, lead.end)
+                t0 = max(lead.start, t1 - want)
         else:
             t0 = lead.end
             room = max(nxt - t0, 0.0)
-            want = max(_SUNG_PER_SYLLABLE * _syl(ln), 0.8)
-            t1 = t0 + (min(room, want) if room > 0.3 else want)
+            want = min(1.2, max(0.3, ln.syllables * 0.22))
+            if room >= 0.25:
+                t1 = t0 + min(room, want)
+            else:
+                t1 = min(nxt, lead.end)
+                t0 = max(lead.start, t1 - want)
         _spread(ln.words, t0, max(t1 - 0.05, t0 + 0.3))
         ln.start, ln.end = ln.words[0].start, ln.words[-1].end
         placed += 1
@@ -1876,8 +1894,8 @@ def align_anchored(lyrics: Lyrics, audio_path: str, duration: float,
                    isolated: bool = False, skip=None) -> Lyrics:
     """Align a song whose text carries a few times of its own.
 
-    “[2:27] Remember this day” in the lyrics file says: this line is sung about
-    here. It is not a timing — it is a peg. The song is aligned between pegs:
+    “[2:27] Remember this day” in the lyrics file fixes that line at 2:27 and
+    also acts as a peg. The song is aligned between pegs:
     each stretch of text is shown only the audio between its own two, so a line
     cannot wander into a vocalise three minutes away, which is the one thing
     the model does that no repair can undo.
@@ -1937,13 +1955,12 @@ def align_anchored(lyrics: Lyrics, audio_path: str, duration: float,
             ln.start = ln.end = None
             for w in ln.words:
                 w.start = w.end = None
-        # Library LRC times are useful landmarks, not sample-accurate truth.
-        # Some releases put every timestamp on the first strong syllable, up
-        # to about a second after the singer actually enters. Let Whisper hear
-        # a short lead-in and decide the real word boundary. The following peg
-        # still closes this stretch, so a line cannot drift through the song.
-        # Loudness fallback keeps the hard peg: without recognised words the
-        # overlap would be a guess rather than a correction.
+        # Let Whisper hear a short lead-in so it can recognise a clipped first
+        # syllable and recover useful rhythm inside the line. The explicit
+        # start itself is restored below; the following peg closes the stretch,
+        # so neither the fixed line nor its neighbours can drift through the
+        # song. Loudness fallback starts at the peg because there are no
+        # recognised words whose rhythm could benefit from the overlap.
         hear_from = max(0.0, t0 - 1.5) if have_whisper else t0
         if have_whisper and out and out[-1].end is not None:
             # Do not mistake the tail of the preceding, already recognised
@@ -1971,6 +1988,19 @@ def align_anchored(lyrics: Lyrics, audio_path: str, duration: float,
     _fill_lines(lyrics, duration)
     repair_order(lyrics, log=log)
     repair_ragged(lyrics, log=log)
+    # Whisper may use a short lead-in to understand a phrase, but a time the
+    # person supplied is not merely a search hint. Restore every explicit line
+    # boundary after the general repairs; unmarked lines retain their inferred
+    # word rhythm between these anchors.
+    fixed_indices = {i for i, _ in pegs}
+    for i, fixed in pegs:
+        limit = next((ln.start for ln in lyrics.lines[i + 1:]
+                      if ln.start is not None and not ln.backing), duration)
+        _pin_one_line_start(lyrics.lines[i], fixed, limit, duration)
+    place_backing(lyrics, duration, log,
+                  indices={i for i, ln in enumerate(lyrics.lines)
+                           if ln.tail and i not in fixed_indices})
+    lyrics.fixed_line_indices = fixed_indices
     return lyrics
 
 
@@ -1978,8 +2008,140 @@ def align(lyrics: Lyrics, audio_path: str, duration: float, engine: str = "auto"
           model_name: str = "medium", language: str = "ru",
           device: Optional[str] = None, log: Log = _noop,
           isolated: bool = False, skip=None) -> tuple:
+    lyrics, used = _align_main(lyrics, audio_path, duration, engine, model_name,
+                               language, device, log, isolated=isolated, skip=skip)
+    if used == "whisper" and any(ln.backing for ln in lyrics.lines):
+        align_backing_audio(lyrics, audio_path, duration, model_name, device, log,
+                            skip=skip)
+    return lyrics, used
+
+
+def align_backing_audio(lyrics, audio_path, duration, model_name, device=None,
+                        log=_noop, skip=None):
+    """Align each backing independently in a short window around its lead."""
+    from copy import deepcopy
+    from . import audio as AU, lang as LG
+    backs = [(i, ln) for i, ln in enumerate(lyrics.lines)
+             if ln.backing and ln.words and not ln.lock]
+    if not backs:
+        return
+    # Guessed placement must remain visibly uncertain if recognition fails.
+    for _, ln in backs:
+        for word in ln.words:
+            word.prob = 0.0
+    try:
+        import numpy as np
+        import stable_whisper
+        pcm = AU.read_pcm_mono(audio_path, 16000)
+        audio = np.frombuffer(pcm.tobytes(), dtype="<i2").astype("float32") / 32768.0
+        model = stable_whisper.load_model(model_name, device=device)
+    except Exception as exc:
+        log(tr(f"Backing vocals need manual checking: {exc}",
+               f"Бэки нужно проверить вручную: {exc}"))
+        return
+    holes = spans(skip, duration)
+    for count, (i, ln) in enumerate(backs, 1):
+        lead = next((x for x in reversed(lyrics.lines[:i])
+                     if not x.backing and x.start is not None), None)
+        following = next((x for x in lyrics.lines[i + 1:]
+                          if not x.backing and x.start is not None), None)
+        lo = max(0.0, (lead.start if lead else ln.start or 0.0) - 0.2)
+        hi = min(duration, following.start if following else lo + 8.0, lo + 12.0)
+        # Do not stitch across wordless spans: absolute offsets stay exact.
+        windows = keep_windows(holes, duration) if holes else [(0.0, duration)]
+        windows = [(max(lo, a), min(hi, b)) for a, b in windows
+                   if min(hi, b) - max(lo, a) >= 0.15]
+        # One search per continuous audio window. Retrying a narrower gap
+        # doubled inference for weak ad-libs without improving recognition.
+        best = None
+        log(tr(f"Backing vocals {count}/{len(backs)}: {ln.text}",
+               f"Бэк {count}/{len(backs)}: {ln.text}"))
+        for a, b in windows:
+            try:
+                result = model.align(audio[int(a * 16000):int(b * 16000)],
+                                     ln.text.strip("() "), language=LG.detect(ln.text),
+                                     original_split=True, verbose=False, fast_mode=True)
+                rec = [(normalize_token(w.word), float(w.start) + a,
+                        float(w.end) + a, getattr(w, "probability", None))
+                       for seg in (result.segments if result else [])
+                       for w in (seg.words or []) if normalize_token(w.word)]
+                words = deepcopy(ln.words)
+                for word in words:
+                    word.start = word.end = word.prob = None
+                matched = _apply_recognized(words, rec) if rec else 0
+                if matched < 0.99 or any(w.start is None or w.end is None
+                                        or w.prob is None for w in words):
+                    continue
+                confidence = sum(w.prob for w in words) / len(words)
+                length = words[-1].end - words[0].start
+                if (confidence < 0.45 or min(w.prob for w in words) < 0.1
+                        or not 0.12 <= length <= max(1.2, ln.syllables * 0.5)
+                        or any(w.end <= w.start or w.start < a or w.end > b
+                               for w in words)
+                        or any(x.end > y.start + 0.05 for x, y in zip(words, words[1:]))):
+                    continue
+                if best is None or confidence > best[0]:
+                    best = confidence, words
+                break
+            except Exception as exc:
+                log(tr(f"Backing recognition failed: {exc}",
+                       f"Не удалось распознать бэк: {exc}"))
+        if best:
+            ln.words = best[1]
+            ln.start, ln.end = ln.words[0].start, ln.words[-1].end
+        else:
+            # Always bound an unrecognised ad-lib, including dense verses
+            # with no gap. Otherwise the old whole-lead guess survives.
+            if windows:
+                a, b = windows[-1]
+                end = min(b, lead.end) if lead and lead.end is not None else b
+                start = max(a, end - min(1.2, max(0.3, ln.syllables * 0.22)))
+                if end > start:
+                    _spread(ln.words, start, end)
+                    ln.start, ln.end = start, end
+            if lead and lead.end is not None and hi - lead.end >= 0.25:
+                # Even an uncertain fallback need not stretch across the
+                # lead when there is a real, bounded gap after it.
+                gap = next(((max(lead.end, a), b) for a, b in windows
+                            if b - max(lead.end, a) >= 0.25), None)
+                if gap:
+                    a, b = gap
+                    b = min(b, a + max(0.4, ln.syllables * 0.22))
+                    _spread(ln.words, a, b)
+                    ln.start, ln.end = a, b
+            log(tr("Backing timing is approximate — check it in the editor.",
+                   "Время бэка приблизительное — проверьте его в редакторе."))
+
+
+def _align_main(lyrics: Lyrics, audio_path: str, duration: float, engine: str = "auto",
+          model_name: str = "medium", language: str = "ru",
+          device: Optional[str] = None, log: Log = _noop,
+          isolated: bool = False, skip=None) -> tuple:
     """Returns (lyrics, engine_used)."""
     timed = sum(1 for ln in lyrics.lines if ln.start is not None)
+    # A tail split from a timed LRC line has no independent timestamp.
+    # It must not turn an otherwise complete LRC into dozens of anchored
+    # Whisper jobs. Align the timed lines together, then attach these backs
+    # to the final lead bounds.
+    untimed_backs = {i for i, ln in enumerate(lyrics.lines)
+                     if ln.backing and ln.start is None}
+    if (lyrics.has_manual_times and timed and untimed_backs
+            and timed + len(untimed_backs) == len(lyrics.lines)):
+        original = lyrics.lines
+        kept_indices = [i for i in range(len(original)) if i not in untimed_backs]
+        from copy import copy
+        lead = copy(lyrics)
+        lead.lines = [original[i] for i in kept_indices]
+        lead, used = align(lead, audio_path, duration, engine, model_name,
+                           language, device, log, isolated=isolated, skip=skip)
+        for i, ln in zip(kept_indices, lead.lines):
+            original[i] = ln
+        lyrics.lines = original
+        lyrics.fixed_line_starts = lead.fixed_line_starts
+        lyrics.fixed_line_indices = {kept_indices[i]
+                                    for i in lead.fixed_line_indices}
+        place_backing(lyrics, duration, log, indices=untimed_backs)
+        return lyrics, used
     if lyrics.has_manual_times and timed == len(lyrics.lines):
         # A synced library knows the exact beginning of every line, but not
         # the words inside it. Keep those line starts immutable and let
@@ -1992,6 +2154,7 @@ def align(lyrics: Lyrics, audio_path: str, duration: float, engine: str = "auto"
                 align_whisper(lyrics, audio_path, duration, model_name,
                               language, device, log, isolated=isolated,
                               skip=skip)
+                starts = _refine_ready_starts(lyrics, starts, log)
                 _pin_line_starts(lyrics, starts, duration)
                 lyrics.fixed_line_starts = True
                 return lyrics, "whisper"
@@ -2082,28 +2245,167 @@ def _pin_line_starts(lyrics: Lyrics, starts: List[float], duration: float) -> No
 
     Whisper may place the whole phrase a little before or after the library's
     stamp. Translate its word timings to the fixed start; if that would cross
-    the next fixed line, compress the rhythm just enough to stay inside it.
+    the next fixed line, close false pauses and shorten held tails before using
+    whole-phrase compression.
     Thus ``line.start`` and the first ``word.start`` can never disagree.
     """
     for i, (ln, fixed) in enumerate(zip(lyrics.lines, starts)):
-        limit = starts[i + 1] if i + 1 < len(starts) else duration
-        limit = max(fixed + 0.02, min(float(limit), duration))
-        words = ln.words
-        valid = (words and words[0].start is not None
-                 and words[-1].end is not None
-                 and words[-1].end > words[0].start)
-        if not valid:
-            ln.start, ln.end = fixed, limit
-            _spread(words, fixed, limit)
+        limit = next((starts[j] for j in range(i + 1, len(starts))
+                      if not lyrics.lines[j].backing), duration)
+        _pin_one_line_start(ln, fixed, limit, duration)
+    lyrics.fixed_line_indices = set(range(min(len(lyrics.lines), len(starts))))
+
+
+def _refine_ready_starts(lyrics: Lyrics, starts: List[float],
+                         log: Log = _noop) -> List[float]:
+    """Correct small, credible LRC offsets without trusting Whisper jumps.
+
+    Synced libraries are commonly late by a few hundred milliseconds, while a
+    repeated verse can make forced alignment miss by seconds. One confident
+    first word may adjust its line by 80--450 ms; a larger block shift up to two
+    seconds needs three nearby confident lines to agree. Less certain lines may
+    inherit that local consensus. Sparse/manual pegs do not use this function.
+    """
+    if len(starts) != len(lyrics.lines):
+        return starts
+    observed: List[Optional[float]] = [None] * len(starts)
+    offsets: List[Optional[float]] = [None] * len(starts)
+    may_inherit = [True] * len(starts)
+    for i, (ln, fixed) in enumerate(zip(lyrics.lines, starts)):
+        if not ln.words or ln.words[0].start is None:
             continue
-        raw_start, raw_end = words[0].start, words[-1].end
-        shifted_end = fixed + (raw_end - raw_start)
-        scale = min(1.0, (limit - fixed) / max(shifted_end - fixed, 1e-6))
-        for word in words:
-            a = fixed + (word.start - raw_start) * scale
-            b = fixed + (word.end - raw_start) * scale
-            word.start = min(max(a, fixed), limit)
-            word.end = min(max(b, word.start + 0.01), limit)
-        words[0].start = fixed
-        ln.start = fixed
-        ln.end = min(max(words[-1].end, fixed + 0.02), limit)
+        prob = ln.words[0].prob
+        delta = float(ln.words[0].start) - float(fixed)
+        if prob is not None and prob >= 0.55:
+            may_inherit[i] = False
+            if abs(delta) <= 2.0:
+                observed[i] = delta
+            if 0.08 <= abs(delta) <= 0.45:
+                offsets[i] = delta
+
+    refined = list(map(float, starts))
+    changed = 0
+    for i, fixed in enumerate(starts):
+        correction = offsets[i]
+        # A whole verse can be shifted in an otherwise useful LRC. Three
+        # nearby confident onsets agreeing within 180 ms are strong evidence
+        # of a block offset, even when it is larger than the safe per-line
+        # limit. A lone one-second jump still looks like a repeated phrase and
+        # remains blocked.
+        nearby_observed = [(j, observed[j]) for j in range(max(0, i - 3),
+                                                           min(len(starts), i + 4))
+                           if observed[j] is not None and abs(observed[j]) >= 0.08]
+        clusters = []
+        for _, centre in nearby_observed:
+            cluster = [(j, x) for j, x in nearby_observed if abs(x - centre) <= 0.18]
+            if len(cluster) >= 3:
+                clusters.append(cluster)
+        if clusters:
+            cluster = max(clusters, key=lambda c: (len(c), -max(x for _, x in c)
+                                                    + min(x for _, x in c)))
+            own = observed[i]
+            # A confident line which contradicts the neighbours is an anchor,
+            # not a hole to smear the block correction through.
+            if own is None or any(j == i for j, _ in cluster):
+                vals = sorted(x for _, x in cluster)
+                correction = vals[len(vals) // 2]
+        if correction is None and may_inherit[i]:
+            nearby = [offsets[j] for j in range(max(0, i - 2),
+                                                 min(len(starts), i + 3))
+                      if offsets[j] is not None]
+            if len(nearby) >= 2 and all(x * nearby[0] > 0 for x in nearby):
+                ordered = sorted(nearby)
+                median = ordered[len(ordered) // 2]
+                if max(nearby) - min(nearby) <= 0.18:
+                    correction = median
+        if correction is None:
+            continue
+        candidate = float(fixed) + correction
+        lower = refined[i - 1] + 0.02 if i else 0.0
+        upper = float(starts[i + 1]) - 0.02 if i + 1 < len(starts) else candidate
+        candidate = max(lower, min(candidate, upper))
+        if abs(candidate - float(fixed)) >= 0.04:
+            refined[i] = candidate
+            changed += 1
+    if changed:
+        log(tr(f"  ready line starts refined from confident vocals: {changed}",
+               f"  начал строк из готовой разметки уточнено по уверенному вокалу: {changed}"))
+    return refined
+
+
+def _pin_one_line_start(ln, fixed: float, limit: float, duration: float) -> None:
+    """Translate one line's recognised word rhythm onto an explicit start."""
+    fixed = max(0.0, min(float(fixed), duration))
+    limit = max(fixed + 0.02, min(float(limit), duration))
+    words = ln.words
+    valid = (words and words[0].start is not None
+             and words[-1].end is not None
+             and words[-1].end > words[0].start)
+    if not valid:
+        ln.start, ln.end = fixed, limit
+        _spread(words, fixed, limit)
+        return
+    raw_start, raw_end = words[0].start, words[-1].end
+    shifted_end = fixed + (raw_end - raw_start)
+    for word in words:
+        word.start = fixed + (word.start - raw_start)
+        word.end = fixed + (word.end - raw_start)
+
+    overflow = shifted_end - limit
+    if overflow > 1e-6:
+        # A neighbouring LRC mark can be a little too early.  Scaling the whole
+        # phrase used to make every syllable unnaturally fast.  Preserve the
+        # recognised onsets for as long as possible: consume pauses first, then
+        # shorten held word tails from right to left.  Uniform compression is a
+        # last resort only for genuinely impossible intervals.
+        overflow = _close_word_gaps(words, overflow)
+        overflow = _shorten_word_tails(words, overflow)
+        if overflow > 1e-6:
+            span = max(words[-1].end - fixed, 1e-6)
+            scale = max(0.01, (span - overflow) / span)
+            for word in words:
+                word.start = fixed + (word.start - fixed) * scale
+                word.end = fixed + (word.end - fixed) * scale
+
+    for word in words:
+        word.start = min(max(word.start, fixed), limit)
+        word.end = min(max(word.end, word.start + 0.01), limit)
+    words[0].start = fixed
+    ln.start = fixed
+    ln.end = min(max(words[-1].end, fixed + 0.02), limit)
+
+
+def _close_word_gaps(words: List[Word], overflow: float) -> float:
+    """Remove silence between words, starting at the end of the phrase."""
+    for i in range(len(words) - 2, -1, -1):
+        gap = max(0.0, words[i + 1].start - words[i].end)
+        take = min(gap, overflow)
+        if take <= 0:
+            continue
+        for later in words[i + 1:]:
+            later.start -= take
+            later.end -= take
+        overflow -= take
+        if overflow <= 1e-6:
+            break
+    return max(0.0, overflow)
+
+
+def _shorten_word_tails(words: List[Word], overflow: float) -> float:
+    """Fit a tight LRC interval without speeding up the whole phrase."""
+    for i in range(len(words) - 1, -1, -1):
+        duration = max(0.0, words[i].end - words[i].start)
+        # Keep a readable syllable onset. Long held vowels can surrender more
+        # time than short consonants; no word is collapsed below 80 ms.
+        floor = min(duration, max(0.08, duration * 0.35))
+        take = min(max(0.0, duration - floor), overflow)
+        if take <= 0:
+            continue
+        words[i].end -= take
+        for later in words[i + 1:]:
+            later.start -= take
+            later.end -= take
+        overflow -= take
+        if overflow <= 1e-6:
+            break
+    return max(0.0, overflow)

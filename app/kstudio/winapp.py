@@ -10,18 +10,19 @@ import uuid
 from ctypes import wintypes
 
 
-def app_id() -> str:
-    """Return a process-specific taskbar identity.
+def uses_explicit_identity() -> bool:
+    """Only a source launch needs help escaping the python.exe taskbar group.
 
-    Frozen (production) and source (dev) builds must never share an ID:
-    Windows groups taskbar pins by AppUserModelId, so sharing one would
-    let a pinned Studio.bat overwrite a frozen EXE's relaunch command.
+    A frozen EXE already has the correct natural Windows identity. Giving all
+    copies of that EXE one explicit ID makes an installed copy collide with a
+    previously run dist/portable copy; it also cannot group with an ordinary
+    shortcut made by dragging the EXE to the taskbar.
     """
-    return (
-        "KaraokeStudio.Desktop.App"
-        if getattr(sys, "frozen", False)
-        else "KaraokeStudio.Desktop.Dev"
-    )
+    return not getattr(sys, "frozen", False)
+
+
+def app_id() -> str:
+    return "KaraokeStudio.Desktop.Dev"
 
 
 _APP_FMTID = "9f4c2855-9f79-4b39-a8d0-e1d42de1d5f3"
@@ -56,6 +57,8 @@ def _guid(value: str) -> _GUID:
 
 def set_process_identity() -> bool:
     """Separate Studio.bat from the python.exe group before any UI exists."""
+    if not uses_explicit_identity():
+        return True
     if os.name != "nt":
         return False
     try:
@@ -99,6 +102,10 @@ def _window_handle(window, timeout: float = 5.0) -> int:
 
 def set_window_identity(window, root: str) -> bool:
     """Tell taskbar pinning how to relaunch the Studio, not python.exe."""
+    # Let a packaged EXE use its path-based shell identity. Then a shortcut
+    # created from that exact EXE and its running window are the same app.
+    if not uses_explicit_identity():
+        return True
     if os.name != "nt":
         return False
     hwnd = _window_handle(window)

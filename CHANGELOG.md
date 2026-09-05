@@ -7,6 +7,87 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.48.2
+
+**Optional automatic backing removal before alignment.** “Remove text in
+round brackets” lives in New song and Other lyrics, defaults to on and remembers
+the choice. Square-bracket headings and remaining LRC timestamps survive;
+the original lyrics file is retained.
+
+Short backing vocals use stable-ts fast mode with one search covering both
+the lead and its following gap, removing the redundant retry. Unrecognised ad-libs
+receive short approximate bounds even in dense verses without gaps.
+
+Backing vocals are aligned independently against short audio windows around
+their lead, supporting both overlapping and trailing vocals without stretching
+them across the lead line. Uncertain matches retain approximate timing and
+low confidence for manual review.
+When a gap follows the lead, approximate backing is kept short inside that gap.
+
+Fixed lead lines collapsing to 20 ms when an overlapping backing vocal was
+used as their end boundary. Ready LRC with split backing tails now uses one
+Whisper pass instead of processing every timed interval separately.
+
+
+**Backing-vocal notation now works in ready-timed LRC too.** A fully bracketed
+line and a bracketed tail are recognised exactly as they are in plain lyrics,
+automatically use the second voice, and carry a visible `BACK` badge on the
+timeline. Tiny same-voice timestamp overlaps under 200 ms are now treated as a
+normal line hand-off in both the player and MP4, preventing two lines from
+briefly lighting at once; real overlaps keep a stable two-row layout.
+
+**Ready-made LRC and Whisper now correct each other's small timing errors.** A
+confident vocal onset may refine a library timestamp by 80–450 ms, and two
+nearby agreeing lines can carry that correction across one doubtful line.
+When three nearby confident lines agree, Studio also corrects a consistently
+shifted verse by up to two seconds. Isolated large Whisper jumps and uncertain
+repeated phrases still leave the library mark untouched. When a phrase reaches
+past the next timestamp, Studio removes false
+inter-word pauses and shortens held tails before compressing the whole line.
+This preserves natural word rhythm and reduces manual corrections.
+
+**Explicit timestamps are now binding in partly timed lyrics too.** When only
+some lines carry times, those starts stay exact while Whisper aligns the lines
+and words between them. Vocal-onset refinement cannot move an explicitly timed
+line either. The conservative hybrid refinement above applies only to fully
+synced LRC, while plain lyrics remain entirely Whisper-timed.
+
+**“Original” and “Original (quiet)” now follow edited line bounds exactly.**
+Hidden quarter-second padding and short-gap bridging have been removed: after a
+phrase is trimmed, the removed audio is no longer heard in either the editor or
+the MP4. Quiet-original lines also render like ordinary lyrics, without the
+special “sing along with the original” caption.
+
+**Split now follows the playback cursor.** It cuts the line sounding at the
+current moment on the nearest word boundary. When the cursor is in a gap, it
+retains the previous fallback of splitting the selected line at its longest
+internal pause.
+
+**The window opens maximized by default.** If the user switches it to windowed
+mode, that choice is restored on the next launch. The new-song audio player now
+sits between the search results and the selected lyrics text, making its timing
+easier to verify.
+
+**Lyrics search no longer depends on a perfectly clean video title.** LRCLIB
+and Genius now receive several safe query variants: with and without the
+artist, brackets, video/album labels, and catalogue suffixes after `//`, `|`
+or `•`. Title and artist validation still rejects unrelated namesakes. A
+regression test covers the real title
+`Bumble Beezy — Шестерёнка // Альбом: 111111`.
+Timed results in the “Other lyrics” dialog can also be opened as clean words
+so Whisper can rebuild faulty library timing.
+Temporary LRCLIB and Genius network failures are retried automatically instead
+of requiring a second press of the search button.
+
+**Pinning the packaged EXE to the Windows taskbar is fixed.** Windows once again
+binds its icon to the application's actual path. An installed copy therefore
+cannot inherit a stale relaunch command from a build under `dist`, and a shortcut
+pinned by dragging the EXE groups with its open window instead of making a
+second icon. The window also declares full per-monitor DPI support so WebView2
+does not freeze or close while moving between displays with different scaling.
+If the native window still fails to start, its error is now preserved in
+`projects/last-error.txt` while Studio continues in the regular browser.
+
 ## 4.48.1
 
 **Ready LRC timing is now kept exactly when it is selected.** Every library

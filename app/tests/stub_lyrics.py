@@ -15,6 +15,8 @@ WORDS = ("the first line of the stub\nthe second line of the stub\n"
 
 
 class Handler(BaseHTTPRequestHandler):
+    flaky_calls = 0
+
     def log_message(self, *a):
         pass
 
@@ -35,13 +37,16 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/search/multi":
             want = (q.get("q") or [""])[0].lower()
             hits = []
-            if "genius only" in want or "stub song" in want:
+            clean_gear = "\u0448\u0435\u0441\u0442\u0435\u0440\u0451\u043d\u043a\u0430" in want and "\u0430\u043b\u044c\u0431\u043e\u043c" not in want
+            if "genius only" in want or "stub song" in want or "packed song" in want or clean_gear:
                 host = self.headers.get("Host")
                 hits = [{"type": "song", "result": {
-                    "title": "Genius Only" if "genius only" in want else "Stub Song",
+                    "title": ("Genius Only" if "genius only" in want else
+                              "\u0428\u0435\u0441\u0442\u0435\u0440\u0451\u043d\u043a\u0430" if clean_gear else
+                              "Packed Song" if "packed song" in want else "Stub Song"),
                     "url": f"http://{host}/stub-genius-lyrics",
-                    "primary_artist": {"name": "Fallback Artist" if "genius only" in want
-                                       else "Stub Artist"}}}]
+                    "primary_artist": {"name": ("Fallback Artist" if "genius only" in want
+                                       else "Bumble Beezy" if clean_gear else "Stub Artist")}}}]
             body = {"response": {"sections": [{"type": "song", "hits": hits}]}}
             data = json.dumps(body).encode("utf-8")
             self.send_response(200)
@@ -53,8 +58,24 @@ class Handler(BaseHTTPRequestHandler):
         if u.path != "/api/search":
             return self.send_error(404)
         want = (q.get("track_name") or q.get("q") or [""])[0].lower()
-        if "nothing" in want or "genius only" in want:
+        if "retry once" in want:
+            type(self).flaky_calls += 1
+            if type(self).flaky_calls == 1:
+                return self.send_error(503)
+            body = [{"trackName": "Retry Once", "artistName": "Stub Artist",
+                     "duration": 21, "plainLyrics": WORDS}]
+            return self._json(body)
+        clean_gear = "\u0448\u0435\u0441\u0442\u0435\u0440\u0451\u043d\u043a\u0430" in want and "\u0430\u043b\u044c\u0431\u043e\u043c" not in want
+        if "nothing" in want or "genius only" in want or ("\u0448\u0435\u0441\u0442\u0435\u0440\u0451\u043d\u043a\u0430" in want and not clean_gear):
             body = []
+        elif clean_gear:
+            body = [{"trackName": "\u0428\u0435\u0441\u0442\u0435\u0440\u0451\u043d\u043a\u0430", "artistName": "Bumble Beezy",
+                     "duration": 215.761, "plainLyrics": WORDS}]
+        elif "packed song" in want:
+            body = [{"trackName": "Packed Song", "artistName": "Stub Artist",
+                     "duration": 21, "plainLyrics": WORDS,
+                     "syncedLyrics": "\n".join(
+                         f"[00:0{i}.00] " + ln for i, ln in enumerate(WORDS.splitlines()))}]
         else:
             body = [
                 # a record with no words at all: it must never be offered
@@ -69,6 +90,14 @@ class Handler(BaseHTTPRequestHandler):
                  "syncedLyrics": "\n".join(
                      f"[00:0{i}.00] " + ln for i, ln in enumerate(WORDS.splitlines()))},
             ]
+        data = json.dumps(body).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _json(self, body):
         data = json.dumps(body).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")

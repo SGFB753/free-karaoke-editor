@@ -197,12 +197,26 @@
   .row:hover{background:rgba(255,255,255,.08)}
   .row .ic{width:18px; text-align:center; opacity:.75}
   .row .sz{margin-left:auto; font-size:0.7812rem; color:var(--muted)}
+  .row.found2{display:grid; grid-template-columns:18px minmax(180px,1fr) auto auto;
+    gap:10px; align-items:center}
+  .row.found2 .nm{min-width:0; white-space:nowrap; overflow:hidden;
+    text-overflow:ellipsis}
+  .row.found2 .sz{margin-left:0; white-space:nowrap}
+  .row.found2 .acts{display:flex; gap:6px; margin-left:4px}
+  .row.found2 .acts button{font-size:0.75rem; padding:.42rem .65rem;
+    white-space:nowrap; min-width:0}
+  .row.found2 .acts .words-only{color:var(--muted)}
   .browser .foot{padding:10px 12px; border-top:1px solid var(--line); display:flex; gap:8px}
   /* Ordinary files are chosen by the operating system now.  The compact
      dialog remains only for the useful extras: pasted/found lyrics and URLs. */
-  .browser.compact{height:auto; max-height:min(70vh,620px)}
+  .browser.compact{width:min(900px,94vw); height:auto; max-height:min(70vh,620px)}
   .browser.compact .top{display:none}
   .browser.compact .body{min-height:0; max-height:38vh}
+  @media (max-width:720px){
+    .row.found2{grid-template-columns:18px minmax(0,1fr) auto}
+    .row.found2 .sz{grid-column:2; grid-row:2}
+    .row.found2 .acts{grid-column:3; grid-row:1 / span 2}
+  }
 
   /* ---------- progress ---------- */
   .joblog{font-family:ui-monospace,Consolas,monospace; font-size:0.8125rem; color:var(--muted);
@@ -282,6 +296,9 @@
     margin-left:.5em; opacity:.8; white-space:nowrap; font-style:normal}
   .blk.v2{border-style:dashed; background:rgba(255,138,209,.2);
     border-color:rgba(255,138,209,.6); color:#ffd7ee}
+  .blk .backbadge{display:inline-block; margin-right:5px; padding:0 4px;
+    border:1px solid currentColor; border-radius:4px; font-size:9px;
+    line-height:14px; letter-spacing:.06em; vertical-align:1px}
   /* Four swatches in a row read as one set. A label and a divider say which
      pair is responsible for what. */
   /* the darkness knob dresses like a colour pick, but it is not one: the
@@ -578,10 +595,6 @@
           <button id="btnFetch" data-t="fetchGo">Take the sound</button>
         </div>
         <div class="hint" id="linkNote"></div>
-        <div class="audio-preview hide" id="newAudioPreview">
-          <audio id="newAudioPlayer" controls preload="metadata"></audio>
-          <span class="clock" id="newAudioClock">0:00.000 / 0:00.000</span>
-        </div>
       </div>
       <div class="field">
         <label data-t="fileLyrics">Lyrics file</label>
@@ -593,6 +606,10 @@
         </div>
         <div class="hint" id="lyricsNote"></div>
         <div class="found hide" id="lyricsFound"></div>
+        <div class="audio-preview hide" id="newAudioPreview">
+          <audio id="newAudioPlayer" controls preload="metadata"></audio>
+          <span class="clock" id="newAudioClock">0:00.000 / 0:00.000</span>
+        </div>
         <div class="hide" id="pasteBox">
           <textarea id="taLyrics" data-tp="pastePh" placeholder="One line of the song per line. Repeats written out as many times as they are sung."></textarea>
           <div class="opts" style="margin-top:8px">
@@ -600,6 +617,9 @@
             <button id="btnPasteHide" data-t="hideText">Hide</button>
             <span class="hint" id="pasteCount"></span>
           </div>
+        </div>
+        <div class="opts" style="margin-top:8px">
+          <label class="knob"><input type="checkbox" id="chkStripBacking" checked> <span data-t="stripBacking">Remove text in round brackets</span></label>
         </div>
       </div>
       <div class="field">
@@ -762,7 +782,7 @@
       <button id="btnAddLine" data-tt="addLineHint" data-t="addLine"
               title="Insert a line after the selected one — if it was missing from the lyrics">＋ line</button>
       <button id="btnSplit" data-tt="splitHint" data-t="splitLine"
-              title="Cut the selected line in two where the singing pauses longest">⤸ Split</button>
+              title="Cut the line under the playhead at the nearest word boundary">⤸ Split</button>
       <button id="btnJoin" data-tt="joinHint" data-t="joinLine"
               title="Join the selected line with the one after it">⤹ Join</button>
       <button id="btnDelLine" data-tt="delLineHint" data-t="delLine"
@@ -904,6 +924,7 @@
       <input id="brPath" readonly>
     </div>
     <div class="brpaste hide" id="brPaste">
+      <label class="knob"><input type="checkbox" id="brStripBacking" checked> <span data-t="stripBacking">Remove text in round brackets</span></label>
       <textarea id="brPasteText" data-tp="pastePh"
         placeholder="One line of the song per line. Repeats written out as many times as they are sung."></textarea>
       <div class="opts">

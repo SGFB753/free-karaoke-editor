@@ -30,7 +30,12 @@ const nth = async i => (await proj()).lines[i];
 console.log('--- a line is cut where the singing pauses ---');
 const was = await lineCount();
 const first = before.lines[0];
-await p.click('#scroll .ln');                 // select the first line
+// Put the playhead inside line 1, then deliberately leave line 2 selected.
+// Split must follow the heard place, not that stale selection.
+const firstBlock = await (await p.$$('#blocks .blk'))[0].boundingBox();
+const timeline = await (await p.$('#tlwrap')).boundingBox();
+await p.mouse.click(firstBlock.x + firstBlock.width * .55, timeline.y + 4);
+await (await p.$$('#blocks .blk'))[1].click();
 await sleep(200);
 await p.click('#btnSplit');
 await sleep(500);
@@ -40,6 +45,8 @@ const now = await proj();
 ok('the song on disk has it too', now.lines.length === before.lines.length + 1,
    now.lines.length);
 const a0 = now.lines[0], a1 = now.lines[1];
+ok('the line under the playhead wins over a stale selected line',
+   now.lines[2].text === before.lines[1].text, now.lines.slice(0,3).map(l=>l.text).join(' | '));
 ok('the halves together say what the line said',
    (a0.text + ' ' + a1.text).replace(/\s+/g, ' ').trim() === first.text.trim(),
    `${a0.text} | ${a1.text}`);
@@ -398,6 +405,7 @@ const litLines = await p.$$eval('#scroll .ln', els =>
 const fills = await p.$$eval('#scroll .ln',
   els => els.slice(0, 2).map(e =>
     [...e.querySelectorAll('.hl')].filter(h => parseFloat(h.style.width) > 0).length));
+const backBadge = await p.$eval('#blocks .blk.back .backbadge', e => e.textContent.trim());
 // play on into the gap: the wait pill must aim at the next LEAD, not at the
 // backing na-na-na sitting in the middle of it
 await sleep(4300);                       // ~7.5 s in: lead over, gap running
@@ -409,6 +417,7 @@ ok('the wait pill aims at the next lead, not the backing',
    !/на-на|na-na|\(/.test(waitTxt), waitTxt);
 ok('and the words of both are filling', fills[0] > 0 && fills[1] > 0,
    JSON.stringify(fills));
+ok('the backing block is named explicitly on the timeline', backBadge === 'БЭК', backBadge);
 
 ok('no errors in the browser console', errs.length === 0, errs[0] || '');
 await b.close();

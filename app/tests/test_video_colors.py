@@ -310,10 +310,7 @@ def main():
     check("and the one after that is present but fainter",
           0 < next2b < nextb, f"{next2b} vs {nextb}")
 
-    print("\nThe quiet keep says so beside the line; the loud one stays silent")
-    # “Sing along with the original” stands at the top right while a quiet
-    # kept line is sung; a full-voice kept line gets no caption — the voice
-    # itself says whose line it is.
+    print("\nKept lines look like ordinary lyrics in the video")
     def tag_line(text, a, b):
         return {"text": text, "start": a, "end": b, "voice": 1,
                 "words": [{"w": text, "t": a, "d": b - a, "s": 1}]}
@@ -341,9 +338,9 @@ def main():
         return sum(1 for y in range(int(Ht * 0.28), int(Ht * 0.40))
                    for x in range(int(Wt * 0.55), Wt, 2)
                    if sum(imt.getpixel((x, y))) > 90)
-    check("the sing-along caption stands beside the quiet kept line",
-          corner_ink(3.0) > 15, corner_ink(3.0))
-    check("and a full-voice kept line carries no caption",
+    check("the quiet kept line carries no special caption",
+          corner_ink(3.0) == 0, corner_ink(3.0))
+    check("and neither does a full-voice kept line",
           corner_ink(9.5) == 0, corner_ink(9.5))
 
     print("\nSyllables read as one word in the frame")

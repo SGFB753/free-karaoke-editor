@@ -81,8 +81,9 @@
   .ln.v2 .w .hl{color:var(--accent-2)}
   /* Two voices at once stay in the same centred seats they occupied in the
      preview. Number and colour distinguish them without a sideways jump. */
-  .ln.duo{transform:none !important; transition:transform .25s, margin .25s}
-  .ln.duo.cur{opacity:1}
+  .ln.pair{transform:none !important; transition:transform .25s, margin .25s}
+  .ln.pair.cur{opacity:1}
+  .ln.pair:not(.duo){text-align:center; padding-left:6vw; padding-right:6vw}
   .ln.duo:not(.v2),.ln.duo.v2{text-align:center; padding-left:6vw; padding-right:6vw}
   .ln.duo::before{content:"1"; font-size:.42em; font-weight:700; opacity:.55;
     vertical-align:middle; margin-right:.5em; color:var(--accent)}
@@ -538,7 +539,7 @@ function build(){
 
 /* ---------- the sync loop ---------- */
 let curIdx = -1, raf = 0, pipLine = -1, pipCount = 0, shownTarget = -2;
-let wasDuo = false;
+let wasPair = false, wasDuo = false;
 function currentTime(){ return mediaTime() - offset; }
 
 function findLine(t){
@@ -564,33 +565,45 @@ function tick(){
 
   // Voices sometimes overlap: the main one still holds while the backing has
   // come in. Every line sounding now is shown, not just the “current” one.
-  const act = new Set();
-  if (!tapping){
-    for (let i = 0; i < lines.length; i++)
-      if (lines[i].start <= t && t < lines[i].end) act.add(i);
+  const act = new Set(idx >= 0 ? [idx] : []);
+  if (!tapping && idx >= 0){
+    for (let i = 0; i < lines.length; i++){
+      if (i === idx || !(lines[i].start <= t && t < lines[i].end)) continue;
+      const differentVoice = (lines[i].voice === 2) !== (lines[idx].voice === 2);
+      const overlap = Math.min(lines[i].end, lines[idx].end)
+                    - Math.max(lines[i].start, lines[idx].start);
+      // A frame or two of rounding overlap is an ordinary hand-off. Only a
+      // different voice, or a visible 200 ms runover of the same voice, earns
+      // a second active seat. This is the same threshold used by MP4 export.
+      if (differentVoice || (Math.abs(i - idx) === 1 && overlap >= .20)) act.add(i);
+    }
   }
-  if (idx >= 0) act.add(idx);
 
-  // Different voices sound at once — so they must be pulled apart.
+  // Different voices receive numbered duet seats. A long same-voice runover
+  // uses the same stable two-seat layout without pretending there are singers
+  // 1 and 2.
   const voices = new Set([...act].map(i => lines[i].voice === 2 ? 2 : 1));
-  const duo = act.size > 1 && voices.size > 1;
+  const pair = act.size > 1;
+  const duo = pair && voices.size > 1;
 
-  if (idx !== curIdx || duo !== wasDuo){
+  if (idx !== curIdx || pair !== wasPair || duo !== wasDuo){
     lineEls.forEach((L, i) => {
       L.el.className = "ln" + (lines[i].backing ? " back" : "")
         + (lines[i].voice === 2 ? " v2" : "")
         + (lines[i].keep ? " keep" : "")
+        + (pair && act.has(i) ? " pair" : "")
         + (duo && act.has(i) ? " duo" : "")
         + (act.has(i) ? " cur" : i < idx ? " done" : i === idx + 1 ? " next" : "");
       if (i !== idx || tapping) L.hls.forEach(h => { h.style.width = "0"; });
     });
     curIdx = idx;
+    wasPair = pair;
     wasDuo = duo;
     // className above was rewritten wholesale, target tag included — ask for a
     // redraw, or the underline disappears on every line
     shownTarget = -2;
     // Show both lines at once: centre on the middle of the pair.
-    centerLine(idx, duo ? [...act] : null);
+    centerLine(idx, pair ? [...act] : null);
   }
   refreshTarget();
 

@@ -43,6 +43,7 @@ def run(args, **kw):
 
 
 def main():
+    check_remove_backing()
     print("Launchers and file names")
     # The root holds only the everyday things: install, open, read.
     for name in ("Install.bat", "install.command", "Studio.bat", "studio.command",
@@ -574,9 +575,16 @@ def check_video(tmp):
                    {"start": 8.6, "end": 9.6, "keep": True, "keepSoft": True}]}}
     spans = video.keep_spans(payload)
     P0 = video.KEEP_PAD
-    check("the stretches with the original were found, each with its loudness",
-          spans == [(5.0 - P0, 8.0 + P0, 1.0),
-                    (8.6 - P0, 9.6 + P0, video.SOFT_KEEP)], str(spans))
+    check("the stretches with the original use the edited bounds exactly",
+          P0 == 0 and spans == [(5.0, 8.0, 1.0),
+                                (8.6, 9.6, video.SOFT_KEEP)], str(spans))
+    clipped = {"data": {"lines": [
+        {"start": 5.0, "end": 6.25, "keep": True, "words": [{"w": "x"}]},
+        {"start": 7.0, "end": 8.0, "keep": True, "words": [{"w": "y"}]},
+    ]}}
+    check("a hand-trimmed original is neither padded nor bridged",
+          video.keep_spans(clipped) == [(5.0, 6.25, 1.0), (7.0, 8.0, 1.0)],
+          str(video.keep_spans(clipped)))
     wav = video.extract_audio(payload, os.path.join(tmp, "page.html"), tmp, "minus")
     loud_in = rms(wav, 5.5, 7.5, 660.0)
     loud_out = rms(wav, 1.5, 2.5, 660.0)
@@ -594,6 +602,81 @@ def check_video(tmp):
     description = probe.stderr.decode(errors="replace")
     check("the standalone MP3 is really encoded at 320 kbit/s",
           "320 kb/s" in description, description[-300:])
+
+
+def check_remove_backing():
+    """Exercise the real re-time transaction without downloading a model."""
+    from unittest.mock import patch
+    from contextlib import ExitStack
+    from kstudio import project as P, lyrics as L, align as A
+    import studio
+
+    with tempfile.TemporaryDirectory(prefix="karaoke-remove-backing-") as folder:
+        source = os.path.join(folder, "original.lrc")
+        with open(source, "w", encoding="utf-8") as f:
+            f.write("[00:18.16] Original lead (echo)\n[00:22.00] Second lead\n")
+        initial = {
+            "title": "Song", "artist": "Artist", "model": "medium",
+            "duration": 40, "source_lyrics": source,
+            "lines": [
+                {"text": "(echo)", "backing": True, "section": "Verse",
+                 "start": 18.16, "end": 20, "lock": True},
+                {"text": "Edited (quiet (echo)) lead", "voice": 1,
+                 "start": 20, "end": 22, "lock": True},
+                {"text": "Second lead", "voice": 2, "keep": True, "keepSoft": True,
+                 "start": 22, "end": 24},
+            ],
+        }
+        P.save(folder, initial)
+        seen = []
+
+        def align(lyr, audio, duration, engine, model, *args, **kwargs):
+            seen.append(lyr)
+            check("removing backing uses current edited words",
+                  [l.text for l in lyr.lines] == ["Edited lead", "Second lead"])
+            check("removing backing discards LRC and locked timing before alignment",
+                  not lyr.has_manual_times and not lyr.fixed_line_starts
+                  and all(l.start is None for l in lyr.lines))
+            check("removing backing keeps the selected model", model == "medium")
+            for i, line in enumerate(lyr.lines):
+                line.start, line.end = 3 + i * 4, 6 + i * 4
+                for j, word in enumerate(line.words):
+                    word.start = line.start + j * 0.5
+                    word.end = word.start + 0.5
+            return lyr, "energy"
+
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(studio, "timing_audio", return_value=("audio", False)))
+            stack.enter_context(patch.object(studio, "vocal_timing_audio", return_value=None))
+            stack.enter_context(patch.object(studio.AU, "ensure_on_path"))
+            mock_align = stack.enter_context(patch.object(A, "align", side_effect=RuntimeError("model failed")))
+            try:
+                studio.realign(folder, {"removeBacking": True}, lambda _: None)
+            except RuntimeError:
+                pass
+            check("failed backing removal leaves the project intact", P.load(folder) == initial)
+            with open(source, encoding="utf-8") as f:
+                check("failed backing removal leaves the source intact", "(echo)" in f.read())
+            mock_align.side_effect = align
+            result = studio.realign(folder, {"removeBacking": True}, lambda _: None)
+            got = P.load(folder)
+            check("backing removal actually replaces old locked timing",
+                  [l["start"] for l in got["lines"]] == [3, 7])
+            check("backing removal keeps the genuine second voice and quiet-original setting",
+                  got["lines"][1]["voice"] == 2 and got["lines"][1]["keep"]
+                  and got["lines"][1]["keepSoft"])
+            check("a section on a removed backing moves to the next lead",
+                  got["lines"][0]["section"] == "Verse")
+            check("backing removal reports both whole lines and inline brackets",
+                  result["removedBacking"] == 2)
+            clean = L.load(got["source_lyrics"])
+            check("the saved clean source cannot bring backing vocals back",
+                  [l.text for l in clean.lines] == ["Edited lead", "Second lead"]
+                  and not clean.has_manual_times and not any(l.backing for l in clean.lines))
+            # Regular re-time must still work (and use the cleaned source).
+            mock_align.side_effect = align
+            studio.realign(folder, {}, lambda _: None)
+            check("ordinary re-time works after removing backing", len(seen) == 2)
 
 
 def make_two_tone(path, freq, dur=10.0, sr=22050):

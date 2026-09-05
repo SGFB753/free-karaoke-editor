@@ -297,6 +297,12 @@ def _reason(lines: list, code: int) -> str:
 def clean_title(title: str) -> str:
     """The name of the song as a person would write it, without page furniture."""
     out = NOISE.sub("", title or "")
+    # Uploaders often append catalogue information outside brackets.  It is
+    # useful on the video page but makes both lyrics services search for a
+    # song literally called e.g. ``Song // Album: 123``.
+    out = re.sub(
+        r"\s*(?://+|[|])\s*(?:album|\u0430\u043b\u044c\u0431\u043e\u043c|single|\u0441\u0438\u043d\u0433\u043b)\s*:.*$",
+        "", out, flags=re.I)
     out = re.sub(r"\s*\|.*$", "", out)              # “Song | Artist | Label”
     out = re.sub(r"\s*[-–—]\s*topic\s*$", "", out, flags=re.I)
     return re.sub(r"\s{2,}", " ", out).strip(" -–—_")

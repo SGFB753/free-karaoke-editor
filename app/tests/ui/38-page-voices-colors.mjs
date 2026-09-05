@@ -157,6 +157,35 @@ ok('in solo singing there is no split',
    solo.every(e => !e.classList.contains('duo')),
    solo.map(e => e.className).join(' | '));
 
+console.log('\n--- a rounding overlap is still one ordinary line change ---');
+const microData = JSON.parse(raw.slice(a,b));
+const ML = microData.data.lines;
+ML[1].backing = false; ML[1].voice = 1;
+ML[1].start = ML[0].end - 0.10; ML[1].end = ML[1].start + 1.0;
+ML[1].words.forEach((x,i) => { x.t = ML[1].start + i*0.1; x.d = 0.09; });
+const page3 = path.join(tmp,'micro.html');
+fs.writeFileSync(page3, raw.slice(0,a) + JSON.stringify(microData) + raw.slice(b), 'utf8');
+const dom3 = new JSDOM(fs.readFileSync(page3,'utf8'), {
+  runScripts:'dangerously', pretendToBeVisual:true, url:'https://local.test/micro',
+  beforeParse(w){
+    w.__inst=[]; w.__errs=[]; w.onerror=m=>w.__errs.push(String(m));
+    class FA{ constructor(){this.paused=true;this.volume=1;this.duration=26;
+      this.playbackRate=1;this._t=0;this._h={};w.__inst.push(this);}
+      get currentTime(){return this._t;} set currentTime(v){this._t=v;}
+      addEventListener(n,f){(this._h[n]=this._h[n]||[]).push(f);} removeEventListener(){}
+      play(){this.paused=false;return Promise.resolve();} pause(){this.paused=true;}}
+    w.Audio=FA;
+  }});
+await sleep(250);
+dom3.window.__inst[0].currentTime = ML[1].start + .05;
+await sleep(250);
+const microCur = [...dom3.window.document.querySelectorAll('#scroll .ln')]
+  .map((e,i) => e.classList.contains('cur') ? i : -1).filter(i => i >= 0);
+ok('a 100 ms same-voice overlap does not light two lines',
+   microCur.length === 1 && microCur[0] === 1, JSON.stringify(microCur));
+ok('the rounding-overlap page has no JS errors', dom3.window.__errs.length === 0,
+   dom3.window.__errs.slice(0,2).join(' | '));
+
 ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 fs.rmSync(tmp, {recursive:true, force:true});
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');

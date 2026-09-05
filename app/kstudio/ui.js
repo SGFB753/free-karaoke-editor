@@ -33,6 +33,11 @@ const STR = {
     ownTrack: "♪ My instrumental",
     trackHint: "Use the artist's real instrumental instead of the separated one",
     realign: "↻ Re-time",
+    removeBacking: "⌫ Remove backing",
+    stripBacking: "Remove text in round brackets",
+    removeBackingHint: "Remove backing-vocal lines and text in round brackets, then time the remaining lyrics again",
+    removeBackingNone: "There are no backing-vocal lines in this song",
+    removeBackingAsk: n => "Remove backing vocals and text in round brackets from " + n + " lines and time the remaining lyrics again?\n\nYour timing edits, including locked lines, will be replaced.",
     realignHint: "Re-read the same lyrics file from disk and time it again — if you edited it",
     exportHtml: "Standalone HTML", exportMp4: "MP4 video", exportMp3: "MP3 320",
     mp3Hint: "Export the same karaoke backing used by the video: the instrumental "
@@ -54,7 +59,7 @@ const STR = {
       + "a guide to sing along with. A third press gives the line back to you",
     colorsHint: "What the singing is lit with: first colour is the main voice, " +
       "second is the second voice",
-    voices: "voices", voice1: "Main voice", voice2: "Second voice",
+    voices: "voices", voice1: "Main voice", voice2: "Second voice", backBadge: "BACK",
     themeHint: "Page look: background and text colour. If the text blends into the " +
       "background, the program fixes it",
     bgText: "background and text", bg: "Background", textColor: "Text colour",
@@ -232,7 +237,7 @@ const STR = {
       + "The rest of the song is not touched.",
     realignPartDone: n => "Timed again: " + n + " lines",
     splitLine: "⤸ Split",
-    splitHint: "Cut the selected line in two where the singing pauses longest "
+    splitHint: "Cut the line under the playhead at the nearest word boundary "
       + "inside it. The words keep their times — nothing is timed again.",
     joinLine: "⤹ Join",
     joinHint: "Join the selected line with the one after it. The words keep "
@@ -477,6 +482,11 @@ const STR = {
     ownTrack: "♪ Своя минусовка",
     trackHint: "Подставить настоящую минусовку от исполнителя вместо разделённой",
     realign: "↻ Разметить заново",
+    removeBacking: "⌫ Удалить бэки",
+    stripBacking: "Убирать текст в круглых скобках",
+    removeBackingHint: "Удалить бэк-вокал и текст в круглых скобках, затем заново разметить оставшийся текст",
+    removeBackingNone: "В этой песне нет строк бэк-вокала",
+    removeBackingAsk: n => "Удалить бэки и текст в круглых скобках из строк (" + n + ") и разметить оставшийся текст заново?\n\nВаши правки времени, включая закреплённые строки, будут заменены.",
     realignHint: "Перечитать тот же файл с текстом с диска и разметить заново — " +
       "если вы его отредактировали",
     exportHtml: "Отдельный HTML", exportMp4: "Видео MP4", exportMp3: "MP3 320",
@@ -500,7 +510,7 @@ const STR = {
       + "чтобы петь в унисон. Третье возвращает строку вам",
     colorsHint: "Чем подсвечивается пение: первый цвет — основной голос, второй — " +
       "второй голос",
-    voices: "голоса", voice1: "Основной голос", voice2: "Второй голос",
+    voices: "голоса", voice1: "Основной голос", voice2: "Второй голос", backBadge: "БЭК",
     themeHint: "Оформление страницы: фон и цвет букв. Если буквы сливаются с фоном, " +
       "программа их поправит",
     bgText: "фон и буквы", bg: "Фон", textColor: "Цвет букв",
@@ -675,8 +685,8 @@ const STR = {
       + "Остальная песня не тронется.",
     realignPartDone: n => "Размечено заново строк: " + n,
     splitLine: "⤸ Разрезать",
-    splitHint: "Разрезать выбранную строку надвое там, где внутри неё дольше "
-      + "всего молчат. Времена слов сохраняются — заново ничего не размечается.",
+    splitHint: "Разрезать строку под курсором в ближайшей границе между словами. "
+      + "Времена слов сохраняются — заново ничего не размечается.",
     joinLine: "⤹ Склеить",
     joinHint: "Склеить выбранную строку со следующей. Времена слов сохраняются.",
     lineSplit: "Строка разрезана надвое",
@@ -1466,18 +1476,33 @@ async function foundRows(box){
     r.className = "row found2";
     const timed = !!(f.timed && f.textTimed);
     r.innerHTML = '<span class="ic">🔎</span><span class="nm"></span>' +
-      '<span class="sz"></span>';
+      '<span class="sz"></span><span class="acts"></span>';
     r.querySelector(".nm").textContent =
       (f.artist ? f.artist + " — " : "") + f.title +
       (timed ? " · " + T.lyricsHasTimes : "");
     r.querySelector(".sz").textContent =
       [f.source, T.countLines(f.lines)].filter(Boolean).join(" · ");
-    r.addEventListener("click", () => {
-      $("brPasteText").value = (timed ? f.textTimed : f.text) || "";
+    const choose = withTimes => {
+      $("brPasteText").value = (withTimes && f.textTimed ? f.textTimed : f.text) || "";
       $("brPaste").classList.remove("hide");
       countOtherText();
       $("brPasteText").focus();
-    });
+    };
+    // Clicking the row keeps the useful default. A timed record also offers
+    // clean words when its library timing is the thing that needs replacing.
+    r.addEventListener("click", () => choose(timed));
+    const take = document.createElement("button");
+    take.textContent = timed ? T.lyricsUseTimed : T.lyricsUse;
+    if (timed) take.className = "pri";
+    take.addEventListener("click", e => { e.stopPropagation(); choose(timed); });
+    r.querySelector(".acts").appendChild(take);
+    if (timed){
+      const plain = document.createElement("button");
+      plain.className = "words-only";
+      plain.textContent = T.lyricsWordsOnly;
+      plain.addEventListener("click", e => { e.stopPropagation(); choose(false); });
+      r.querySelector(".acts").appendChild(plain);
+    }
     box.appendChild(r);
   });
 }
@@ -1843,6 +1868,19 @@ async function useTyped(quiet){
 }
 
 /* ================= building a song ================= */
+function initStripBacking(){
+  let enabled = true;
+  try { enabled = localStorage.getItem("karaoke-strip-backing") !== "false"; } catch(e){}
+  const controls = [$("chkStripBacking"), $("brStripBacking")];
+  for (const el of controls){
+    el.checked = enabled;
+    el.addEventListener("change", () => {
+      for (const other of controls) other.checked = el.checked;
+      try { localStorage.setItem("karaoke-strip-backing", String(el.checked)); } catch(e){}
+    });
+  }
+}
+initStripBacking();
 $("btnBuild").addEventListener("click", async () => {
   const audio = $("inAudio").value.trim(), lyrics = $("inLyrics").value.trim();
   if (!audio || !lyrics) return toast(T.pickBoth);
@@ -1850,6 +1888,7 @@ $("btnBuild").addEventListener("click", async () => {
     const j = await api("/api/new", {audio, lyrics, align: $("selAlign").value,
       model: $("selModel").value, lang: $("selLang").value,
       separate: $("chkSep").checked, noText: $("inNoText").value.trim(),
+      stripBacking: $("chkStripBacking").checked,
       separator: $("chkFine").checked ? "htdemucs_ft" : "htdemucs",
       // What the song is called. A link fills the fields in; a file from disk
       // leaves them for the person, because the name that survives every file
@@ -1962,30 +2001,22 @@ function seek(t){ waOffset = clamp(t,0,dur); curLine=-2;
 let keepOn = 0;                 // how loud the original stays right now
 function inKeep(t){
   // How loud the original stays here: 1 where it sings alone, 0.35 where it
-  // is a guide to sing along with, 0 everywhere else. A breath between two
-  // kept lines is kept too, unless the singer's own line stands in it —
-  // muting the model's guess of a line end chewed a held word in half.
-  // Where the singer's own line sounds, the original gets no slack and no
-  // bridge: kept voice bleeding over their first word is the chew, mirrored.
+  // is a guide to sing along with, 0 everywhere else.  The current line bounds
+  // are exact: after a person trims a phrase, no old padding or bridge may make
+  // the removed part audible again.
   let humanAt = false;
   for (let i = 0; i < lines.length; i++){
     const ln = lines[i];
     if (!ln.keep && ln.words && ln.words.length && !ln.backing
         && ln.start <= t && t < ln.end){ humanAt = true; break; }
   }
-  let best = 0, prevEnd = -1, prevLvl = 0, bridge = 0;
+  let best = 0;
   for (let i = 0; i < lines.length; i++){
     const ln = lines[i];
     if (!ln.keep) continue;
     const lvl = ln.keepSoft ? 0.35 : 1;
-    const pad = humanAt ? 0 : 0.25;
-    if (ln.start - pad <= t && t < ln.end + pad) best = Math.max(best, lvl);
-    if (ln.end <= t && t - ln.end <= 2.0){ prevEnd = ln.end; prevLvl = lvl; }
-    if (t < ln.start && ln.start - t <= 2.0 && prevEnd >= 0
-        && ln.start - prevEnd <= 2.0)
-      bridge = Math.max(bridge, Math.max(prevLvl, lvl));
+    if (ln.start <= t && t < ln.end) best = Math.max(best, lvl);
   }
-  if (!humanAt) best = Math.max(best, bridge);
   if (best >= 1) return 1;
   // A marked stretch has no words to sing, so the original voice stays there —
   // and the editor must sound like the finished page, not unlike it.
@@ -3121,9 +3152,15 @@ function makeBlocks(){
   box.innerHTML = ""; blockEls.length = 0;
   lines.forEach((ln, i) => {
     const e = document.createElement("div");
-    e.className = "blk" + (ln.voice === 2 ? " v2" : "") + (ln.keep ? " keep" : "")
+    e.className = "blk" + (ln.voice === 2 ? " v2" : "") + (ln.backing ? " back" : "")
+                + (ln.keep ? " keep" : "")
                 + (doubtful(ln) ? " doubt" : "") + (ln.lock ? " lock" : "");
     e.dataset.i = i;
+    if (ln.backing){
+      const badge = document.createElement("b");
+      badge.className = "backbadge"; badge.textContent = T.backBadge;
+      e.appendChild(badge);
+    }
     e.appendChild(document.createTextNode((i+1) + ". " + ln.text));
     // Grips on both sides: the right one moves the end of the line, the left
     // one the start. There used to be no left grip, so the start could not be
@@ -3467,6 +3504,7 @@ function retext(i, text){
   ln.text = parts.join(" ");
   // Editing the text can turn a line into backing vocals and back.
   ln.backing = /^\(.*\)$/.test(ln.text.trim());
+  if (ln.backing) ln.voice = 2;
   // Dots added to a long scream, one word fixed in the middle: where the words
   // are the same words, their times are THEIR times — laying the whole line
   // out anew threw away exactly the rhythm the person had already set. Only
@@ -3538,15 +3576,28 @@ function addLine(){
    and their times are already known, only the grouping changes. Before this,
    it meant editing the file on disk and timing the whole song again. */
 function splitLine(){
-  if (sel < 0) return toast(T.pickLineFirst);
-  const ln = lines[sel];
+  const play = mediaTime();
+  const underPlayhead = idxAt(play);
+  const lineIndex = underPlayhead >= 0 ? underPlayhead : sel;
+  if (lineIndex < 0) return toast(T.pickLineFirst);
+  const ln = lines[lineIndex];
   if (!ln.words || ln.words.length < 2) return toast(T.splitTooShort);
-  // Where the singing pauses longest inside the line: that is where a person
-  // draws breath, and where the line wants to be cut.
+  // On a playing line the cursor is an explicit cut instruction. Snap it to a
+  // word boundary so no word is torn in half. In a pause, retain the old handy
+  // fallback: split the selected line at its longest internal breath.
   let at = 1, widest = -1;
-  for (let i = 1; i < ln.words.length; i++){
-    const gap = ln.words[i].t - (ln.words[i - 1].t + (ln.words[i - 1].d || 0));
-    if (gap > widest){ widest = gap; at = i; }
+  if (underPlayhead >= 0){
+    let nearest = Infinity;
+    for (let i = 1; i < ln.words.length; i++){
+      const boundary = ln.words[i].t;
+      const distance = Math.abs(boundary - play);
+      if (distance < nearest){ nearest = distance; at = i; }
+    }
+  } else {
+    for (let i = 1; i < ln.words.length; i++){
+      const gap = ln.words[i].t - (ln.words[i - 1].t + (ln.words[i - 1].d || 0));
+      if (gap > widest){ widest = gap; at = i; }
+    }
   }
   snap("");
   const tail = ln.words.slice(at), head = ln.words.slice(0, at);
@@ -3564,8 +3615,8 @@ function splitLine(){
   // one starts — the highlight would jump back and forth.
   const headEnd = head[head.length - 1].t + (head[head.length - 1].d || 0);
   ln.end = Math.max(ln.start + 0.05, Math.min(headEnd, cut));
-  lines.splice(sel + 1, 0, second);
-  buildLines(); makeBlocks(); selectLine(sel + 1, false); touched();
+  lines.splice(lineIndex + 1, 0, second);
+  buildLines(); makeBlocks(); selectLine(lineIndex + 1, false); touched();
   toast(T.lineSplit);
 }
 function joinLine(){
@@ -4164,10 +4215,12 @@ async function replaceTrack(path){
 // tracks are already in the project, only the timing is recomputed.
 async function realign(lyricsPath){
   await flush();
+  if (dirty) return;
   try{
     const j = await api(`/api/project/${encodeURIComponent(pid)}/realign`,
       {align: caps.whisper ? "auto" : "energy", lang: langOf(),
-       lyrics: lyricsPath || "", noText: ($("edNoText").value || "").trim()});
+       lyrics: lyricsPath || "", noText: ($("edNoText").value || "").trim(),
+       stripBacking: lyricsPath ? $("brStripBacking").checked : !!data.stripBacking});
     watchJob(j.job, lyricsPath ? T.realignNew : T.realignSame,
       r => {
         openProject(pid);

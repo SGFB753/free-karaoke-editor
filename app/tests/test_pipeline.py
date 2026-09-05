@@ -265,6 +265,14 @@ def main():
 Строка припева
 (Chorus 2)
 Ещё одна""")
+    clean = L.parse(L.strip_round_brackets(
+        "[Куплет]\n[00:30.95] Когда нужно делать всё самому (What (the) fuck?)\n"
+        "[00:32.50] (Damn)\n[00:33.22] Следующая строка"))
+    check("optional backing cleanup preserves LRC times and section headings",
+          len(clean.lines) == 2 and clean.lines[0].start == 30.95
+          and clean.lines[1].start == 33.22 and clean.lines[0].section == "Куплет"
+          and clean.lines[0].text == "Когда нужно делать всё самому"
+          and not any(ln.backing for ln in clean.lines))
     texts = [ln.text for ln in back.lines]
     check("lines in brackets were not dropped", "(а это бэк-вокал)" in texts, str(texts))
     check("and neither were the sung syllables", "(ла-ла-ла)" in texts)
@@ -272,6 +280,16 @@ def main():
           [ln.backing for ln in back.lines if ln.text == "(ла-ла-ла)"] == [True])
     check("an ordinary line does not count as backing",
           [ln.backing for ln in back.lines if ln.text == "Обычная строка"] == [False])
+    timed_back = L.parse("[00:10.00] Основная строка (эхо)\n"
+                         "[00:13.00] (самостоятельный бэк)\n"
+                         "[00:15.00] Снова основная")
+    check("ready LRC recognises a whole bracketed line as backing",
+          timed_back.lines[2].backing and timed_back.lines[2].voice == 2,
+          [(x.text, x.backing, x.voice, x.start) for x in timed_back.lines])
+    check("ready LRC splits a trailing backing part from its lead",
+          len(timed_back.lines) == 4 and timed_back.lines[1].tail
+          and timed_back.lines[1].backing and timed_back.lines[1].voice == 2,
+          [(x.text, x.backing, x.voice, x.start) for x in timed_back.lines])
 
     genius = L.parse("""[Куплет]
 Первая настоящая строка
@@ -443,14 +461,15 @@ You might also like
     pay = {"data": {"lines": [
         {"start": 1.0, "end": 3.0},
         {"start": 3.0, "end": 5.0, "keep": True},
-        {"start": 5.1, "end": 7.0, "keep": True},   # рядом — это один кусок
+        {"start": 5.1, "end": 7.0, "keep": True},
         {"start": 20.0, "end": 22.0, "keep": True},
         {"start": 9.0, "end": 9.0, "keep": True},   # пустая — не кусок
     ]}}
     spans = _vid.keep_spans(pay)
     P0 = _vid.KEEP_PAD
-    check("adjacent marked lines are glued into one stretch",
-          spans == [(3.0 - P0, 7.0 + P0, 1.0), (20.0 - P0, 22.0 + P0, 1.0)],
+    check("marked lines keep their edited bounds exactly",
+          P0 == 0 and spans == [(3.0, 5.0, 1.0), (5.1, 7.0, 1.0),
+                                (20.0, 22.0, 1.0)],
           str(spans))
     check("a line with no length is not a stretch",
           all(b > a for a, b, _ in spans), str(spans))
@@ -461,28 +480,25 @@ You might also like
         {"start": 5.1, "end": 7.0, "keep": True, "keepSoft": True}]}})
     check("a quiet keep is not glued to a loud one",
           [lv for _, _, lv in mixed] == [1.0, _vid.SOFT_KEEP], str(mixed))
-    # The breath between two kept lines is kept with them — the ends of lines
-    # are the model's guesses, and muting the guess chewed a held word in
-    # half. Unless the singer's own line stands in the breath: that mute is
-    # the whole point.
+    # A hand edit wins over the original model guess: the silence between two
+    # kept lines must stay silent, even when both have the same level.
     breath = _vid.keep_spans({"data": {"lines": [
         {"start": 10.0, "end": 12.0, "keep": True, "words": [1]},
         {"start": 12.8, "end": 15.0, "keep": True, "words": [1]}]}})
-    check("a breath between kept lines is kept with them",
-          len(breath) == 1 and breath[0][0] < 10 and breath[0][1] > 15, breath)
+    check("a trimmed breath between kept lines stays trimmed",
+          breath == [(10.0, 12.0, 1.0), (12.8, 15.0, 1.0)], breath)
     busy = _vid.keep_spans({"data": {"lines": [
         {"start": 10.0, "end": 12.0, "keep": True, "words": [1]},
         {"start": 12.1, "end": 12.7, "words": [1]},
         {"start": 12.8, "end": 15.0, "keep": True, "words": [1]}]}})
     check("but not across the singer's own line", len(busy) == 2, busy)
-    # And the slack itself stops at the singer's words: kept voice bleeding
-    # over their first word is the chew, mirrored.
+    # There is no invisible slack on either side of a kept line.
     tight = _vid.keep_spans({"data": {"lines": [
         {"start": 8.0, "end": 9.9, "words": [1]},
         {"start": 10.0, "end": 12.0, "keep": True, "words": [1]},
         {"start": 12.1, "end": 13.0, "words": [1]}]}})
-    check("the slack never reaches into the singer's own words",
-          tight == [(9.9, 12.1, 1.0)], tight)
+    check("a kept line has no invisible slack",
+          tight == [(10.0, 12.0, 1.0)], tight)
     check("without marks there are no stretches", _vid.keep_spans({"data": {"lines": [{"start": 0, "end": 2}]}}) == [])
 
     print("\nSettings: a colour is not a comment")
@@ -1314,10 +1330,10 @@ You might also like
           A.repair_silent(lyr_ok, 30.0, voiced_wav, log=msgs3.append) == 0
           and lyr_ok.lines[2].start == 21.0)
 
-    print("\nA time written in the text is a peg, not a timing")
-    # “[2:27] Remember this day” says: this line is sung about here. A line
-    # cannot then wander into a vocalise three minutes away. Whisper gets only
-    # a short look behind each approximate peg, not the rest of the song.
+    print("\nA time written in partly timed text is fixed and is also a peg")
+    # “[2:27] Remember this day” fixes that line and prevents neighbouring
+    # untimed text from wandering into a vocalise three minutes away. Whisper
+    # gets only a short look behind each peg, not the rest of the song.
     import types
 
     calls = []
@@ -1352,6 +1368,11 @@ You might also like
               all(c["len"] < 20 for c in calls), [round(c["len"], 1) for c in calls])
         check("the log says which lines went with which stretch",
               any("строки 1–2" in m for m in said), [m for m in said if "строки" in m][:2])
+        check("each explicitly written time remains exact",
+              pegged.lines[0].start == 2.0 and pegged.lines[2].start == 16.0,
+              [ln.start for ln in pegged.lines])
+        check("only explicitly timed lines are protected from later refinements",
+              pegged.fixed_line_indices == {0, 2}, pegged.fixed_line_indices)
     finally:
         if real_mod is not None:
             sys.modules["stable_whisper"] = real_mod
@@ -1526,6 +1547,66 @@ You might also like
 
     real_lrc = ("[00:18.16] Нацарапанные звёзды на потолке\n"
                 "[00:20.76] Горящее небо, как в страшном кино")
+    # Real 111111 project: the seventh lead was squeezed into 30.950–30.970
+    # because its backing tail started at 30.660 and became the next boundary.
+    from unittest.mock import patch
+    from types import SimpleNamespace
+    backing_lrc = ("[00:30.95] Когда нужно делать всё самому (What a fuck?)\n"
+                   "[00:33.22] Диагноз и низкий социальный статус — он не хищник")
+    def backing_model(lyr, *args, **kwargs):
+        for line in lyr.lines:
+            start = 30.66 if line.text.startswith("Когда") else 33.22
+            A._spread(line.words, start, start + 1.88)
+            line.start, line.end = start, start + 1.88
+        return lyr
+    with patch.dict(sys.modules, {"stable_whisper": SimpleNamespace()}), \
+            patch.object(A, "align_whisper", side_effect=backing_model) as model_call, \
+            patch.object(A, "align_anchored", side_effect=AssertionError("unexpected per-line jobs")):
+        result, engine_used = A.align(L.parse(backing_lrc), song, 250.4, engine="whisper")
+    lead, backing, following = result.lines
+    check("ready LRC with a backing tail uses one Whisper pass", model_call.call_count == 1)
+    check("real 111111 seventh line is not squeezed to 20 ms",
+          lead.start == 30.95 and lead.end - lead.start > 1.5
+          and lead.end <= following.start,
+          (lead.start, lead.end))
+    check("backing follows the final lead bounds and preserves every word",
+          backing.backing and backing.start >= lead.end
+          and backing.end <= following.start
+          and len(lead.words) == 5 and len(backing.words) == 3)
+    # The sparse-anchor route must also skip overlapping backing boundaries.
+    from array import array
+    from kstudio import audio as backing_audio
+    backing_before = (lead.start, lead.end, following.start, following.end)
+    for wanted, spans_local in (
+            ("after the lead", [(1.805, 2.00), (2.00, 2.19), (2.19, 2.47)]),
+            ("overlapping the lead", [(0.5, 0.7), (0.7, 0.85), (0.85, 1.1)])):
+        fake_words = [SimpleNamespace(word=t, start=a, end=b, probability=0.9)
+                      for t, (a, b) in zip(["What", "a", "fuck"], spans_local)]
+        fake_model = SimpleNamespace(align=lambda *a, **k:
+                                     SimpleNamespace(segments=[SimpleNamespace(words=fake_words)]))
+        with patch.dict(sys.modules, {"stable_whisper": SimpleNamespace(load_model=lambda *a, **k: fake_model)}), \
+                patch.object(backing_audio, "read_pcm_mono", return_value=array("h", [0]) * (16000 * 35)):
+            A.align_backing_audio(result, song, 35, "medium")
+        check("backing recognition supports " + wanted,
+              abs(backing.start - (30.75 + spans_local[0][0])) < 0.001
+              and abs(backing.end - (30.75 + spans_local[-1][1])) < 0.001)
+        check("backing recognition never moves the lead",
+              backing_before == (lead.start, lead.end, following.start, following.end))
+    fake_words[0].probability = 0.01
+    with patch.dict(sys.modules, {"stable_whisper": SimpleNamespace(load_model=lambda *a, **k: fake_model)}), \
+            patch.object(backing_audio, "read_pcm_mono", return_value=array("h", [0]) * (16000 * 35)):
+        A.align_backing_audio(result, song, 35, "medium")
+    check("uncertain backing is flagged instead of claiming reliable timing", backing.sure == 0.0)
+    check("uncertain trailing backing stays in the gap instead of stretching over its lead",
+          backing.start == lead.end and backing.end <= following.start
+          and backing.end - backing.start < 0.7)
+    sparse = L.parse(backing_lrc + "\nСледующая строка без метки")
+    with patch.dict(sys.modules, {"stable_whisper": SimpleNamespace(load_model=lambda *a, **k: object())}), \
+            patch.object(A, "align_whisper", side_effect=backing_model):
+        sparse = A.align_anchored(sparse, song, 250.4)
+    check("sparse LRC also keeps a lead alive when its backing starts earlier",
+          sparse.lines[0].end - sparse.lines[0].start > 1.5,
+          (sparse.lines[0].start, sparse.lines[0].end))
     real = L.parse(FL.timed({"syncedLyrics": real_lrc}))
     real_align_whisper = A.align_whisper
     # The ordinary CI job deliberately has no neural dependencies installed.
@@ -1571,6 +1652,62 @@ You might also like
     # checks (line.start), and by karaoke highlighting/video (first word.t).
     check("timeline, checks, player and video share the same first instant",
           first["start"] == first["words"][0]["t"], first)
+
+    hybrid = L.Lyrics(lines=[])
+    ready_starts = [10.0, 13.0, 16.0, 19.0, 22.0]
+    heard = [(9.75, .92), (12.76, .88), (14.90, .99), (18.30, .10), (21.75, .91)]
+    for i, (start, prob) in enumerate(heard):
+        word = L.Word(f"word{i}", start=start, end=start + .6, prob=prob)
+        hybrid.lines.append(L.Line(word.text, words=[word], start=ready_starts[i]))
+    refined = A._refine_ready_starts(hybrid, ready_starts)
+    check("confident small vocal offsets refine ready LRC starts",
+          [round(refined[i], 2) for i in (0, 1, 4)] == [9.75, 12.75, 21.75],
+          refined)
+    check("a nearby pair can carry its correction across one doubtful line",
+          round(refined[3], 2) == 18.75, refined)
+    check("a confident one-second Whisper jump cannot overrule ready LRC",
+          refined[2] == 16.0, refined)
+
+    shifted_verse = L.Lyrics(lines=[])
+    verse_starts = [30.0, 33.0, 36.0, 39.0, 42.0]
+    for i, fixed in enumerate(verse_starts):
+        raw = fixed - (1.18 + (i % 2) * .04)
+        prob = .90 if i != 2 else .20
+        word = L.Word(f"verse{i}", start=raw, end=raw + .7, prob=prob)
+        shifted_verse.lines.append(L.Line(word.text, words=[word], start=fixed))
+    verse_refined = A._refine_ready_starts(shifted_verse, verse_starts)
+    check("three agreeing vocal onsets can move a shifted LRC verse",
+          all(-1.30 < got - fixed < -1.10
+              for got, fixed in zip(verse_refined, verse_starts)),
+          verse_refined)
+    check("the block correction crosses one doubtful line without a jump",
+          -1.30 < verse_refined[2] - verse_starts[2] < -1.10,
+          verse_refined)
+
+    # A slightly early following LRC mark must not speed up every word in the
+    # preceding phrase.  Preserve recognised onsets, remove false pauses, and
+    # shorten the held tail before resorting to whole-line compression.
+    tight = L.Line("one two three", words=[
+        L.Word("one", start=10.0, end=10.5),
+        L.Word("two", start=10.8, end=11.3),
+        L.Word("three", start=11.5, end=12.5),
+    ])
+    A._pin_one_line_start(tight, 20.0, 22.0, 30.0)
+    check("tight LRC bounds consume pauses without accelerating early words",
+          [round(w.start, 2) for w in tight.words] == [20.0, 20.5, 21.0]
+          and tight.end == 22.0,
+          [(w.start, w.end) for w in tight.words])
+
+    held = L.Line("one two three", words=[
+        L.Word("one", start=10.0, end=10.5),
+        L.Word("two", start=10.5, end=11.0),
+        L.Word("three", start=11.0, end=11.5),
+    ])
+    A._pin_one_line_start(held, 20.0, 21.2, 30.0)
+    check("a tight boundary trims the final hold before the phrase rhythm",
+          [round(w.start, 2) for w in held.words] == [20.0, 20.5, 21.0]
+          and round(held.words[-1].end, 2) == 21.2,
+          [(w.start, w.end) for w in held.words])
 
     print("\nThe clip's cover becomes the backdrop, when asked")
     # From a link the cover rides along; with the checkbox on it stands behind
@@ -1956,8 +2093,8 @@ You might also like
     tail_ln = next(ln for ln in pb.lines if ln.tail)
     solo_ln = next(ln for ln in pb.lines if ln.backing and not ln.tail)
     check("both backing lines were placed", n_pb == 2, n_pb)
-    check("the split-off tail lies over its lead — a duet",
-          abs(tail_ln.start - 15.0) < 0.05 and abs(tail_ln.end - 18.0) < 0.3,
+    check("an unrecognised tail remains short in the available gap",
+          abs(tail_ln.start - 18.0) < 0.05 and tail_ln.end - tail_ln.start <= 1.2,
           f"{tail_ln.start:.1f}–{tail_ln.end:.1f}")
     check("the standalone backing takes the gap after its lead",
           solo_ln.start >= 17.9 and solo_ln.end <= 26.1,
@@ -2642,6 +2779,9 @@ You might also like
           FE.clean_title("Song (feat. Artist)") == "Song"
           and FE.clean_title("Song (ft. Artist)") == "Song"
           and FE.clean_title("Song [prod. by Someone]") == "Song")
+    check("album catalogue text from a video title is stripped",
+          FE.split_name("Bumble Beezy - \u0428\u0435\u0441\u0442\u0435\u0440\u0451\u043d\u043a\u0430 // \u0410\u043b\u044c\u0431\u043e\u043c: 111111")
+          == ("Bumble Beezy", "\u0428\u0435\u0441\u0442\u0435\u0440\u0451\u043d\u043a\u0430"))
     for bad in ("", "   ", "ftp://example.com/x", "file:///etc/passwd", "-x"):
         try:
             FE.check_url(bad)
@@ -2924,6 +3064,15 @@ You might also like
         check("LRCLIB and Genius are both offered when both know the song",
               {f["source"] for f in found} == {"LRCLIB", "Genius"},
               [f["source"] for f in found])
+        noisy = FL.search("\u0428\u0435\u0441\u0442\u0435\u0440\u0451\u043d\u043a\u0430 // \u0410\u043b\u044c\u0431\u043e\u043c: 111111", "Bumble Beezy", 215.761)
+        check("a real YouTube album suffix is retried as a clean song title",
+              {f["source"] for f in noisy} == {"LRCLIB", "Genius"}
+              and all(f["title"] == "\u0428\u0435\u0441\u0442\u0435\u0440\u0451\u043d\u043a\u0430" for f in noisy), noisy)
+        stub_lyrics.Handler.flaky_calls = 0
+        retried = FL._search_lrclib("Retry Once", "Stub Artist", 21, 5)
+        check("a temporary LRCLIB failure is retried without another click",
+              retried and stub_lyrics.Handler.flaky_calls >= 2,
+              stub_lyrics.Handler.flaky_calls)
         check("the same title by another artist is filtered out",
               FL._search_lrclib("Stub Song", "Entirely Different", 21, 5) == [])
         check("artist suffixes and joined spelling still match",

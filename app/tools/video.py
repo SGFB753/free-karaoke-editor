@@ -291,13 +291,11 @@ def pips_lit(gap: float, left: float) -> int:
 # The quiet keep: the original voice held back to a guide, to be sung along
 # with — the same level the “instrumental + quiet vocal” mode uses.
 SOFT_KEEP = 0.35
-# The edges of a kept line are the model's guesses, and the voice they guard
-# is real: a little slack on each side keeps a held note from being clipped.
-KEEP_PAD = 0.25
-# Two kept lines with a breath between them: the original plainly sings on
-# through it, and muting the breath chewed a word in half. Glued — unless the
-# person's own line stands in the gap, which is exactly where muting belongs.
-KEEP_GLUE = 2.0
+# A person may trim a kept line by hand.  Its current bounds are therefore the
+# source of truth: hidden padding or bridge time makes “Original” audibly ignore
+# that edit in both the preview and the rendered file.
+KEEP_PAD = 0.0
+KEEP_GLUE = 0.0
 
 
 def keep_spans(payload: dict) -> list:
@@ -324,8 +322,8 @@ def keep_spans(payload: dict) -> list:
             if b <= a:
                 continue              # no length — nothing to keep, pad or not
             pa, pb = max(0.0, a - KEEP_PAD), b + KEEP_PAD
-            # the slack must never reach into the singer's own words: kept
-            # voice bleeding over their first word is the mirror of the chew
+            # Kept for compatibility with the overlap guard below; KEEP_PAD is
+            # deliberately zero so hand-edited boundaries stay exact.
             for s0, e0 in sung:
                 if e0 <= a:
                     pa = max(pa, e0)
@@ -1376,15 +1374,6 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                     d.text((margin, y_j - int(H * 0.055)),
                            lines[j]["section"].upper(), font=small,
                            fill=COL_SECT, **edged(small))
-                if k == 0 and lines[j].get("keep") and lines[j].get("keepSoft"):
-                    # A quiet original is an invitation — say so beside the
-                    # line. A full-voice one needs no caption: the voice
-                    # itself says the line is not yours.
-                    tag = ("в унисон с оригиналом" if said == "ru"
-                           else "sing along with the original")
-                    d.text((W - margin, y_j - int(H * 0.055)), tag,
-                           font=small, fill=_mix(COL_DIM, (255, 255, 255), 0.3),
-                           anchor="ra", **edged(small))
 
         # A backing line that will enter over the current lead is shown dim in
         # its eventual seat before its first word.  Compute the index early

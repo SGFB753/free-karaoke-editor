@@ -206,6 +206,9 @@ class Lyrics:
     # words inside those bounds, but later onset refinements must not move the
     # bounds themselves.
     fixed_line_starts: bool = False
+    # Explicit times in a partly timed text are fixed too. The lines between
+    # them remain model-timed, so the all-or-nothing flag above is not enough.
+    fixed_line_indices: set = field(default_factory=set)
     # stretches the person marked as holding no words: [Solo 3:10-3:50]
     skips: List[tuple] = field(default_factory=list)
     # Lines copied from a lyrics site's recommendation widget, not from a song.
@@ -352,17 +355,19 @@ def parse(raw: str) -> Lyrics:
                 # a line like [Chorus] is a heading for the lines that follow
                 pending_section = m.group(1).strip()
                 continue
-            m = ROUND_RE.match(line)
-            if m and _split_words(m.group(1)):
-                if _is_section_name(m.group(1)):
-                    pending_section = m.group(1).strip()
-                    continue
-                # anything else in round brackets is backing vocals, and it is sung
-                backing = True
-            m = VOICE_LINE_RE.match(line)
-            if m and _split_words(m.group(2)):
-                voice = int(m.group(1))     # “2: line” — this line only
-                line = m.group(2).strip()
+        m = ROUND_RE.match(line)
+        if m and _split_words(m.group(1)):
+            if start is None and _is_section_name(m.group(1)):
+                pending_section = m.group(1).strip()
+                continue
+            # A timestamp makes this unambiguously a sung line rather than a
+            # heading. Backing notation must work in ready LRC just as it does
+            # in plain lyrics.
+            backing = True
+        m = VOICE_LINE_RE.match(line)
+        if m and _split_words(m.group(2)):
+            voice = int(m.group(1))         # “2: line” — this line only
+            line = m.group(2).strip()
 
         # “line x4” — a repeat. With manual LRC timings repeats are left alone:
         # every line there has a time of its own.
@@ -373,7 +378,7 @@ def parse(raw: str) -> Lyrics:
         # A backing tail on a lead line becomes a line of its own, second
         # voice: “try too hard (Na-na-na)” is two people singing.
         trail = None
-        if start is None and not backing:
+        if not backing:
             m = TRAIL_RE.match(line)
             if m and _split_words(m.group(2)) and not _is_section_name(
                     m.group(2).strip("() ")):
@@ -455,6 +460,15 @@ def decode_text(raw: bytes) -> str:
     return raw.decode("utf-8", errors="replace")
 
 
-def load(path: str) -> Lyrics:
+def strip_round_brackets(text: str) -> str:
+    """Remove balanced round-bracket content, including nested ad-libs."""
+    while re.search(r"\([^()]*\)", text):
+        text = re.sub(r"\([^()]*\)", "", text)
+    return "\n".join(re.sub(r"[ \t]+", " ", line).strip()
+                     for line in text.splitlines())
+
+
+def load(path: str, strip_backing: bool = False) -> Lyrics:
     with open(path, "rb") as f:
-        return parse(decode_text(f.read()))
+        text = decode_text(f.read())
+    return parse(strip_round_brackets(text) if strip_backing else text)

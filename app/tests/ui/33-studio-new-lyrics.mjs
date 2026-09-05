@@ -145,7 +145,7 @@ w.fetch = (p2, o) => String(p2).includes('/api/lyrics/find')
   ? Promise.resolve({ok:true, json:async () => ({found:[{
       source:'Genius', title:'Редактируемая песня', artist:'Проверка Связи',
       lines:2, text:'найденная первая строка\nнайденная вторая строка',
-      textTimed:'', timed:false
+      textTimed:'[00:01.00] найденная первая строка\n[00:03.00] найденная вторая строка', timed:true
     }]})})
   : realFetch(p2, o);
 $('btnLyrics').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
@@ -163,6 +163,13 @@ ok('a found text names its source',
    !!foundOffer && /LRCLIB|Genius/.test(foundOffer.textContent),
    foundOffer ? foundOffer.textContent : 'no found text');
 if (foundOffer){
+  const wordsOnly = foundOffer.querySelector('.words-only');
+  ok('a timed result in Other lyrics offers words without timing',
+     !!wordsOnly && /words|текст/i.test(wordsOnly.textContent),
+     wordsOnly ? wordsOnly.textContent : 'no button');
+  wordsOnly.dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+  ok('words-only puts clean editable lyrics into the box',
+     !/^\s*\[\d+:/.test($('brPasteText').value), $('brPasteText').value.slice(0,30));
   foundOffer.dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
   await sleep(100);
   ok('a found text stays in the dialog for editing',
