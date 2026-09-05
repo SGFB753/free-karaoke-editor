@@ -7,6 +7,21 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.48.3
+
+Text transitions settle in 0.24–0.40 s and outgoing phrases fade earlier
+to reduce the drifting-text effect while reading.
+
+Overlapping phrases retire at their own end, rather than waiting for the next
+phrase to finish. Transitions start at the previous frame's actual positions,
+including the lower overlapping seat.
+
+Tall wrapped phrases get longer transitions proportional to their travel.
+Upcoming lyrics remain visible while two current lines overlap.
+
+Long MP4 phrases wrap onto three or more rows without reducing their font
+size. Following phrases move down to accommodate the full text height.
+
 ## 4.48.2
 
 **Optional automatic backing removal before alignment.** “Remove text in

@@ -448,8 +448,8 @@ class LineArt:
 
     A line too long for the frame used to shrink until it fit — down to
     letters read only from the front row. The main line now wraps instead:
-    two rows at most, split between words, never inside one; the font gives
-    way only when even two rows cannot hold it."""
+    split between words, never inside one. Longer phrases can occupy three
+    or more rows without making their letters smaller than nearby lyrics."""
 
     def __init__(self, line, font_for, width, margin, main=True, align="center"):
         from PIL import Image, ImageDraw
@@ -493,6 +493,27 @@ class LineArt:
                 longest = max((row_text_of(r) for r in rows),
                               key=lambda rt: probe.getlength(rt))
                 self.font = font_for(longest, max_w, main)
+                if self.font.size < probe.size:
+                    # Two rows are not a reason to shrink just this phrase.
+                    # Wrap at the regular size; keep glued syllables together.
+                    groups = []
+                    for i in range(len(words)):
+                        if groups and glue[i]:
+                            groups[-1].append(i)
+                        else:
+                            groups.append([i])
+                    longest_word = max((row_text_of(g) for g in groups),
+                                       key=probe.getlength)
+                    # Only a single unsplittable word wider than the frame
+                    # requires a smaller font.
+                    self.font = font_for(longest_word, max_w, main)
+                    rows = [[]]
+                    for group in groups:
+                        candidate = rows[-1] + group
+                        if rows[-1] and self.font.getlength(row_text_of(candidate)) > max_w:
+                            rows.append(group[:])
+                        else:
+                            rows[-1] = candidate
 
         asc, desc = self.font.getmetrics()
         self.row_h = asc + desc + 8
@@ -933,9 +954,11 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     # current, previous, since when, and the exact distance from the place the
     # current line occupied in the queue. The distance varies with wrapping:
     # using one fixed step made a tall line jump and made short-line gaps wide.
-    slide = [None, None, 0.0, y_next - y_main]
+    slide = [None, None, 0.0, y_next - y_main, 0.0]
+    frame_positions = {}
     STEP = y_next - y_main     # one line of the column
-    SLIDE = 0.32               # how long the ride takes
+    SLIDE = 0.24               # settle promptly so the eye can read again
+    slide_duration = SLIDE
     fading = getattr(args, "still", None) is None
 
     def paste_faded(frame, img, pos, alpha):
@@ -959,13 +982,14 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         # sees everything that is coming — not only the lines they sing.
         # *skip_back* is an index already drawn elsewhere (upcoming_back)
         # so it is not duplicated in the queue.
-        if n1 == skip_back:
+        while n1 < len(lines) and n1 in (skip_back, duo):
             n1 = next_any(lines, n1)
-            if n1 >= len(lines) or n1 == duo:
-                return
+        if n1 >= len(lines):
+            return
         nx = get(n1, main=True)
         ny = (floor + line_gap if floor > 0
               else y_next - nx.h // 2 + off)
+        frame_positions[n1] = ny
         paste_faded(frame, nx.dim, (0, ny), alpha)
         n2i = next_any(lines, n1)
         while n2i < len(lines) and (n2i == duo or n2i == skip_back):
@@ -973,6 +997,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         if n2i < len(lines):
             n2 = get(n2i, main=True)
             n2y = ny + nx.h + line_gap
+            frame_positions[n2i] = n2y
             paste_faded(frame, n2.faint, (0, n2y), alpha)
 
     def backing_anchor(i):
@@ -1216,14 +1241,17 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         return frame
 
     def song_frame(t):
+        nonlocal slide_duration, frame_positions
         """A frame of the song itself, at second `t` of the recording."""
+        last_positions = frame_positions
+        frame_positions = {}
         frame = bg_for(t)
         d = ImageDraw.Draw(frame)
 
         idx = bisect.bisect_right(starts, t) - 1
 
         # A line that runs past the start of the next one keeps the main seat
-        # until the NEXT one is finished: the pair stands together like a
+        # until its own end: while both sing the pair stands together like a
         # duet — the older above, the newer smaller below — and nothing jumps
         # seats mid-line. Sung words must not vanish mid-word just because
         # the line after them has begun.
@@ -1236,7 +1264,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         while lead > 0 and lines[lead].get("backing"):
             lead -= 1
         if lead > 0 and not lines[lead].get("backing") \
-                and t < max(lines[lead]["end"], lines[lead - 1]["end"]) \
+                and t < lines[lead - 1]["end"] \
                 and is_runover_pair(lines[lead - 1], lines[lead]) \
                 and not lines[lead - 1].get("backing") \
                 and (lines[lead].get("voice") == 2) \
@@ -1303,24 +1331,30 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                     new_pic = get(slide[0], main=True)
                     old_bottom = y_main - old_pic.h // 2 + old_pic.h
                     new_top = y_main - new_pic.h // 2
-                    slide[3] = old_bottom + line_gap - new_top
+                    slide[3] = last_positions.get(slide[0], old_bottom + line_gap) - new_top
+                    slide[4] = last_positions.get(slide[1], y_main - old_pic.h // 2)
                 else:
                     slide[3] = STEP
+                # Taller phrases travel much farther. A fixed 320 ms made
+                # a three-row hand-off rush upward at several times the
+                # normal speed. Give it proportionate time, with a ceiling
+                # so the current lyric settles promptly.
+                slide_duration = min(0.40, SLIDE * math.sqrt(max(1.0, abs(slide[3]) / STEP)))
             if slide[0] is not None:
-                ride = slide_ease((t - slide[2]) / SLIDE)
+                ride = slide_ease((t - slide[2]) / slide_duration)
                 off = int(round((1.0 - ride) * slide[3]))
             else:
                 # Backing takes the side seat and keeps its stable anchor, so
                 # main has no incoming offset. Keep ride animating only so
                 # the ghost of the previous lead fades out smoothly instead
                 # of vanishing in one frame.
-                ride = slide_ease((t - slide[2]) / SLIDE)
+                ride = slide_ease((t - slide[2]) / slide_duration)
                 off = 0
             # the line that left the main seat, riding up and out
             if slide[1] is not None and ride < 1.0 and not over:
                 gpic = get(slide[1], main=True)
-                gy = y_main - gpic.h // 2 - int(round(ride * slide[3]))
-                galpha = (1.0 - ride) * scene_alpha
+                gy = int(round(slide[4] - ride * slide[3]))
+                galpha = max(0.0, 1.0 - ride / 0.6) * scene_alpha
                 paste_faded(frame, gpic.dim, (0, gy), galpha)
                 if gpic.hot is not None:
                     for bx in gpic.hot_boxes(lines[slide[1]], lines[slide[1]]["end"]):
@@ -1342,6 +1376,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             y_b = (backing_top(idx) if anchor >= 0
                    else y_main - pic.h // 2 + off)
             a_b = scene_alpha
+            frame_positions[idx] = y_b
             paste_faded(frame, pic.dim, (0, y_b), a_b)
             for bx in pic.hot_boxes(lines[idx], t):
                 piece = pic.hot.crop(bx)
@@ -1366,6 +1401,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                     y_j = backing_top(j, off)
                     duo_bottom = y_j + pic.h
                 a_j = scene_alpha
+                frame_positions[j] = y_j
                 paste_faded(frame, pic.dim, (0, y_j), a_j)
                 for bx in pic.hot_boxes(lines[j], t):
                     piece = pic.hot.crop(bx)
@@ -1412,7 +1448,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             # final backing); it must not depend on another lead existing
             # later. The countdown below still aims only at the next lead.
             n1_visual = next_any(lines, idx)
-            if n1_visual < len(lines) and n1_visual != duo:
+            while n1_visual < len(lines) and n1_visual in (duo, upcoming_back):
+                n1_visual = next_any(lines, n1_visual)
+            if n1_visual < len(lines):
                 draw_queue(frame, n1_visual, duo, off, scene_alpha, duo_bottom,
                            skip_back=upcoming_back)
             elif n1 < len(lines) and n1 != duo:

@@ -505,6 +505,21 @@ def main():
         check("a clip that cannot be read is simply no backdrop", False, e)
 
     print("\nA long line wraps instead of shrinking")
+    from PIL import ImageFont
+    font_path = video.find_font(None)
+    def regular_font(text, width, main):
+        size = 77 if main else 45
+        font = ImageFont.truetype(font_path, size)
+        while size > 10 and font.getlength(text) > width:
+            size -= 2
+            font = ImageFont.truetype(font_path, size)
+        return font
+    phrase = "A longer lyric keeps the same readable letters " * 4
+    art = video.LineArt({"text": phrase, "words": [{"w": w} for w in phrase.split()]},
+                        regular_font, 1920, 115)
+    check("three or more rows retain the normal font size",
+          art.font.size == 77 and art.h > art.row_h * 2,
+          (art.font.size, art.h, art.row_h))
     # The line about the shown video shrank to letters read only from the
     # front row. It wraps onto a second row now — split between words — and
     # the sweep lights row after row; everything below yields.
@@ -604,12 +619,10 @@ def main():
     held = main_ink(9.0)          # the long one ended, the short still sings:
     check("during the overlap the long line holds the main seat",
           inside > 200, inside)
-    check("and it stays there to the end of the NEW line — the pair stands",
-          held > 200, held)
-    check("while the new line fills in the seat below",
-          side_ink(9.0) > 15, side_ink(9.0))
-    check("once the new line is done the pair breaks up",
-          main_ink(11.0) < held // 2, f"{main_ink(11.0)} vs held {held}")
+    check("the shorter new line takes the main seat after the old one ends",
+          0 < held < inside, (held, inside))
+    check("the new line no longer waits in the lower seat until its end",
+          side_ink(9.0) < 15, side_ink(9.0))
     # The mirror case: the long line CONTAINS the short one — the short must
     # keep its lower seat to the long one's end, not vanish at its own.
     contain_song = {"colors": ["#00ff00", "#ff00ff"],
@@ -672,6 +685,42 @@ def main():
     check("and nothing runs off the frame's edge", edge8 == 0, edge8)
 
     print("\nThe frame speaks the language of the song")
+    # A next line already occupying the overlapping seat must not hide the
+    # real upcoming lyric. Verify pixels in the queue below both singers.
+    import copy
+    queued = copy.deepcopy(triple)
+    for line, text in zip(queued["data"]["lines"], ["First singer", "Second singer", "Upcoming lyric"]):
+        line["text"] = text
+        line["words"] = [{"w": text, "t": line["start"], "d": line["end"] - line["start"], "s": 3}]
+        line.pop("backing", None)
+    queued["data"]["lines"][2].update(start=13.0, end=15.0)
+    queued["data"]["lines"][2]["words"] = [{"w": "Upcoming lyric", "t": 13.0, "d": 2.0, "s": 3}]
+    queue_out = os.path.join(tmp, "overlap-queue.mp4")
+    video.render(queued, wav8, queue_out, AT3())
+    queue_shot = os.path.join(tmp, "overlap-queue.png")
+    subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "8.5",
+                    "-i", queue_out, "-frames:v", "1", queue_shot], check=True)
+    queue_im = Image.open(queue_shot).convert("RGB")
+    queue_ink = sum(1 for y in range(215, 280) for x in range(80, 560)
+                    if sum(queue_im.getpixel((x, y))) > 180)
+    check("upcoming lyrics remain visible below overlapping singers", queue_ink > 100, queue_ink)
+    # Once the older singer has finished and its exit animation has settled,
+    # changing that old text must have no effect on the rendered frame.
+    retired = copy.deepcopy(queued)
+    retired["data"]["lines"][0]["text"] = "Different retired text"
+    retired["data"]["lines"][0]["words"][0]["w"] = "Different retired text"
+    retired_out = os.path.join(tmp, "retired-line.mp4")
+    video.render(retired, wav8, retired_out, AT3())
+    retired_frames = []
+    for n, clip in enumerate([queue_out, retired_out]):
+        shot = os.path.join(tmp, "retired-%s.png" % n)
+        subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "10.5",
+                        "-i", clip, "-frames:v", "1", shot], check=True)
+        retired_frames.append(Image.open(shot).convert("RGB"))
+    from PIL import ImageChops, ImageStat
+    difference = ImageStat.Stat(ImageChops.difference(*retired_frames)).mean
+    check("finished overlapping line leaves before the newer line finishes",
+          max(difference) < 1.0, difference)
     # The countdown stands among the lyrics, not among the program's menus:
     # “END” over a Russian song is somebody else's caption pasted on.
     ru_song = {"data": {"lines": [{"text": "Пожелай мне удачи в бою"}]}}
