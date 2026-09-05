@@ -2289,11 +2289,13 @@ def _lyrics_from(data: dict):
 # --------------------------------------------------------------------------- #
 
 def free_port(preferred: int = 8770) -> int:
-    for port in range(preferred, preferred + 40):
+    # Windows can reserve the entire usual range for virtual networking.
+    # Port zero asks the OS to select an available port outside those ranges.
+    for port in [*range(preferred, preferred + 40), 0]:
         with socket.socket() as s:
             try:
                 s.bind(("127.0.0.1", port))
-                return port
+                return s.getsockname()[1]
             except OSError:
                 continue
     return 0

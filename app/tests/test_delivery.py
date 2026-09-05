@@ -322,6 +322,25 @@ def main():
     check("no Cyrillic in the Dockerfile", not re.search("[А-Яа-яЁё]", d))
     # the --host option must really exist, not only in the Dockerfile
     import studio as _ST
+    from unittest.mock import MagicMock, patch
+    for blocked, expected in [(False, 8770), (True, 54321)]:
+        requested = []
+        def bind(address):
+            requested.append(address)
+            if blocked and address[1] != 0:
+                raise PermissionError(10013, "reserved by Windows")
+        fake_socket = MagicMock()
+        fake_socket.__enter__.return_value = fake_socket
+        fake_socket.bind.side_effect = bind
+        fake_socket.getsockname.side_effect = lambda: ("127.0.0.1", expected)
+        with patch.object(_ST.socket, "socket", return_value=fake_socket):
+            selected = _ST.free_port()
+        check("reserved ports fall back to OS allocation" if blocked else "the normal port is still preferred",
+              selected == expected and len(requested) == (41 if blocked else 1)
+              and requested[-1] == ("127.0.0.1", 0 if blocked else 8770))
+    fake_socket.bind.side_effect = OSError("network unavailable")
+    with patch.object(_ST.socket, "socket", return_value=fake_socket):
+        check("a total network failure returns no port", _ST.free_port() == 0)
     check("the program parses --host",
           _ST.parse_args(["--host", "0.0.0.0", "--port", "8770"])[2] == "0.0.0.0")
     check("by default we listen to ourselves only", _ST.parse_args([])[2] == "127.0.0.1")

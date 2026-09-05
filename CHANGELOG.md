@@ -22,6 +22,9 @@ Upcoming lyrics remain visible while two current lines overlap.
 Long MP4 phrases wrap onto three or more rows without reducing their font
 size. Following phrases move down to accommodate the full text height.
 
+If ports 8770–8809 are occupied or reserved by Windows, Studio asks the OS
+for an available port instead of exiting. Explicit --port values still apply.dsdsd
+
 ## 4.48.2
 
 **Optional automatic backing removal before alignment.** “Remove text in
