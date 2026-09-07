@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import os
 import sys
 import time
@@ -41,12 +42,19 @@ class _PROPERTYKEY(ctypes.Structure):
     _fields_ = [("fmtid", _GUID), ("pid", wintypes.DWORD)]
 
 
+class _PVVALUE(ctypes.Union):
+    # PROPVARIANT also holds counted arrays: 16 bytes on Win64, 8 on Win32.
+    _fields_ = [("value", ctypes.c_wchar_p),
+                ("storage", ctypes.c_void_p * 2)]
+
+
 class _PROPVARIANT(ctypes.Structure):
+    _anonymous_ = ("data",)
     _fields_ = [("vt", wintypes.USHORT),
                 ("wReserved1", wintypes.USHORT),
                 ("wReserved2", wintypes.USHORT),
                 ("wReserved3", wintypes.USHORT),
-                ("value", ctypes.c_wchar_p)]
+                ("data", _PVVALUE)]
 
 
 def _guid(value: str) -> _GUID:
@@ -109,6 +117,18 @@ def set_window_identity(window, root: str) -> bool:
     if os.name != "nt":
         return False
     hwnd = _window_handle(window)
+    return _set_hwnd_identity(hwnd, root, app_id())
+
+
+def browser_app_id(root: str) -> str:
+    """Stable across ports/updates, distinct for installed and portable copies."""
+    if not getattr(sys, "frozen", False):
+        return app_id()
+    command = os.path.normcase(relaunch_details(root)[0])
+    return "KaraokeStudio.Browser." + hashlib.sha256(command.encode("utf-8")).hexdigest()[:24]
+
+
+def _set_hwnd_identity(hwnd: int, root: str, identity: str) -> bool:
     if not hwnd:
         return False
 
@@ -138,11 +158,14 @@ def set_window_identity(window, root: str) -> bool:
     commit = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p)(table[7])
     fmtid = _guid(_APP_FMTID)
     command, display, icon = relaunch_details(root)
-    values = ((5, app_id()), (2, command), (4, display), (3, icon))
+    # Set relaunch details BEFORE the ID: assigning the ID notifies the shell.
+    values = ((2, command), (4, display), (3, icon), (5, identity))
     try:
         for pid, text in values:
             key = _PROPERTYKEY(fmtid, pid)
-            value = _PROPVARIANT(_VT_LPWSTR, 0, 0, 0, text)
+            value = _PROPVARIANT()
+            value.vt = _VT_LPWSTR
+            value.value = text
             if set_value(store, ctypes.byref(key), ctypes.byref(value)) != 0:
                 return False
         return commit(store) == 0
@@ -150,3 +173,51 @@ def set_window_identity(window, root: str) -> bool:
         release(store)
         if initialized:
             ole.CoUninitialize()
+
+
+def _browser_windows(pid: int) -> list[int]:
+    """Only top-level visible windows of our isolated browser process."""
+    user = ctypes.windll.user32
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    user.EnumWindows.argtypes = (callback_type, wintypes.LPARAM)
+    user.EnumWindows.restype = wintypes.BOOL
+    user.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.DWORD))
+    user.IsWindowVisible.argtypes = (wintypes.HWND,)
+    user.GetClassNameW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+    windows = []
+
+    @callback_type
+    def visit(hwnd, unused):
+        owner = wintypes.DWORD()
+        user.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid and user.IsWindowVisible(hwnd):
+            name = ctypes.create_unicode_buffer(128)
+            user.GetClassNameW(hwnd, name, len(name))
+            if name.value.startswith("Chrome_WidgetWin_"):
+                windows.append(hwnd)
+        return True
+
+    user.EnumWindows(visit, 0)
+    return windows
+
+
+def set_browser_identity(proc, root: str, timeout: float = 20.0) -> bool:
+    """Run on a daemon thread; never bind by title or touch a user's browser.
+
+    This requires the private --user-data-dir used by studio.open_window.
+    Normal browser tabs deliberately keep their browser identity.
+    """
+    if os.name != "nt":
+        return False
+    until = time.monotonic() + timeout
+    try:
+        while time.monotonic() < until and proc.poll() is None:
+            for hwnd in _browser_windows(proc.pid):
+                if _set_hwnd_identity(hwnd, root, browser_app_id(root)):
+                    return True
+            time.sleep(0.1)
+    except Exception as exc:
+        print(f"Studio browser taskbar identity failed: {exc}", file=sys.stderr)
+        return False
+    print("Studio browser taskbar identity: no owned window was ready", file=sys.stderr)
+    return False

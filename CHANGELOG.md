@@ -7,6 +7,16 @@ commits themselves are one click away in the history.
 
 ---
 
+## Unreleased
+
+Added `--browser-window` to diagnose the Windows Chrome/Edge fallback without
+removing WebView2. The switch applies only to that launch and is documented in the README.
+
+Windows: the isolated Chrome/Edge fallback window now supplies Studio's launch
+command and icon for taskbar pinning, rather than a browser command with a
+temporary server address. Installed and portable copies have distinct fallback
+identities. Native WebView2 pinning is unchanged; ordinary browser tabs are not modified.
+
 ## 4.48.3
 
 Text transitions settle in 0.24–0.40 s and outgoing phrases fade earlier

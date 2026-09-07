@@ -2330,6 +2330,9 @@ def open_window(url: str) -> None:
                     DESKTOP_WINDOW_PROC = subprocess.Popen(
                         browser_command(exe, url, profile),
                         cwd=tempfile.gettempdir())
+                    threading.Thread(target=WA.set_browser_identity,
+                                     args=(DESKTOP_WINDOW_PROC, ROOT),
+                                     name="studio-browser-taskbar", daemon=True).start()
                     return
                 except Exception:
                     pass
@@ -2447,7 +2450,7 @@ def set_windows_app_identity() -> bool:
     return WA.set_process_identity()
 
 
-def run_desktop_window(server, url: str) -> None:
+def run_desktop_window(server, url: str, force_browser: bool = False) -> None:
     """Serve the Studio inside its own Windows WebView2 application window.
 
     The HTTP server lives on a worker because pywebview requires its GUI loop
@@ -2461,6 +2464,12 @@ def run_desktop_window(server, url: str) -> None:
                               name="karaoke-http", daemon=True)
     worker.start()
     try:
+        # Diagnostic switch: exercise the real fallback without
+        # uninstalling WebView2 or manufacturing a startup error report.
+        if force_browser:
+            open_window(url)
+            worker.join()
+            return
         try:
             set_windows_app_identity()
             import webview
@@ -2599,7 +2608,7 @@ def parse_args(argv):
         elif a.startswith("--host="):
             host = a.split("=", 1)[1]
         elif a in ("-h", "--help"):
-            print("py studio.py [--port 8770] [--host 127.0.0.1] [--no-browser]")
+            print("py studio.py [--port 8770] [--host 127.0.0.1] [--no-browser] [--browser-window]")
             raise SystemExit(0)
         else:
             raise SystemExit(tr(f"Unknown option: {a}", f"Не понял ключ: {a}"))
@@ -2661,6 +2670,10 @@ def main(argv=None) -> int:
             except OSError:
                 pass
             return 5
+    # Manual fallback diagnostic; deliberately not saved in settings or
+    # taskbar relaunch commands, so subsequent launches use WebView2 normally.
+    force_browser = "--browser-window" in args
+    args = [a for a in args if a != "--browser-window"]
     want, no_browser, host = parse_args(args)
     if launched_by_updater():
         close_stale_studio_windows()
@@ -2725,7 +2738,7 @@ def main(argv=None) -> int:
     srv.daemon_threads = True
     try:
         if not no_browser and os.name == "nt":
-            run_desktop_window(srv, url)
+            run_desktop_window(srv, url, force_browser=force_browser)
         else:
             if not no_browser:
                 threading.Timer(0.6, lambda: open_window(url)).start()

@@ -12,6 +12,7 @@ import tempfile
 import threading
 import time
 import zipfile
+from unittest.mock import Mock, patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -258,11 +259,54 @@ def main():
         check("the frozen relaunch description still names the EXE",
               not fcmd.endswith('Studio.bat"')
               and fdis == "Karaoke Studio" and not ficon.endswith("favicon.ico,0"))
+        installed = os.path.abspath(os.path.join("installed", "KaraokeStudio.exe"))
+        with patch.object(sys, "executable", installed):
+            installed_id = studio.WA.browser_app_id(studio.ROOT)
+            check("browser fallback pins the actual EXE without a URL or profile",
+                  studio.WA.relaunch_details(studio.ROOT)[0] == f'"{installed}"')
+            check("fallback identity is independent of temporary staging paths",
+                  installed_id == studio.WA.browser_app_id("another-staging-directory"))
+        with patch.object(sys, "executable", os.path.abspath("dist/KaraokeStudio.exe")):
+            check("installed and dist fallback windows have distinct pin identities",
+                  installed_id != studio.WA.browser_app_id(studio.ROOT))
     finally:
         if old_frozen_id is None:
             delattr(studio.sys, "frozen")
         else:
             studio.sys.frozen = old_frozen_id
+
+    with patch.object(studio.WA.os, "name", "nt"), \
+            patch.object(studio.WA, "_browser_windows", return_value=[123]) as windows, \
+            patch.object(studio.WA, "_set_hwnd_identity", return_value=True) as bind:
+        browser = Mock(pid=456)
+        browser.poll.return_value = None
+        check("fallback binds the owned browser window to the Studio launcher",
+              studio.WA.set_browser_identity(browser, studio.ROOT))
+        windows.assert_called_once_with(456)
+        bind.assert_called_once_with(123, studio.ROOT, studio.WA.browser_app_id(studio.ROOT))
+        windows.reset_mock()
+        browser.poll.return_value = 0
+        check("an exited browser is not searched for or rebound",
+              not studio.WA.set_browser_identity(browser, studio.ROOT))
+        windows.assert_not_called()
+        browser.poll.return_value = None
+        windows.side_effect = OSError("unavailable")
+        check("a shell integration error does not crash Studio",
+              not studio.WA.set_browser_identity(browser, studio.ROOT))
+    if os.name == "nt":
+        check("PROPVARIANT reserves the complete Windows ABI storage",
+              ctypes.sizeof(studio.WA._PROPVARIANT) == (24 if ctypes.sizeof(ctypes.c_void_p) == 8 else 16))
+
+    with patch.object(studio, "open_window") as open_fallback, \
+            patch.object(studio, "set_windows_app_identity") as native_identity, \
+            patch.object(studio, "save_error") as save_error:
+        server = Mock()
+        studio.run_desktop_window(server, "http://127.0.0.1:18770/", force_browser=True)
+        open_fallback.assert_called_once_with("http://127.0.0.1:18770/")
+        server.serve_forever.assert_called_once_with()
+        native_identity.assert_not_called()
+        save_error.assert_not_called()
+        check("the diagnostic browser switch bypasses WebView2 without a fake error", True)
 
     # Chrome/Edge remains a fallback for a Windows installation without the
     # WebView2 Runtime. The old server must own and close exactly that process.

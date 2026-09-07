@@ -61,6 +61,23 @@ The application checks its own repository for a newer GitHub Release. An
 update is installed only after confirmation, preserves `projects/` and
 `settings.ini`, and rolls back if replacement fails.
 
+### Testing the Windows browser fallback
+
+To diagnose window or taskbar issues, run this in PowerShell from the folder
+containing the EXE:
+
+```powershell
+.\KaraokeStudio.exe --browser-window
+```
+
+This bypasses WebView2 for this launch and uses an isolated Chrome window
+(or Edge if Chrome is unavailable). If neither is found, it opens the default
+browser. No Windows components are removed and the choice is not saved.
+`--no-browser` takes precedence. To test taskbar pinning, pin the isolated
+window's running icon, close Studio and launch the pin again: it should start
+that copy of Studio, normally using WebView2, not a stale browser URL.
+Ordinary browser tabs keep their browser identity.
+
 ## Start from source in three steps
 
 1. Install Python 3.8+ from <https://python.org> (on Windows tick
