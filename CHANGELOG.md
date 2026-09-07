@@ -7,7 +7,10 @@ commits themselves are one click away in the history.
 
 ---
 
-## Unreleased
+## 4.48.4
+
+If ports 8770–8809 are occupied or reserved by Windows, Studio asks the OS
+for an available port instead of exiting. Explicit `--port` values still apply.
 
 Added `--browser-window` to diagnose the Windows Chrome/Edge fallback without
 removing WebView2. The switch applies only to that launch and is documented in the README.
@@ -31,9 +34,6 @@ Upcoming lyrics remain visible while two current lines overlap.
 
 Long MP4 phrases wrap onto three or more rows without reducing their font
 size. Following phrases move down to accommodate the full text height.
-
-If ports 8770–8809 are occupied or reserved by Windows, Studio asks the OS
-for an available port instead of exiting. Explicit --port values still apply.dsdsd
 
 ## 4.48.2
 
