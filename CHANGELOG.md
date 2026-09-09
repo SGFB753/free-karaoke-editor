@@ -7,6 +7,19 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.48.5
+
+Exact original titles rank above shortened alternatives on both lyrics sources
+and in the combined results, even if an alternative has a closer duration.
+Genuine years in titles such as `Flow Shop 2026` retain priority.
+
+Lyrics search retries titles without stacked trailing years/video labels and,
+when needed, searches individual collaborators instead of only their combined
+credit. Added a regression for `Molotov Cocktail 2014 (2016)` by
+`Obladaet x Bumble Beezy`. Original titles and artist checks are retained;
+alternative artist queries are bounded. Name matching also handles underscores,
+fullwidth characters and Russian е/ё.
+
 ## 4.48.4
 
 If ports 8770–8809 are occupied or reserved by Windows, Studio asks the OS

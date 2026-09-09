@@ -3069,6 +3069,59 @@ You might also like
               {f["source"] for f in noisy} == {"LRCLIB", "Genius"}
               and all(f["title"] == "\u0428\u0435\u0441\u0442\u0435\u0440\u0451\u043d\u043a\u0430" for f in noisy), noisy)
         stub_lyrics.Handler.flaky_calls = 0
+        from unittest.mock import patch
+        rank_records = [
+            {"trackName": title, "artistName": "Stub Artist", "duration": length,
+             "plainLyrics": "Test lyrics"}
+            for title, length in [("Flow Shop", 200), ("Flow Shop 2025", 200),
+                                  ("FLOW SHOP 2026", 240), ("Flow Shop 2026", 210)]]
+        with patch.object(FL, "_ask", return_value=rank_records):
+            ranked = FL._search_lrclib("Flow Shop 2026", "Stub Artist", 200, 4)
+            check("LRCLIB ranks the genuine year before a closer-duration shortened title",
+                  [r["duration"] for r in ranked[:2]] == [210, 240]
+                  and all(FL.exact_title("Flow Shop 2026", r["title"]) for r in ranked[:2]), ranked)
+            check("LRCLIB keeps the exact year even with limit one and no duration",
+                  FL.exact_title("Flow Shop 2026", FL._search_lrclib(
+                      "Flow Shop 2026", "Stub Artist", 0, 1)[0]["title"]))
+        rank_hits = [{"type": "song", "result": {
+            "title": r["trackName"], "primary_artist": {"name": "Stub Artist"},
+            "url": FL.GENIUS_BASE + f"/rank-{i}-lyrics"}}
+            for i, r in enumerate(rank_records)]
+        rank_payload = json.dumps({"response": {"sections": [{"hits": rank_hits}]}}).encode()
+        with patch.object(FL, "_genius_get", return_value=rank_payload), \
+                patch.object(FL, "genius_page", return_value="Test lyrics"):
+            ranked = FL.search_genius("Flow Shop 2026", "Stub Artist", 1)
+            check("Genius keeps the exact year before applying the result limit",
+                  len(ranked) == 1 and FL.exact_title("Flow Shop 2026", ranked[0]["title"]), ranked)
+        with patch.object(FL, "_search_lrclib", return_value=[{"title": "Flow Shop"}]), \
+                patch.object(FL, "search_genius", return_value=[{"title": "Flow Shop 2026"}]):
+            check("an exact Genius title precedes a shortened LRCLIB title in the UI",
+                  FL.search("Flow Shop 2026")[0]["title"] == "Flow Shop 2026")
+        check("exact title comparison preserves years and numeric titles",
+              FL.exact_title("FLOW_SHOP 2026", "Flow Shop 2026")
+              and FL.exact_title("1984", "1984")
+              and not FL.exact_title("Flow Shop 2026", "Flow Shop")
+              and not FL.exact_title("Flow Shop 2026", "Flow Shop 2025"))
+        molotov = FL.search("Molotov Cocktail 2014 (2016)", "Obladaet x Bumble Beezy", 269.061)
+        check("the real Molotov title drops stacked years and searches each collaborator",
+              len(molotov) == 1 and molotov[0]["source"] == "Genius"
+              and molotov[0]["title"] == "MOLOTOV COCKTAIL", molotov)
+        check("cleanup preserves original names and purely numeric song titles",
+              FL.title_variants("Molotov Cocktail 2014 (2016)")[0] == "Molotov Cocktail 2014 (2016)"
+              and FL.title_variants("1984") == ["1984"]
+              and FL.title_variants("Song2014") == ["Song2014"])
+        check("stacked video labels can be removed together",
+              "Song" in FL.title_variants("Song (Official Video) [HD] 2016"))
+        check("collaboration spelling and underscores yield individual search queries",
+              all("bumble beezy molotov cocktail" in FL.fallback_queries("Molotov Cocktail", a)
+                  for a in ["Obladaet x Bumble Beezy", "Obladaet featuring Bumble_Beezy",
+                            "Obladaet × Bumble Beezy", "Obladaet & Bumble Beezy",
+                            "Obladaet + Bumble Beezy"]))
+        check("artist normalization handles fullwidth letters and Russian yo",
+              FL.artist_matches("ＯＢＬＡＤＡＥＴ", "OBLADAET")
+              and FL.artist_matches("Ёлка", "Елка"))
+        check("alternate queries are bounded even for a long collaboration",
+              len(FL.fallback_queries("Song 2016 (2017)", " & ".join(f"Artist{i}" for i in range(30)))) <= 8)
         retried = FL._search_lrclib("Retry Once", "Stub Artist", 21, 5)
         check("a temporary LRCLIB failure is retried without another click",
               retried and stub_lyrics.Handler.flaky_calls >= 2,

@@ -22,6 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import time
+import unicodedata
 
 from . import __version__
 from .i18n import tr
@@ -45,7 +46,8 @@ class LyricsError(RuntimeError):
 
 
 def _clean_name(value: str) -> str:
-    return " ".join(re.findall(r"[\w]+", (value or "").casefold(), re.UNICODE))
+    value = unicodedata.normalize("NFKC", value or "").casefold().replace("ё", "е")
+    return " ".join(re.findall(r"[^\W_]+", value, re.UNICODE))
 
 
 def title_variants(value: str) -> list[str]:
@@ -73,7 +75,27 @@ def title_variants(value: str) -> list[str]:
     # Apply the bracket cleanup to already shortened forms too.
     for candidate in list(variants):
         add(re.sub(r"\s*[\[(][^)\]]*[)\]]\s*$", "", candidate))
+    # Media titles often stack upload years and quality labels. Keep the
+    # untouched title (including genuinely numeric titles such as 1984).
+    for candidate in list(variants):
+        cleaned = candidate
+        for _ in range(6):
+            shorter = re.sub(
+                r"(?:\s*[\[(][^)\]]*[)\]]|\s+(?:(?:19|20)\d{2}|"
+                r"official(?:\s+music)?\s+(?:video|audio)|lyrics?|"
+                r"lyric\s+video|visuali[sz]er|hd|4k|1080p|720p))\s*$",
+                "", cleaned, flags=re.I).strip(" -–—_|/")
+            if not shorter or shorter == cleaned:
+                break
+            add(shorter)
+            cleaned = shorter
     return variants
+
+
+def exact_title(wanted: str, got: str) -> bool:
+    """Ignore typography, but never remove years or other title words."""
+    name = _clean_name(wanted)
+    return bool(name) and name == _clean_name(got)
 
 
 def title_matches(wanted: str | list[str], got: str) -> bool:
@@ -101,9 +123,28 @@ def _artist_parts(name):
     # Comma/ampersand are punctuation separators; x means “with” only when it
     # is a word of its own. Matching a bare x used to split names such as
     # Xzibit and could make an unrelated result pass the artist filter.
-    parts = re.split(r"\s*[,&]\s*|(?:\s+x\s+)|(?:\s+(?:feat|ft)\.?\s+)",
-                     name or "", flags=re.I)
+    parts = re.split(r"\s*[,&;+×]\s*|(?:\s+(?:x|х|and|with)\s+)|"
+                     r"(?:\s+(?:feat(?:uring)?|ft)\.?\s+)",
+                     (name or "").replace("_", " "), flags=re.I)
     return sorted(_clean_name(p) for p in parts if _clean_name(p))
+
+
+def fallback_queries(track: str, artist: str) -> list[str]:
+    """Bounded alternatives, used only when ordinary queries find no match.
+
+    Search each collaborator independently: Genius may index a collaboration
+    under only one participant. Do not generate factorial artist permutations.
+    """
+    titles = title_variants(track)
+    if not titles:
+        return []
+    queries = []
+    for title in (titles[-1], titles[0]):
+        for name in _artist_parts(artist)[:4]:
+            query = f"{name} {_clean_name(title)}".strip()
+            if query not in queries:
+                queries.append(query)
+    return queries
 
 
 def artist_matches(wanted: str, got: str) -> bool:
@@ -233,6 +274,14 @@ def _search_lrclib(track: str, artist: str, duration: float, limit: int) -> list
             found.extend(_ask("/api/search", params))
     out = []
     seen_records = set()
+    if artist.strip() and not any(
+            plain(item) and artist_matches(artist, item.get("artistName") or "")
+            and title_matches(variants, item.get("trackName") or "") for item in found):
+        for query in fallback_queries(track, artist):
+            key = (("q", query),)
+            if key not in seen_queries:
+                seen_queries.add(key)
+                found.extend(_ask("/api/search", {"q": query}))
     for item in found:
         words = plain(item)
         if not words:
@@ -257,10 +306,10 @@ def _search_lrclib(track: str, artist: str, duration: float, limit: int) -> list
                     "text": words,
                     "timed": bool(timed_text),
                     "textTimed": timed_text})
-    if duration:
-        # Same name, different recording: a live take runs minutes longer, and
-        # its words are laid out differently.
-        out.sort(key=lambda x: abs((x["duration"] or 0) - duration))
+    # Exact original title wins before duration and before truncating results.
+    # A year may be a genuine part of the name, not upload metadata.
+    out.sort(key=lambda x: (not exact_title(track, x["title"]),
+                           abs((x["duration"] or 0) - duration) if duration else 0))
     return out[:limit]
 
 
@@ -381,7 +430,14 @@ def search_genius(track: str, artist: str = "", limit: int = 5) -> list:
         for query in (" ".join(x for x in (artist.strip(), title) if x), title):
             if query and query not in queries:
                 queries.append(query)
-    for query in queries:
+    ordinary_count = len(queries)
+    queries.extend(q for q in fallback_queries(track, artist) if q not in queries)
+    for index, query in enumerate(queries):
+        if index >= ordinary_count and any(
+                title_matches(variants, item.get("title") or "")
+                and artist_matches(artist, (item.get("primary_artist") or {}).get("name", ""))
+                for item in candidates):
+            break
         url = GENIUS_BASE + "/api/search/multi?" + urllib.parse.urlencode({"q": query})
         raw = _genius_get(url, "application/json, text/plain, */*")
         try:
@@ -400,7 +456,7 @@ def search_genius(track: str, artist: str = "", limit: int = 5) -> list:
                 seen.add(page)
                 candidates.append(item)
 
-    wanted_title, wanted_artist = _clean_name(variants[-1]), _clean_name(artist)
+    wanted_title, wanted_artist = _clean_name(track), _clean_name(artist)
 
     def relevance(item: dict):
         primary = item.get("primary_artist") or {}
@@ -412,7 +468,8 @@ def search_genius(track: str, artist: str = "", limit: int = 5) -> list:
         exact_artist = bool(wanted_artist and
                             (wanted_artist in got_artist or got_artist in wanted_artist))
         unwanted_cover = "cover" in got_title and "cover" not in wanted_title
-        return (1 if exact_artist else 0, artist_score,
+        return (exact_title(track, item.get("title") or ""),
+                1 if exact_artist else 0, artist_score,
                 0 if unwanted_cover else 1, title_score)
 
     candidates.sort(key=relevance, reverse=True)
@@ -483,6 +540,9 @@ def search(track: str, artist: str = "", duration: float = 0, limit: int = 5) ->
             except LyricsError as e:
                 errors.append(e)
     if found:
+        # Stable sort retains source/duration ordering within each group, but
+        # an exact Genius title must also precede a shortened LRCLIB result.
+        found.sort(key=lambda item: not exact_title(track, item["title"]))
         return found
     if errors:
         raise LyricsError("; ".join(str(e) for e in errors))
