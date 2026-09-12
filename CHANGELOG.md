@@ -7,6 +7,12 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.48.6
+
+Fixed exact lyrics matches being rejected for titles shorter than four characters
+(such as pyrokinesis — `ONI`). Short titles still do not use fuzzy or substring
+matching. Identical repeated artist credits from video metadata are collapsed.
+
 ## 4.48.5
 
 Exact original titles rank above shortened alternatives on both lyrics sources

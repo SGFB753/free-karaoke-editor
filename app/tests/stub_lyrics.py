@@ -37,6 +37,12 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/api/search/multi":
             want = (q.get("q") or [""])[0].lower()
             hits = []
+            if "oni" in want and "pyrokinesis" in want:
+                host = self.headers.get("Host")
+                return self._json({"response": {"sections": [{"hits": [{
+                    "type": "song", "result": {
+                        "title": "ONI", "primary_artist": {"name": "pyrokinesis"},
+                        "url": f"http://{host}/stub-genius-lyrics"}}]}]}})
             if want == "bumble beezy molotov cocktail":
                 host = self.headers.get("Host")
                 return self._json({"response": {"sections": [{"hits": [{

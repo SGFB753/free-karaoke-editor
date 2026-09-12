@@ -105,6 +105,10 @@ def title_matches(wanted: str | list[str], got: str) -> bool:
         return False
     for variant in variants:
         a = _clean_name(variant).replace(" ", "")
+        # Short real titles (ONI, X, 99) require equality, not fuzzy matching.
+        # The length guard below is only for approximate/substring matches.
+        if a == b:
+            return True
         if min(len(a), len(b)) >= 4 and ((a in b or b in a)
                 or difflib.SequenceMatcher(None, a, b).ratio() >= 0.68):
             return True

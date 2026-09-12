@@ -3070,6 +3070,30 @@ You might also like
               and all(f["title"] == "\u0428\u0435\u0441\u0442\u0435\u0440\u0451\u043d\u043a\u0430" for f in noisy), noisy)
         stub_lyrics.Handler.flaky_calls = 0
         from unittest.mock import patch
+        oni = FL.search("Oni", "pyrokinesis, pyrokinesis", 213.381)
+        check("real ONI metadata with a repeated artist keeps the exact Genius result",
+              len(oni) == 1 and oni[0]["title"] == "ONI" and oni[0]["source"] == "Genius", oni)
+        for short_title in ("Oni", "X", "99", "Я"):
+            check(f"short title {short_title} permits exact matching",
+                  FL.title_matches(short_title, short_title.upper()))
+        check("short titles never match longer names by substring or fuzzy similarity",
+              not FL.title_matches("Oni", "Onion")
+              and not FL.title_matches("Oni", "One")
+              and not FL.title_matches("X", "Xyz")
+              and not FL.title_matches("99", "1999")
+              and not FL.title_matches("", ""))
+        with patch.object(FL, "_ask", return_value=[
+                {"trackName": "ONI", "artistName": "pyrokinesis", "plainLyrics": "Test words"},
+                {"trackName": "Onion", "artistName": "pyrokinesis", "plainLyrics": "Other words"},
+                {"trackName": "ONI", "artistName": "Unrelated Artist", "plainLyrics": "Wrong artist"}]):
+            oni_lrc = FL._search_lrclib("Oni", "pyrokinesis, pyrokinesis", 213.381, 5)
+            check("LRCLIB short titles retain the title and artist filters",
+                  len(oni_lrc) == 1 and oni_lrc[0]["title"] == "ONI"
+                  and oni_lrc[0]["artist"] == "pyrokinesis", oni_lrc)
+        check("repeated upload artist credits are collapsed without changing the title",
+              FE.split_name("Oni", "pyrokinesis, pyrokinesis") == ("pyrokinesis", "Oni"))
+        check("genuine multiple artists are preserved",
+              FE.split_name("Oni", "Artist A, Artist B") == ("Artist A, Artist B", "Oni"))
         rank_records = [
             {"trackName": title, "artistName": "Stub Artist", "duration": length,
              "plainLyrics": "Test lyrics"}

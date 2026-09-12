@@ -316,6 +316,11 @@ def split_name(title: str, artist: str = "") -> tuple:
     """
     title = clean_title(title)
     if artist:
+        # Some music uploads repeat the same performer in their artist tag.
+        # Collapse only identical credits; keep genuine multi-artist labels.
+        credits = [p.strip() for p in artist.split(",") if p.strip()]
+        if credits and len({p.casefold() for p in credits}) == 1:
+            artist = credits[0]
         # the same dash form, with the artist already known from the tags
         head = re.match(r"^\s*" + re.escape(artist) + r"\s*[-–—]\s*(.+)$", title, re.I)
         return artist.strip(), (head.group(1).strip() if head else title)
