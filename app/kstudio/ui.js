@@ -281,8 +281,7 @@ const STR = {
     linkNeedUrl: "Paste a link into the field first",
     linkWorking: "Taking the sound from the link…",
     linkGot: n => "The sound is here: " + n,
-    linkFail: m => "It did not download: " + m +
-      " — try another link, or choose a file on the disk",
+    linkFail: m => "It did not download: " + m,
     pasteText: "Paste the text",
     transcribeText: "Recognise from song",
     transcribeNeedAudio: "Choose the song file first",
@@ -727,8 +726,7 @@ const STR = {
     linkNeedUrl: "Сначала вставьте ссылку в поле",
     linkWorking: "Достаю звук по ссылке…",
     linkGot: n => "Звук на месте: " + n,
-    linkFail: m => "Не скачалось: " + m +
-      " — попробуйте другую ссылку или выберите файл на диске",
+    linkFail: m => "Не скачалось: " + m,
     pasteText: "Вставить текст",
     transcribeText: "Распознать из песни",
     transcribeNeedAudio: "Сначала выберите файл песни",

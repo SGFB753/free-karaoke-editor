@@ -13,6 +13,18 @@ const js   = await (await fetch(API + "/ui.js")).text();
 let fail=0; const ok=(n,c,e='')=>{console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c)fail++;};
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
+// Backend errors already contain recovery advice. The UI must not append a
+// second, generic "choose a local file" instruction in either language.
+const linkFormatters = [...js.matchAll(/linkFail:\s*(m\s*=>[\s\S]*?),\s*\n\s*pasteText:/g)];
+ok('both download error translations are covered', linkFormatters.length === 2);
+for (const [i, match] of linkFormatters.entries()) {
+  const format = new Function('return (' + match[1] + ')')();
+  const reason = 'SSL EOF — выберите аудиофайл с диска / choose a local audio file';
+  const prefix = i === 0 ? 'It did not download: ' : 'Не скачалось: ';
+  ok('download failure adds only its prefix, language ' + i,
+     format(reason) === prefix + reason, format(reason));
+}
+
 const PID = (await (await fetch(API+'/api/state')).json()).projects[0].id;
 const proj = async () => (await (await fetch(API+'/api/project/'+encodeURIComponent(PID))).json());
 const before = await proj();
