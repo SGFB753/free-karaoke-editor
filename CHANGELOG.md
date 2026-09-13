@@ -9,8 +9,6 @@ commits themselves are one click away in the history.
 
 ## 4.48.7
 
-The download error banner no longer duplicates the server's recovery advice.
-
 Download failures no longer lose their cause behind an empty `ERROR:` or retry
 progress. Error reports include the job log and downloader exit codes.
 SSL EOF, connection resets and timeouts receive at most one extra same-client
