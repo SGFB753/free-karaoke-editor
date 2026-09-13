@@ -189,7 +189,9 @@ def start_job(title: str, fn) -> str:
                 traceback.print_exc()
             for line in msg.splitlines():
                 log(line)
-            where = save_error(traceback.format_exc())
+            with JOBS_LOCK:
+                recent_log = "\n".join(JOBS[jid]["log"])
+            where = save_error(traceback.format_exc() + "\nJob log:\n" + recent_log)
             if where:
                 log(tr(f"The whole error is written to {where}",
                        f"Ошибка целиком записана в {where}"))

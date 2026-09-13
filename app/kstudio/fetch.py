@@ -69,6 +69,12 @@ RATE_LIMIT = re.compile(
 # downloader itself is older than the site it is talking to.
 STALE = ("pip install -U yt-dlp",)
 
+# Transport failures are not certificate validation errors or player refusals.
+NETWORK_ERROR = re.compile(
+    r"UNEXPECTED_EOF_WHILE_READING|EOF occurred in violation of protocol|"
+    r"connection (?:reset|aborted)|remote end closed connection|"
+    r"(?:read |connection )?timed out", re.I)
+
 
 class FetchError(RuntimeError):
     pass
@@ -286,9 +292,16 @@ def _reason(lines: list, code: int) -> str:
             # “ERROR: [youtube] zzz123: Video unavailable” — the tail is the
             # point; the site and the id of the video say nothing to anyone.
             s = re.sub(r"^ERROR:\s*(\[[^\]]+\]\s*)?", "", s, flags=re.I)
-            return re.sub(r"^[\w-]{6,}:\s*", "", s).strip()
+            s = re.sub(r"^[\w-]{6,}:\s*", "", s).strip()
+            if s:
+                return s
+    # yt-dlp can finish with a bare ERROR: after logging the real network
+    # error earlier. Progress and retry sleep messages are not the cause.
     for line in reversed(lines):
-        if line.strip():
+        if "got error:" in line.lower() or NETWORK_ERROR.search(line):
+            return line.strip()
+    for line in reversed(lines):
+        if line.strip() and not re.match(r"^(?:ERROR:\s*$|Sleeping\b|\[download\])", line.strip(), re.I):
             return line.strip()
     return tr(f"the downloader stopped with code {code}",
               f"загрузчик завершился с кодом {code}")
@@ -484,7 +497,29 @@ def _attempt(args: list, say: Callable, deadline: float) -> tuple:
             p.kill()
             raise FetchError(tr(f"the download took longer than {TIMEOUT // 60} minutes",
                                 f"загрузка идёт дольше {TIMEOUT // 60} минут"))
-    return p.wait(), lines
+    code = p.wait()
+    if code:
+        say(tr(f"Downloader exit code: {code}", f"Код завершения загрузчика: {code}"))
+    return code, lines
+
+
+def _network_attempt(args: list, say: Callable, deadline: float) -> tuple:
+    """One extra same-client attempt after yt-dlp exhausts its own retries.
+
+    Keep partial files for resuming, retain TLS verification, and never cycle
+    through player clients for a transport error or an IP rate limit.
+    """
+    code, lines = _attempt(args, say, deadline)
+    tail = "\n".join(lines)
+    if (code and NETWORK_ERROR.search(tail) and not RATE_LIMIT.search(tail)
+            and "CERTIFICATE_VERIFY_FAILED" not in tail.upper()
+            and time.time() + 2 < deadline):
+        say(tr("The audio connection broke — retrying once in 2 seconds…",
+               "Соединение при скачивании оборвалось — повторяю один раз через 2 секунды…"))
+        time.sleep(2)
+        if time.time() < deadline:
+            return _attempt(args, say, deadline)
+    return code, lines
 
 
 def _empty(folder: str) -> None:
@@ -525,11 +560,11 @@ def download(url: str, dest_dir: str, log: Optional[Callable] = None) -> dict:
             if client:
                 args += ["--extractor-args", f"youtube:player_client={client}"]
             args += extra_args() + ["--", url]
-            code, lines = _attempt(args, say, deadline)
+            code, lines = _network_attempt(args, say, deadline)
             if code == 0:
                 break
             reason = _reason(lines, code)
-            tail = "\n".join(lines[-12:])
+            tail = "\n".join(lines)
             if RATE_LIMIT.search(tail):
                 raise FetchError(reason + tr(
                     " — YouTube has temporarily limited this IP. Repeating the "
@@ -544,6 +579,12 @@ def download(url: str, dest_dir: str, log: Optional[Callable] = None) -> dict:
                     "передайте куки строкой «yt-dlp-args = "
                     "--cookies-from-browser chrome» в settings.ini. Либо "
                     "подождите и попробуйте позже, либо смените подключение/прокси."))
+            if NETWORK_ERROR.search(tail):
+                raise FetchError(reason + tr(
+                    " — the download connection failed. Check your connection or VPN/proxy; "
+                    "try later or choose a local audio file.",
+                    " — соединение при скачивании оборвалось. Проверьте подключение или VPN/прокси; "
+                    "попробуйте позже либо выберите аудиофайл с диска."))
             again = bool(TRY_AGAIN.search(tail))
             if again and i + 1 < len(CLIENTS):
                 say(tr(f"The site turned this client away ({reason}) — "

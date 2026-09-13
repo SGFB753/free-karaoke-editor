@@ -29,6 +29,24 @@ def check(name, yes):
 
 
 def main():
+    # Preserve subprocess diagnostics even if the exception itself has no text.
+    def failed_download(log):
+        log("[download] Got error: SSL UNEXPECTED_EOF_WHILE_READING")
+        log("Downloader exit code: 1")
+        raise studio.FE.FetchError("")
+
+    with patch.object(studio, "save_error", return_value="test-error.txt") as save, \
+            patch.object(studio.traceback, "print_exc"):
+        jid = studio.start_job("download diagnostics test", failed_download)
+        until = time.monotonic() + 5
+        while not studio.JOBS[jid]["done"] and time.monotonic() < until:
+            time.sleep(0.01)
+        check("job error reports retain downloader output and exit code",
+              studio.JOBS[jid]["done"] and not studio.JOBS[jid]["ok"]
+              and save.called and "UNEXPECTED_EOF" in save.call_args.args[0]
+              and "Downloader exit code: 1" in save.call_args.args[0])
+        with studio.JOBS_LOCK:
+            studio.JOBS.pop(jid, None)
     spec_path = os.path.join(ROOT, "packaging", "KaraokeStudio.spec")
     with open(spec_path, encoding="utf-8") as f:
         spec = f.read()

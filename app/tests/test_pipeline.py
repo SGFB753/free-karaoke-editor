@@ -2934,6 +2934,39 @@ You might also like
         check("an ordinary pair is handed over as it stands", True, "no ffmpeg here")
 
     # A refusal aimed at the client, not at the video: YouTube tells one player
+    from unittest.mock import patch
+    ssl_lines = ["[download] Got error: [SSL: UNEXPECTED_EOF_WHILE_READING] "
+                 "EOF occurred in violation of protocol. Retrying (3/3)...",
+                 "Sleeping 2.00 seconds ...", "ERROR:"]
+    check("an empty final ERROR cannot hide the earlier SSL failure",
+          "UNEXPECTED_EOF" in FE._reason(ssl_lines, 1))
+    check("an empty downloader error still includes its exit code",
+          "17" in FE._reason(["ERROR:"], 17) and "17" in FE._reason([], 17))
+    check("a real final error takes precedence over retry progress",
+          FE._reason(["ERROR: Video unavailable", "Sleeping 2.00 seconds ..."], 1)
+          == "Video unavailable")
+    with patch.object(FE, "_attempt", side_effect=[(1, ssl_lines), (0, ["done"])]) as attempt, \
+            patch.object(FE.time, "sleep"):
+        check("a transient SSL interruption gets one successful same-command retry",
+              FE._network_attempt(["downloader"], lambda s: None, time.time() + 60)[0] == 0
+              and attempt.call_count == 2
+              and attempt.call_args_list[0].args == attempt.call_args_list[1].args)
+    with patch.object(FE, "_attempt", return_value=(1, ssl_lines)) as attempt, \
+            patch.object(FE.time, "sleep"):
+        result = FE._network_attempt(["downloader"], lambda s: None, time.time() + 60)
+        check("persistent SSL errors stop after one extra attempt",
+              result[0] == 1 and attempt.call_count == 2)
+    for label, errors, remaining in [
+            ("rate limit", ssl_lines + ["ERROR: HTTP Error 429"], 60),
+            ("certificate error", ["ERROR: CERTIFICATE_VERIFY_FAILED"], 60),
+            ("expired deadline", ssl_lines, -1),
+            ("private video", ["ERROR: Private video"], 60)]:
+        with patch.object(FE, "_attempt", return_value=(1, errors)) as attempt, \
+                patch.object(FE.time, "sleep") as sleep:
+            FE._network_attempt(["downloader"], lambda s: None, time.time() + remaining)
+            check(f"network retry respects {label}", attempt.call_count == 1 and not sleep.called)
+
+    # A refusal aimed at the client, not at the video: YouTube tells one player
     # “the page needs to be reloaded” and hands the sound to the next one.
     attempts = os.path.join(tmp, "attempts.txt")
     os.environ["KARAOKE_STUB_LOG"] = attempts

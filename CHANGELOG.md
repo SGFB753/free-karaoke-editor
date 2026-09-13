@@ -7,6 +7,14 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.48.7
+
+Download failures no longer lose their cause behind an empty `ERROR:` or retry
+progress. Error reports include the job log and downloader exit codes.
+SSL EOF, connection resets and timeouts receive at most one extra same-client
+attempt after the downloader's own retries; rate limits and certificate errors
+are not retried this way. TLS verification remains enabled.
+
 ## 4.48.6
 
 Fixed exact lyrics matches being rejected for titles shorter than four characters
