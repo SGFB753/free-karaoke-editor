@@ -7,7 +7,7 @@ commits themselves are one click away in the history.
 
 ---
 
-## 4.48.9
+## 4.48.10
 
 Starting a build now pauses the source-audio preview before its controls are
 hidden by the progress screen.

@@ -24,6 +24,16 @@ const line = async i => p.evaluate(async (pid, index) =>
   PID, i);
 let fail = 0;
 const ok = (n, c, e = '') => { console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c) fail++; };
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function waitSaved(){
+  // pointerup marks the project dirty synchronously, then the UI deliberately
+  // waits 350 ms before saving. A fixed post-drag sleep races a loaded CI
+  // runner and can read the old server record even though the gesture worked.
+  await sleep(60);                         // old "saved" cannot satisfy the wait
+  await p.waitForFunction(() =>
+    document.getElementById('savedNote').classList.contains('ok'),
+    {timeout:15000});
+}
 
 // Take a line whose words are wide enough: narrow ones get no grips drawn.
 const LINE = await p.evaluate(() => {
@@ -62,13 +72,13 @@ await p.mouse.move(tiny.rightSpot.x, tiny.rightSpot.y);
 await p.mouse.down();
 await p.mouse.move(tiny.rightSpot.x + 45, tiny.rightSpot.y, {steps:8});
 await p.mouse.up();
-await new Promise(r => setTimeout(r, 900));
+await waitSaved();
 const tinyAfter = await line(LINE);
 ok('the tiny word can be made longer',
    tinyAfter.words[0].d > tinyBefore.words[0].d + 0.03,
    `${tinyBefore.words[0].d.toFixed(3)} → ${tinyAfter.words[0].d.toFixed(3)} s`);
 await p.evaluate(() => document.getElementById('btnUndo').click());
-await new Promise(r => setTimeout(r, 900));
+await waitSaved();
 
 // Is the edge of the block free to grab: a neighbour may be covering it.
 async function freeEdge(side){
@@ -86,7 +96,7 @@ async function pull(spot, dx){
   await p.mouse.down();
   await p.mouse.move(spot.x + dx, spot.y, {steps: 8});
   await p.mouse.up();
-  await new Promise(r => setTimeout(r, 900));
+  await waitSaved();
   return await line(LINE);
 }
 // Push the next line away if it sits flush and blocks the edge.
@@ -110,7 +120,7 @@ async function undoAll(){
     await new Promise(r => setTimeout(r, 90));
     if (done) break;
   }
-  await new Promise(r => setTimeout(r, 700));
+  await waitSaved();
 }
 
 // What a person sees while dragging: did the song run off, did the line change,
@@ -146,7 +156,7 @@ async function drag(j, where, dx){
   await p.mouse.down();
   await p.mouse.move(spot.x + dx, spot.y, {steps: 10});
   await p.mouse.up();
-  await new Promise(r => setTimeout(r, 900));
+  await waitSaved();
   return {before, after: await line(LINE), cls: spot.cls};
 }
 const dur = (l, j) => l.words[j].d;
@@ -174,7 +184,7 @@ const v0 = await view();
      `${during.selected + 1}`);
   ok('and the stage stands still', during.scroll === v0.scroll);
   await p.mouse.up();
-  await new Promise(r => setTimeout(r, 900));
+  await waitSaved();
   const after = await view();
   ok('after release it is the same line', after.selected === v0.selected,
      `${after.selected + 1}`);
@@ -241,7 +251,7 @@ console.log('\n--- the middle does not seek either ---');
   await p.mouse.down();
   const mid = await view();
   await p.mouse.up();
-  await new Promise(r => setTimeout(r, 400));
+  await waitSaved();
   ok('the time did not jump', mid.time === v.time, `${v.time} → ${mid.time}`);
   ok('the selected line did not change', mid.selected === v.selected);
 }
@@ -279,7 +289,7 @@ await undoAll();
   await p.mouse.down();
   await p.mouse.move(spot.x + 55, spot.y, {steps: 8});
   await p.mouse.up();
-  await new Promise(r => setTimeout(r, 900));
+  await waitSaved();
   const tuned = await line(LINE);
   ok('the word pattern was made uneven',
      Math.max(...tuned.words.map(x=>x.d)) / Math.min(...tuned.words.map(x=>x.d)) > 1.4,
@@ -354,7 +364,7 @@ console.log('\n--- undo brings the length back ---');
 await drag(0, 'right', 55);              // a fresh edit, the one we will undo
 const beforeUndo = await line(LINE);
 await p.evaluate(() => document.getElementById('btnUndo').click());
-await new Promise(r => setTimeout(r, 900));
+await waitSaved();
 const undone = await line(LINE);
 ok('the word length came back', Math.abs(dur(undone,0) - dur(beforeUndo,0)) > 0.05,
    `${dur(beforeUndo,0).toFixed(3)} → ${dur(undone,0).toFixed(3)}`);
