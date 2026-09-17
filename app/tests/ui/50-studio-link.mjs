@@ -60,8 +60,8 @@ await until(() => /Не скачалось/.test($('linkNote').textContent));
 const bad = $('linkNote').textContent;
 ok('the failure is said out loud', /Не скачалось/.test(bad), bad.slice(0, 60));
 ok('with the reason the downloader gave', /Video unavailable/.test(bad), bad.slice(-70));
-ok('and it offers another link or a file',
-   /другую ссылку/.test(bad) && /файл/.test(bad), bad.slice(-60));
+ok('and it points to the complete saved error report',
+   /last-error\.txt/.test(bad), bad.slice(-90));
 ok('the song field is still empty', !$('inAudio').value);
 ok('the button works again', !$('btnFetch').disabled);
 
