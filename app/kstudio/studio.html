@@ -596,6 +596,15 @@
         </div>
         <div class="hint" id="linkNote"></div>
       </div>
+      <div class="field hide" id="newCoverField">
+        <label data-t="newCoverLabel">Cover (optional)</label>
+        <div class="pickrow">
+          <input id="inCover" readonly data-tp="newCoverPh" placeholder="jpg, png, webp, bmp…">
+          <button data-pick="newcover" data-t="choose">Choose…</button>
+          <button class="hide" id="btnNewCoverClear" data-t="coverClear">Remove</button>
+        </div>
+        <div class="hint" id="newCoverNote" data-t="newCoverHint">It will be copied into the project and used behind the lyrics.</div>
+      </div>
       <div class="field">
         <label data-t="fileLyrics">Lyrics file</label>
         <div class="pickrow">

@@ -1718,6 +1718,8 @@ You might also like
     from kstudio import project as PRJ
     cover_src = os.path.join(tmp, "cover-src.jpg")
     _Im.new("RGB", (320, 180), (200, 30, 30)).save(cover_src, "JPEG")
+    local_cover_src = os.path.join(tmp, "local-cover.png")
+    _Im.new("RGBA", (320, 180), (200, 30, 30, 160)).save(local_cover_src, "PNG")
     song_for_build = os.path.join(tmp, "for-build.wav")
     text_for_build = os.path.join(tmp, "for-build.txt")
     if not os.path.isfile(song_for_build):
@@ -1726,10 +1728,15 @@ You might also like
 
     with_cover = PRJ.create(song_for_build, text_for_build, os.path.join(tmp, "cov"),
                           align_engine="energy", separate=False,
-                          cover=cover_src, cover_bg=True)
+                          cover=local_cover_src, cover_bg=True)
     rec_c = json.load(open(os.path.join(with_cover, "project.json"), encoding="utf-8"))
+    made_cover = os.path.join(with_cover, "cover.jpg")
+    made_cover_magic = b""
+    if os.path.isfile(made_cover):
+        with open(made_cover, "rb") as made_cover_file:
+            made_cover_magic = made_cover_file.read(2)
     check("the cover is copied into the song's folder",
-          os.path.isfile(os.path.join(with_cover, "cover.jpg")))
+          os.path.isfile(made_cover) and made_cover_magic == b"\xff\xd8")
     check("and the song remembers to stand on it",
           rec_c.get("cover") == "cover.jpg" and rec_c.get("coverBg") is True,
           (rec_c.get("cover"), rec_c.get("coverBg")))

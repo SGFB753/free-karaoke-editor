@@ -7,6 +7,20 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.48.8
+
+Starting a build now pauses the source-audio preview before its controls are
+hidden by the progress screen.
+
+When adding a local audio file, a cover image can now be selected from disk in
+the New Song form. It is copied into the project, converted to JPEG when
+necessary, and enabled as the lyrics background from the first build. Songs
+added from a link keep their existing automatic cover and video options.
+
+Local audio files now start the same automatic LRCLIB/Genius lyrics search as
+links. Embedded title and artist tags are preferred; a file named
+`Artist - Track.mp3` works as the fallback.
+
 ## 4.48.7
 
 Download failures no longer lose their cause behind an empty `ERROR:` or retry

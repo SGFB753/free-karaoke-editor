@@ -22,6 +22,9 @@ const STR = {
       'both files into this window.</div>',
     back: "← Back", newSong: "New song", fileSong: "Song file",
     fileLyrics: "Lyrics file", choose: "Choose…",
+    newCoverLabel: "Cover (optional)", newCoverPh: "jpg, png, webp, bmp…",
+    newCoverHint: "It will be copied into the project and used behind the lyrics.",
+    coverClear: "Remove",
     lyricsPh: "txt — one line of the song per line of the file",
     langAlign: "Language and timing",
     alignExact: "Accurate (Whisper), if available",
@@ -470,6 +473,9 @@ const STR = {
       'оба файла в это окно.</div>',
     back: "← Назад", newSong: "Новая песня", fileSong: "Файл песни",
     fileLyrics: "Файл с текстом", choose: "Выбрать…",
+    newCoverLabel: "Обложка (необязательно)", newCoverPh: "jpg, png, webp, bmp…",
+    newCoverHint: "Она сохранится в проекте и будет использоваться фоном под текстом.",
+    coverClear: "Убрать",
     lyricsPh: "txt — одна строка песни на строку файла",
     langAlign: "Язык и разметка",
     alignExact: "Точно (Whisper), если доступен",
@@ -1257,6 +1263,10 @@ function updateNewAudioClock(){
   $("newAudioClock").textContent = previewTime(player.currentTime) + " / " +
     previewTime(player.duration);
 }
+function stopNewAudioPreview(){
+  const player = $("newAudioPlayer");
+  if (!player.paused) player.pause();
+}
 $("newAudioPlayer").addEventListener("timeupdate", updateNewAudioClock);
 $("newAudioPlayer").addEventListener("loadedmetadata", updateNewAudioClock);
 $("newAudioPlayer").addEventListener("durationchange", updateNewAudioClock);
@@ -1329,6 +1339,7 @@ const PICK_ACCEPT = {
   lyrics: ".txt,.lrc", lyrics2: ".txt,.lrc",
   pack: ".zip",
   cover: "image/*,video/mp4,video/webm,.mkv,.mov",
+  newcover: "image/jpeg,image/png,image/webp,image/bmp,.jpg,.jpeg,.png,.webp,.bmp",
   backdrop: "video/*,.mkv,.mov",
 };
 
@@ -1352,18 +1363,20 @@ async function usePickedFile(kind, file){
     $("browser").classList.add("hide");
     if (kind === "pack") return unpackSong(got.path);
     if (kind === "cover") return takeCover(got.path);
+    if (kind === "newcover"){
+      setNewCover(got.path, file.name, false);
+      $("selBackground").value = "cover";
+      askReport();
+      return;
+    }
     if (kind === "backdrop") return takeBackdrop(got.path);
     if (kind === "track") return replaceTrack(got.path);
     if (kind === "lyrics2") return realign(got.path);
     if (kind === "lyrics"){
       $("inLyrics").value = got.path;
     } else {
-      lastSong = null;                        // chosen by hand, not fetched by link
-      $("grpCover").classList.add("hide");
-      $("selBackground").value = "cover";
-      $("inAudio").value = got.path;
-      updateNewAudioPreview();
-      if (!$("inTitle").value.trim()) $("inTitle").value = fileStem(file.name);
+      await selectLocalAudio(got.path, file.name);
+      return;
     }
     askReport();
   }catch(err){ toast(T.dropFail + err.message); }
@@ -1521,7 +1534,7 @@ async function showDir(path){
   if (pickTarget === "backdrop") backdropUrlRow(body);
   (d.drives||[]).forEach(dr => body.appendChild(row("💽", dr, () => showDir(dr))));
   d.dirs.forEach(x => body.appendChild(row("📁", x.name, () => showDir(x.path))));
-  d.files.forEach(x => body.appendChild(row("🎵", x.name, () => {
+  d.files.forEach(x => body.appendChild(row("🎵", x.name, async () => {
     $("browser").classList.add("hide");
     if (pickTarget === "pack"){ unpackSong(x.path); return; }
     if (pickTarget === "cover"){ takeCover(x.path); return; }
@@ -1529,14 +1542,10 @@ async function showDir(path){
     if (pickTarget === "track"){ replaceTrack(x.path); return; }
     if (pickTarget === "lyrics2"){ realign(x.path); return; }
     if (pickTarget !== "lyrics"){
-      lastSong = null;                              // not the song from the link
-      $("grpCover").classList.add("hide");          // and its cover goes with it
-      $("selBackground").value = "cover";
+      await selectLocalAudio(x.path, x.name);
+      return;
     }
-    $(pickTarget === "lyrics" ? "inLyrics" : "inAudio").value = x.path;
-    if (pickTarget !== "lyrics") updateNewAudioPreview();
-    if (pickTarget !== "lyrics" && !$("inTitle").value.trim())
-      $("inTitle").value = fileStem(x.path);
+    $("inLyrics").value = x.path;
     askReport();
   }, (x.size/1024/1024).toFixed(1)+T.mb)));
   if (!d.dirs.length && !d.files.length)
@@ -1599,12 +1608,8 @@ window.addEventListener("drop", async e => {
   screen("scrNew");
   try{
     if (audio){ toast(T.taking(audio.name));
-      lastSong = null;                              // dropped by hand, not fetched
-      $("grpCover").classList.add("hide");
-      $("selBackground").value = "cover";
-      $("inAudio").value = (await upload(audio)).path;
-      updateNewAudioPreview();
-      if (!$("inTitle").value.trim()) $("inTitle").value = fileStem(audio.name); }
+      const uploaded = await upload(audio);
+      await selectLocalAudio(uploaded.path, audio.name, !text); }
     if (text){ $("inLyrics").value = (await upload(text)).path; }
     toast(audio && text ? T.filesOk
                         : T.filesHalf);
@@ -1626,6 +1631,28 @@ async function upload(file){
    is a dead end: the file picker and the box for pasting the text are right
    there. */
 let lastSong = null;
+let newCoverFromLink = false;
+let lyricsSearchSeq = 0;
+
+function setNewCover(path, name, fromLink){
+  $("inCover").value = path || "";
+  newCoverFromLink = !!(path && fromLink);
+  $("btnNewCoverClear").classList.toggle("hide", !path);
+  if (path && name) $("newCoverNote").textContent = name;
+  else $("newCoverNote").textContent = T.newCoverHint;
+}
+function clearNewCover(){
+  $("inCover").value = "";
+  newCoverFromLink = false;
+  $("btnNewCoverClear").classList.add("hide");
+  $("grpCover").classList.add("hide");
+  $("selBackground").value = "cover";
+  $("newCoverNote").textContent = T.newCoverHint;
+}
+$("btnNewCoverClear").addEventListener("click", () => {
+  clearNewCover();
+  askReport();
+});
 
 let nameTyped = false;          // the name was typed, not merely offered
 for (const id of ["inTitle", "inArtist"])
@@ -1637,7 +1664,36 @@ function fileStem(path){
   return name.replace(/\.[a-z0-9]{1,5}$/i, "").trim();
 }
 
+async function selectLocalAudio(path, name, searchLyrics = true){
+  if (newCoverFromLink) clearNewCover();
+  $("newCoverField").classList.remove("hide");
+  lastSong = null;                              // chosen locally, not fetched by link
+  $("grpCover").classList.add("hide");
+  $("selBackground").value = "cover";
+  $("inAudio").value = path;
+  updateNewAudioPreview();
+
+  const stem = fileStem(name || path);
+  const parts = stem.split(/\s+[-–—]\s+/, 2);
+  let song = {title: stem, track: parts.length === 2 ? parts[1] : stem,
+              artist: parts.length === 2 ? parts[0] : "", duration: 0};
+  try{
+    song = await api("/api/audio/info", {path, name: name || ""});
+  }catch(e){ /* A readable file name is still enough to try the libraries. */ }
+  // A slow metadata read must not overwrite a newer file selection.
+  if ($("inAudio").value !== path) return;
+  if (!$("inTitle").value.trim()) $("inTitle").value = song.track || song.title || stem;
+  if (!$("inArtist").value.trim()) $("inArtist").value = song.artist || "";
+  askReport();
+  if (searchLyrics){
+    findLyrics({track: $("inTitle").value.trim() || song.track || song.title,
+                artist: $("inArtist").value.trim() || song.artist || "",
+                duration: song.duration || 0});
+  }
+}
+
 function resetNewSongForm(){
+  lyricsSearchSeq++;
   $("inAudio").value = "";
   updateNewAudioPreview();
   $("inLyrics").value = "";
@@ -1645,6 +1701,8 @@ function resetNewSongForm(){
   $("inLink").value = "";
   $("inTitle").value = "";
   $("inArtist").value = "";
+  clearNewCover();
+  $("newCoverField").classList.add("hide");
   $("taLyrics").value = "";
   const defModel = [...$("selModel").options].find(o => o.defaultSelected);
   if (defModel) $("selModel").value = defModel.value;
@@ -1714,8 +1772,11 @@ async function takeLink(){
       note("linkNote", line);
     });
     lastSong = got;
+    $("newCoverField").classList.add("hide");
     if (!$("inTitle").value.trim()) $("inTitle").value = got.track || got.title || "";
     if (!$("inArtist").value.trim()) $("inArtist").value = got.artist || "";
+    if (got.cover) setNewCover(got.cover, fileStem(got.cover), true);
+    else clearNewCover();
     $("grpCover").classList.toggle("hide", !got.cover);
     $("selBackground").value = "cover";
     $("inAudio").value = got.path;
@@ -1736,6 +1797,7 @@ $("btnFetch").addEventListener("click", takeLink);
 $("inLink").addEventListener("keydown", e => { if (e.key === "Enter") takeLink(); });
 
 async function findLyrics(song){
+  const searchSeq = ++lyricsSearchSeq;
   const box = $("lyricsFound");
   box.innerHTML = ""; box.classList.add("hide");
   if ($("inLyrics").value.trim()) return;      // a text is already chosen
@@ -1743,13 +1805,15 @@ async function findLyrics(song){
   try{
     const r = await api("/api/lyrics/find", {track: song.track || song.title,
       artist: song.artist || "", duration: song.duration || 0});
+    if (searchSeq !== lyricsSearchSeq || $("inLyrics").value.trim()) return;
     const found = r.found || [];
     if (!found.length) return note("lyricsNote", T.lyricsNone(r.source));
     note("lyricsNote", T.lyricsFoundN(found.length, r.source));
     found.forEach(f => box.appendChild(foundRow(f)));
     box.classList.remove("hide");
   }catch(e){
-    note("lyricsNote", T.lyricsNone(caps.lyricsSource || "") + " " + e.message);
+    if (searchSeq === lyricsSearchSeq)
+      note("lyricsNote", T.lyricsNone(caps.lyricsSource || "") + " " + e.message);
   }
 }
 function foundRow(f){
@@ -1882,7 +1946,11 @@ initStripBacking();
 $("btnBuild").addEventListener("click", async () => {
   const audio = $("inAudio").value.trim(), lyrics = $("inLyrics").value.trim();
   if (!audio || !lyrics) return toast(T.pickBoth);
+  // The preview is about to be hidden behind the build screen. Leaving it
+  // playing made it impossible to stop until the track ended.
+  stopNewAudioPreview();
   try{
+    const cover = $("inCover").value.trim();
     const j = await api("/api/new", {audio, lyrics, align: $("selAlign").value,
       model: $("selModel").value, lang: $("selLang").value,
       separate: $("chkSep").checked, noText: $("inNoText").value.trim(),
@@ -1900,12 +1968,13 @@ $("btnBuild").addEventListener("click", async () => {
       // Whether the name was typed or merely offered: a name of one's own
       // outranks the “title:” inside a lyrics file, an offered one does not.
       titleSet: nameTyped,
-      cover: (lastSong && lastSong.cover) || "",
-      backgroundMode: (lastSong && lastSong.cover)
-        ? $("selBackground").value : "none",
+      cover,
+      backgroundMode: cover
+        ? ($("grpCover").classList.contains("hide") ? "cover" : $("selBackground").value)
+        : "none",
       // Kept for older servers which do not know backgroundMode yet.
-      coverBg: !!(lastSong && lastSong.cover
-        && $("selBackground").value === "cover")});
+      coverBg: !!(cover && ($("grpCover").classList.contains("hide")
+        || $("selBackground").value === "cover"))});
     watchJob(j.job, T.jobBuild, id => openProject(id));
   }catch(e){ toast(e.message); }
 });

@@ -71,6 +71,48 @@ ok('the downloaded ones are marked correctly', have.tiny === true && have['large
 console.log('\n--- the add-a-song window ---');
 $('btnAdd').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(200);
+ok('the cover picker stays out of the link workflow',
+   !!$('inCover') && $('newCoverField').classList.contains('hide'));
+const described = await (await fetch(API + '/api/audio/info', {method:'POST',
+  headers:{'Content-Type':'application/json'}, body:JSON.stringify({
+    path:process.env.KARAOKE_SONG, name:'Local Artist - Local Track.wav'})})).json();
+ok('a local file name supplies artist, track and duration when tags are absent',
+   described.artist === 'Local Artist' && described.track === 'Local Track'
+   && described.duration > 0, JSON.stringify(described));
+const beforeLocalPick = w.fetch;
+let localLyricsQuery = null;
+w.fetch = async (path, opts) => {
+  if (typeof path === 'string' && path.startsWith('/api/upload'))
+    return {json: async () => ({path:'C:\\Music\\manual.mp3'})};
+  if (typeof path === 'string' && path.startsWith('/api/audio/info'))
+    return {json: async () => ({title:'Tagged Track', track:'Tagged Track',
+      artist:'Tagged Artist', duration:183})};
+  if (typeof path === 'string' && path.startsWith('/api/lyrics/find')){
+    localLyricsQuery = JSON.parse(opts.body);
+    return {json: async () => ({source:'LRCLIB / Genius', found:[{
+      source:'LRCLIB', title:'Tagged Track', artist:'Tagged Artist', duration:183,
+      lines:2, text:'first line\nsecond line', timed:false, textTimed:''}]})};
+  }
+  return beforeLocalPick(path, opts);
+};
+doc.querySelector('[data-pick="audio"]').dispatchEvent(
+  new w.MouseEvent('click',{bubbles:true}));
+Object.defineProperty($('nativeFile'), 'files', {configurable:true,
+  value:[new w.File(['audio'], 'manual.mp3', {type:'audio/mpeg'})]});
+$('nativeFile').dispatchEvent(new w.Event('change',{bubbles:true}));
+await sleep(100);
+w.fetch = beforeLocalPick;
+ok('selecting a local audio file reveals the local cover picker',
+   !$('newCoverField').classList.contains('hide'));
+ok('its embedded title and artist start the lyrics search automatically',
+   $('inTitle').value === 'Tagged Track' && $('inArtist').value === 'Tagged Artist'
+   && localLyricsQuery && localLyricsQuery.track === 'Tagged Track'
+   && localLyricsQuery.artist === 'Tagged Artist'
+   && !$('lyricsFound').classList.contains('hide'),
+   JSON.stringify({title:$('inTitle').value, artist:$('inArtist').value,
+                   query:localLyricsQuery}));
+$('btnAdd').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+await sleep(60);
 for (const [name, ready] of Object.entries(have)) {
   const text = byVal(name)?.textContent || '';
 
@@ -197,8 +239,20 @@ w.fetch = (path, opts) => {
 $('chkFine').checked = true;
 $('inAudio').value = process.env.KARAOKE_SONG;
 $('inLyrics').value = process.env.KARAOKE_TEXT;
+$('inCover').value = 'C:\\Music\\local-cover.png';
+const preview = $('newAudioPlayer');
+let previewPaused = 0;
+Object.defineProperty(preview, 'paused', {configurable:true, get:() => false});
+preview.pause = () => { previewPaused++; };
 $('btnBuild').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(500);
+ok('starting the build stops the hidden audio preview', previewPaused === 1,
+   `pause calls=${previewPaused}`);
+ok('a local cover is sent into the project and enabled as its background',
+   sent && sent.cover === 'C:\\Music\\local-cover.png'
+   && sent.backgroundMode === 'cover' && sent.coverBg === true,
+   JSON.stringify(sent && {cover:sent.cover, backgroundMode:sent.backgroundMode,
+                           coverBg:sent.coverBg}));
 ok('the choice is sent with the build', sent && sent.separator === 'htdemucs_ft',
    JSON.stringify(sent && {separator: sent.separator, separate: sent.separate}));
 w.fetch = realFetch;

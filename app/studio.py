@@ -240,6 +240,47 @@ def ready_dir() -> str:
     return folder
 
 
+def local_audio_info(path: str, display_name: str = "") -> dict:
+    """Read a local song's tags, falling back to ``Artist - Track.ext``.
+
+    A file picker only gives the UI bytes and a file name.  ffprobe is already
+    part of the audio toolchain, so use its format tags without introducing a
+    second metadata dependency; files without tags remain fully searchable by
+    their human-readable name.
+    """
+    shown = os.path.splitext(os.path.basename(display_name or path))[0]
+    tagged_title = ""
+    tagged_artist = ""
+    seconds = 0.0
+    probe = AU.ffprobe()
+    if probe:
+        try:
+            result = WP.run([
+                probe, "-v", "error", "-show_entries",
+                "format=duration:format_tags=title,artist,album_artist,albumartist,performer",
+                "-of", "json", path,
+            ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=20)
+            if result.returncode == 0:
+                record = json.loads(result.stdout.decode("utf-8", errors="replace"))
+                fmt = record.get("format") or {}
+                tags = {str(k).casefold(): str(v).strip()
+                        for k, v in (fmt.get("tags") or {}).items() if v is not None}
+                tagged_title = tags.get("title", "")
+                tagged_artist = (tags.get("artist") or tags.get("album_artist")
+                                 or tags.get("albumartist") or tags.get("performer") or "")
+                seconds = float(fmt.get("duration") or 0)
+        except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+            pass
+    if seconds <= 0:
+        try:
+            seconds = AU.duration(path)
+        except Exception:
+            seconds = 0.0
+    artist, track = FE.split_name(tagged_title or shown, tagged_artist)
+    return {"title": FE.clean_title(tagged_title or shown),
+            "track": track, "artist": artist, "duration": seconds}
+
+
 def discard_staged(path: str) -> None:
     """Consume an uploaded input after it has safely landed in a project."""
     if not path:
@@ -696,6 +737,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._upload(q)
             body = self._body()
 
+            if path == "/api/audio/info":
+                audio = body.get("path", "")
+                if not os.path.isfile(audio):
+                    return self._err(400, tr(f"file not found: {audio}",
+                                             f"файл не найден: {audio}"))
+                try:
+                    return self._json(local_audio_info(audio, body.get("name", "")))
+                except Exception as e:
+                    return self._err(400, str(e))
+
             if path == "/api/reveal":
                 # Show the finished file in the file manager. Otherwise it has
                 # to be hunted for — it sits next to the original song.
@@ -830,6 +881,10 @@ class Handler(BaseHTTPRequestHandler):
                 for f in (audio, lyrics):
                     if not os.path.isfile(f):
                         return self._err(400, tr(f"file not found: {f}", f"файл не найден: {f}"))
+                cover = body.get("cover") or ""
+                if cover and not os.path.isfile(cover):
+                    return self._err(400, tr(f"cover not found: {cover}",
+                                             f"обложка не найдена: {cover}"))
                 background_mode = str(body.get("backgroundMode") or
                                       ("cover" if body.get("coverBg") else "none"))
                 if background_mode not in ("none", "cover", "video"):
@@ -853,7 +908,7 @@ class Handler(BaseHTTPRequestHandler):
                             # typed into the field, not taken from a file name
                             title_set=bool(body.get("titleSet")),
                             # the clip's cover as the backdrop, if asked for
-                            cover=body.get("cover") or None,
+                            cover=cover or None,
                             cover_bg=background_mode == "cover")
                 def build_project(log):
                     folder = P.create(audio, lyrics, PROJECTS, log=log, **opts)

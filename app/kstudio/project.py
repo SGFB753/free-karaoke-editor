@@ -529,7 +529,14 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             "lines": [ln.to_json() for ln in lyr.lines],
         }
         if cover and os.path.isfile(cover):
-            shutil.copyfile(cover, os.path.join(folder, "cover.jpg"))
+            # A local picker accepts common image formats. Store one genuine
+            # JPEG regardless of the source extension so every renderer and
+            # packed project agrees with the cover.jpg name.
+            from PIL import Image, ImageOps
+            with Image.open(cover) as image:
+                image = ImageOps.exif_transpose(image).convert("RGB")
+                image.save(os.path.join(folder, "cover.jpg"), "JPEG",
+                           quality=92, optimize=True)
         save(folder, data)
         log(tr("The song is ready.", "Проект готов."))
         return folder
