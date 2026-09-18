@@ -7,7 +7,7 @@ commits themselves are one click away in the history.
 
 ---
 
-## 4.48.11
+## 4.48.12
 
 On the timeline, Ctrl-click now always adds or removes a line from the batch
 instead of accidentally arming a timing drag. All selected blocks now look the
