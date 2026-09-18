@@ -35,6 +35,14 @@ const marks = () => p.evaluate(() => ({
   n: document.querySelectorAll('#scroll .ln.mark').length,
   blocks: document.querySelectorAll('#blocks .blk.mark').length,
   note: document.getElementById('selNote').textContent}));
+const timelineSpots = () => p.evaluate(() => [...document.querySelectorAll('#blocks .blk')]
+  .map((e, i) => {
+    const r = e.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    return {i, x, y, ok: r.width >= 24 && x > 4 && x < innerWidth - 4 &&
+      !!(hit && hit.closest && hit.closest('.blk') === e)};
+  }).filter(v => v.ok));
 const hit = async (v, mods) => {
   if (mods) for (const m of mods) await p.keyboard.down(m);
   await p.mouse.click(v.x, v.y);
@@ -62,10 +70,13 @@ const seen = await p.evaluate(() => {
   const e = document.querySelector('#scroll .ln.mark');
   const cs = getComputedStyle(e);
   return {bg: cs.backgroundColor, shadow: cs.boxShadow.slice(0, 40),
+          after: getComputedStyle(e, '::after').content,
           note: getComputedStyle(document.getElementById('selNote')).fontWeight};
 });
 ok('the selected lines have a visible highlight',
    seen.bg !== 'rgba(0, 0, 0, 0)' && /inset|rgb/.test(seen.shadow), JSON.stringify(seen));
+ok('selection uses one clean highlight without check-mark badges',
+   seen.after === 'none' || seen.after === '', seen.after);
 ok('the selection counter is in bold', +seen.note >= 600, seen.note);
 ok('and they are marked on the timeline too', dm.blocks === 3, JSON.stringify(dm));
 // Zooming and edits rebuild the timeline — the marks on the blocks must survive.
@@ -134,6 +145,52 @@ await p.keyboard.down('Control'); await p.keyboard.press('A'); await p.keyboard.
 await sleep(250);
 m = await marks();
 ok('Ctrl+A selects every line too', m.n === original.length, JSON.stringify(m));
+await p.keyboard.press('Escape'); await sleep(150);
+
+console.log('\n--- ctrl-click directly on timeline blocks ---');
+const tls = await timelineSpots();
+ok('at least three timeline blocks are reachable', tls.length >= 3, String(tls.length));
+await hit(tls[0]);
+await hit(tls[1], ['Control']);
+m = await marks();
+ok('Ctrl+click keeps both timeline blocks selected', m.blocks === 2 && m.n === 2,
+   JSON.stringify(m));
+await hit(tls[2], ['Control']);
+m = await marks();
+ok('another Ctrl+click adds a third timeline block', m.blocks === 3 && m.n === 3,
+   JSON.stringify(m));
+const timelineStyles = await p.evaluate(() => [...document.querySelectorAll('#blocks .blk.mark')]
+  .map(e => {
+    const s = getComputedStyle(e);
+    return [s.backgroundColor, s.borderColor, s.borderStyle, s.color].join('|');
+  }));
+ok('all selected timeline blocks look exactly alike', new Set(timelineStyles).size === 1,
+   JSON.stringify(timelineStyles));
+await hit(tls[1], ['Control']);
+m = await marks();
+ok('Ctrl+click on a selected timeline block removes only it', m.blocks === 2 && m.n === 2,
+   JSON.stringify(m));
+const beforeGroup = (await proj()).lines;
+await p.mouse.move(tls[0].x, tls[0].y);
+await p.mouse.down();
+await p.mouse.move(tls[0].x + 70, tls[0].y, {steps: 8});
+await p.mouse.up();
+await sleep(900);
+const afterGroup = (await proj()).lines;
+const movedIds = [tls[0].i, tls[2].i];
+const shifts = movedIds.map(i => afterGroup[i].start - beforeGroup[i].start);
+ok('dragging one selected block moves the whole timeline batch',
+   shifts.every(d => Math.abs(d) > .05) && Math.abs(shifts[0] - shifts[1]) < .002,
+   shifts.map(d => d.toFixed(3)).join(' / '));
+ok('the unselected block stays where it was',
+   Math.abs(afterGroup[tls[1].i].start - beforeGroup[tls[1].i].start) < .002);
+ok('line lengths stay unchanged during a batch move', movedIds.every(i =>
+   Math.abs((afterGroup[i].end - afterGroup[i].start) -
+            (beforeGroup[i].end - beforeGroup[i].start)) < .002));
+ok('word timing moves by the very same amount', movedIds.every((i, k) =>
+   afterGroup[i].words.every((w, j) =>
+     Math.abs((w.t - beforeGroup[i].words[j].t) - shifts[k]) < .002)));
+await p.click('#btnUndo'); await sleep(900);
 await p.keyboard.press('Escape'); await sleep(150);
 
 console.log('\n--- actions over the whole batch ---');

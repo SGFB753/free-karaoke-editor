@@ -2343,6 +2343,8 @@ function selectLine(i, jump, mode){
     marked.clear();
     for (let k = Math.min(from, sel); k <= Math.max(from, sel); k++) marked.add(k);
     anchor = from;
+  } else if (mode === "keep"){
+    anchor = sel;
   } else {
     marked.clear();
     anchor = sel;
@@ -3429,20 +3431,33 @@ $("blocks").addEventListener("pointerdown", e => {
   if (e.button !== 0) return;                   // middle button pans the timeline
   const blk = e.target.closest(".blk"); if (!blk) return;
   const i = +blk.dataset.i;
+  const pickMode = e.shiftKey ? "range" : (e.ctrlKey || e.metaKey) ? "add" : "";
+  const batchDrag = !pickMode && marked.size > 1 && marked.has(i);
   // Overlapping blocks stack, and the top one used to swallow every press:
   // the line underneath could not be reached at all. The press keeps its old
   // meaning — select and maybe drag — and a SECOND press on the same spot,
   // released without moving, dives to the line underneath (see pointerup).
-  diveAt = (!e.shiftKey && !e.ctrlKey && !e.metaKey && i === sel)
+  diveAt = (!batchDrag && !e.shiftKey && !e.ctrlKey && !e.metaKey && i === sel)
     ? {x: e.clientX, t: viewStart() + (e.clientX -
          $("tlwrap").getBoundingClientRect().left) / pps()}
     : null;
-  selectLine(i, false, e.shiftKey ? "range" : (e.ctrlKey || e.metaKey) ? "add" : "");
-  if (marked.size > 1) return;               // a batch is selected, not dragged
+  selectLine(i, false, batchDrag ? "keep" : pickMode);
+  // Ctrl/Shift is a selection gesture even while the batch still contains only
+  // one line.  Falling through here armed a block drag on the first Ctrl-click;
+  // the tiniest mouse movement then made it look as if Ctrl could select only
+  // that one block.  Modified clicks must never edit timing.
+  if (pickMode || (marked.size > 1 && !batchDrag)){
+    e.preventDefault();
+    return;
+  }
   snap("");                       // a snapshot before the edit, while data is whole
   drag = {i, x0:e.clientX, start:lines[i].start, end:lines[i].end,
           words: lines[i].words.map(w=>w.t),
           durs: lines[i].words.map(w=>w.d),      // keep hand-tuned word lengths
+          group: batchDrag ? targets().map(k => ({
+            i:k, start:lines[k].start, end:lines[k].end,
+            words:lines[k].words.map(w => w.t)
+          })) : null,
           grip: e.target.dataset.grip || "",
           // Alt squeezes the whole line into the new span instead of stretching
           // the outermost word alone: for a line that grabbed a minute and a
@@ -3476,7 +3491,24 @@ window.addEventListener("pointermove", e => {
   if (!drag) return;
   const dt = (e.clientX - drag.x0) / $("tlwrap").clientWidth * zoom;
   const ln = lines[drag.i];
-  if (drag.grip && drag.all){
+  if (drag.group){
+    // Move the batch as one rigid object. Lengths, gaps and word timing stay
+    // exactly as they were inside every selected line.
+    let shift = dt;
+    const onset = nearestOnset(drag.start + shift);
+    if (onset !== null && Math.abs(onset - (drag.start + shift)) < onsetSnapRange())
+      shift = onset - drag.start;
+    shift = Math.max(shift, -Math.min(...drag.group.map(g => g.start)));
+    drag.group.forEach(g => {
+      const item = lines[g.i];
+      item.start = g.start + shift;
+      item.end = g.end + shift;
+      item.words.forEach((w, k) => { w.t = g.words[k] + shift; });
+      layoutBlock(g.i);
+    });
+    layoutWords();
+    $("selNote").textContent = T.linesPicked(drag.group.length);
+  } else if (drag.grip && drag.all){
     // The whole line into the new span: every word moves, in proportion to its
     // syllables. This is what narrowing a line that swallowed an interlude
     // actually means.

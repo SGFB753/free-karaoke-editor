@@ -7,6 +7,12 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.48.11
+
+On the timeline, Ctrl-click now always adds or removes a line from the batch
+instead of accidentally arming a timing drag. All selected blocks now look the
+same and move as one group while preserving line lengths, gaps, and word timing.
+
 ## 4.48.10
 
 Starting a build now pauses the source-audio preview before its controls are
