@@ -54,15 +54,15 @@ const STR = {
     addLine: "＋ line",
     addLineHint: "Insert a line after the selected one — if it was missing from the lyrics",
     delLine: "－ line", delLineHint: "Delete the selected line from the lyrics",
-    voiceHint: "Second voice for the selected line: another singer or another way " +
-      "of singing. Painted in the second colour",
+    voiceHint: "Who sings the selected line: first voice, second voice, or both " +
+      "together. Press repeatedly to cycle through all three states",
     keep: "♪ Original",
     keepHint: "Keep the original voice on this line: backing vocals, speech, a bit "
       + "that matters to the story. Pressed again, the original goes quiet — "
       + "a guide to sing along with. A third press gives the line back to you",
     colorsHint: "What the singing is lit with: first colour is the main voice, " +
       "second is the second voice",
-    voices: "voices", voice1: "Main voice", voice2: "Second voice", backBadge: "BACK",
+    voices: "voices", voice1: "Main voice", voice2: "Second voice", voiceBoth: "Both voices", backBadge: "BACK",
     themeHint: "Page look: background and text colour. If the text blends into the " +
       "background, the program fixes it",
     bgText: "background and text", bg: "Background", textColor: "Text colour",
@@ -92,16 +92,19 @@ const STR = {
     pasteHint: "Paste the copied rhythm into the selected line (Ctrl+V). With " +
       "“and all after it” — into every later line with the same text.",
     linesPicked: n => `${n} lines picked`,
-    voiceManyOn: (v, n) => `Voice ${v} for ${n} lines`,
+    voiceManyOn: (v, n) => `${v === 3 ? "Both voices" : "Voice " + v} for ${n} lines`,
     keepManyMsg: (to, n) => !to.keep ? `${n} lines are sung by you again`
       : to.keepSoft ? `${n} lines: the original stays quiet, sing along`
                     : `${n} lines are left to the original`,
     delAskMany: n => `Delete ${n} lines from the lyrics?`,
     linesDeleted: n => `${n} lines deleted`,
+    lineCut: "Line cut — put the timeline playhead where it belongs and press Ctrl+V",
+    linesCut: n => `${n} lines cut — put the timeline playhead where they belong and press Ctrl+V`,
     pasteLine: "⧉ Paste line",
     pasteLineHint: "Insert the copied lines below the selected one, keeping the " +
       "gaps between them (Ctrl+Shift+V). Nothing existing is overwritten — use " +
-      "“Paste rhythm” if you only want the word layout.",
+      "“Paste rhythm” if you only want the word layout. Ctrl+X cuts selected " +
+      "lines; Ctrl+V then inserts them at the timeline playhead.",
     lineReplaced: "The line was replaced by the copied one",
     linePasted: "The copied line was put below",
     linesReplaced: n => `${n} lines replaced by the copied one`,
@@ -332,10 +335,11 @@ const STR = {
     till: "to “",
     quote: "”",
     colorFixed: "The text blended into the background — the colour was fixed so it reads",
-    voiceBtn: n => "◑ Voice " + n,
+    voiceBtn: n => n === 3 ? "◑ Both voices" : "◑ Voice " + n,
     voiceNone: "◑ Voice",
     pickLineFirst: "Select a line first",
     voice2On: "This line is sung by the second voice",
+    voiceBothOn: "Both voices sing this line together",
     voice1On: "This line is sung by the main voice",
     keepYes: "♪ Original: yes",
     keepSoftYes: "♪ Original: quiet",
@@ -425,6 +429,7 @@ const STR = {
     sSung: "Sung",
     sEngine: "Timing",
     sVoice2: "Second voice",
+    sVoiceBoth: "Both voices",
     sKept: "Original sings",
     sLines: n => n + " ln.",
     sNone: "none",
@@ -507,15 +512,15 @@ const STR = {
     addLine: "＋ строка",
     addLineHint: "Вставить строку после выбранной — если её забыли в тексте",
     delLine: "－ строка", delLineHint: "Удалить выбранную строку из текста песни",
-    voiceHint: "Второй голос для выбранной строки: другой певец или другая манера " +
-      "пения. Красится вторым цветом",
+    voiceHint: "Кто поёт выбранную строку: первый голос, второй или оба вместе. " +
+      "Повторные нажатия переключают все три режима",
     keep: "♪ Оригинал",
     keepHint: "Оставить на этой строке оригинальный голос: подпевка, речь, важный "
       + "для истории кусок. Второе нажатие делает оригинал тише — подсказкой, "
       + "чтобы петь в унисон. Третье возвращает строку вам",
     colorsHint: "Чем подсвечивается пение: первый цвет — основной голос, второй — " +
       "второй голос",
-    voices: "голоса", voice1: "Основной голос", voice2: "Второй голос", backBadge: "БЭК",
+    voices: "голоса", voice1: "Основной голос", voice2: "Второй голос", voiceBoth: "Оба голоса", backBadge: "БЭК",
     themeHint: "Оформление страницы: фон и цвет букв. Если буквы сливаются с фоном, " +
       "программа их поправит",
     bgText: "фон и буквы", bg: "Фон", textColor: "Цвет букв",
@@ -542,16 +547,19 @@ const STR = {
     pasteHint: "Вставить скопированный ритм в выбранную строку (Ctrl+V). " +
       "С галочкой «и все следующие» — во все последующие строки с тем же текстом.",
     linesPicked: n => `выделено строк: ${n}`,
-    voiceManyOn: (v, n) => `Голос ${v} у ${n} строк`,
+    voiceManyOn: (v, n) => `${v === 3 ? "Оба голоса" : "Голос " + v} у ${n} строк`,
     keepManyMsg: (to, n) => !to.keep ? `${n} строк снова поёте вы`
       : to.keepSoft ? `${n} строк: оригинал потише — пойте вместе с ним`
                     : `Оригинал оставлен на ${n} строках`,
     delAskMany: n => `Удалить ${n} строк из текста песни?`,
     linesDeleted: n => `Удалено строк: ${n}`,
+    lineCut: "Строка вырезана — поставьте курсор таймлайна в нужное место и нажмите Ctrl+V",
+    linesCut: n => `Вырезано строк: ${n} — поставьте курсор таймлайна в нужное место и нажмите Ctrl+V`,
     pasteLine: "⧉ Вставить строку",
     pasteLineHint: "Вставить скопированные строки ниже выбранной, сохранив " +
       "расстояния между ними (Ctrl+Shift+V). Ничего не затирается — если нужна " +
-      "только раскладка слов, есть «Вставить ритм».",
+      "только раскладка слов, есть «Вставить ритм». Ctrl+X вырезает выбранные " +
+      "строки, после чего Ctrl+V вставляет их на курсор таймлайна.",
     lineReplaced: "Строка заменена скопированной",
     linePasted: "Скопированная строка вставлена ниже",
     linesReplaced: n => `Заменено строк: ${n}`,
@@ -782,10 +790,11 @@ const STR = {
     till: "до «",
     quote: "»",
     colorFixed: "Буквы сливались с фоном — цвет подправлен, чтобы читалось",
-    voiceBtn: n => "◑ Голос " + n,
+    voiceBtn: n => n === 3 ? "◑ Оба голоса" : "◑ Голос " + n,
     voiceNone: "◑ Голос",
     pickLineFirst: "Сначала выберите строку",
     voice2On: "Строка поётся вторым голосом",
+    voiceBothOn: "Строку поют оба голоса вместе",
     voice1On: "Строка поётся основным голосом",
     keepYes: "♪ Оригинал: да",
     keepSoftYes: "♪ Оригинал: тихо",
@@ -875,6 +884,7 @@ const STR = {
     sSung: "Поётся",
     sEngine: "Разметка",
     sVoice2: "Второй голос",
+    sVoiceBoth: "Оба голоса",
     sKept: "Поёт оригинал",
     sLines: n => n + " стр.",
     sNone: "нет",
@@ -2223,13 +2233,15 @@ function buildLines(){
   const box=$("scroll"); box.innerHTML=""; lineEls.length=0;
   lines.forEach((ln,i) => {
     const el=document.createElement("div");
-    el.className = "ln" + (ln.backing ? " back" : "") + (ln.voice === 2 ? " v2" : "")
+    el.className = "ln" + (ln.backing ? " back" : "") + voiceClass(ln)
       + (ln.keep ? " keep" : "");
     ln.words.forEach((w,j) => {
       // a syllable reads on to the word before it — the mark that split it
       // is a timing device, never a letter
       const after = ln.words[j+1];
-      const txt = w.w + (after && !after.g ? " " : "");
+      const shown = cleanPunctuation(w.w);
+      const noGap = after && /^[,.;:!?…»\)\]\}]/.test(cleanPunctuation(after.w));
+      const txt = shown + (after && !after.g && !noGap ? " " : "");
       const sp=document.createElement("span"); sp.className="w";
       const hl=document.createElement("span"); hl.className="hl"; hl.textContent=txt;
       sp.appendChild(hl); sp.appendChild(document.createTextNode(txt));
@@ -2645,25 +2657,30 @@ function shortLine(text, most){
   return (sp >= most / 2 ? cut.slice(0, sp) : cut).replace(/[\s,.;:—-]+$/, "") + "…";
 }
 
-function voiceOf(ln){ return (ln && ln.voice === 2) ? 2 : 1; }
+function voiceOf(ln){ return ln && (ln.voice === 2 || ln.voice === 3) ? ln.voice : 1; }
+function cleanPunctuation(s){ return String(s || "").replace(/\s+([,.;:!?…»\)\]\}])/g, "$1"); }
+function voiceClass(ln){ return voiceOf(ln) === 2 ? " v2" : voiceOf(ln) === 3 ? " vboth" : ""; }
+function differentVoices(a, b){ return (voiceOf(a) & voiceOf(b)) === 0; }
 function refreshVoice(){
   $("btnVoice").textContent = sel < 0 ? T.voiceNone : T.voiceBtn(voiceOf(lines[sel]));
-  $("btnVoice").classList.toggle("on", sel >= 0 && voiceOf(lines[sel]) === 2);
+  $("btnVoice").classList.toggle("on", sel >= 0 && voiceOf(lines[sel]) !== 1);
 }
 function toggleVoice(){
   const idx = targets();
   if (!idx.length) return toast(T.pickLineFirst);
   snap("");
-  const to = voiceOf(lines[idx[0]]) === 2 ? 1 : 2;
+  const to = voiceOf(lines[idx[0]]) % 3 + 1;
   idx.forEach(i => {
     lines[i].voice = to;
     lineEls[i].el.classList.toggle("v2", to === 2);
+    lineEls[i].el.classList.toggle("vboth", to === 3);
     if (blockEls[i]) blockEls[i].classList.toggle("v2", to === 2);
+    if (blockEls[i]) blockEls[i].classList.toggle("vboth", to === 3);
   });
   updateLanes();
   refreshVoice(); touched();
   toast(idx.length > 1 ? T.voiceManyOn(to, idx.length)
-                       : (to === 2 ? T.voice2On : T.voice1On));
+                       : (to === 2 ? T.voice2On : to === 3 ? T.voiceBothOn : T.voice1On));
 }
 $("btnVoice").addEventListener("click", toggleVoice);
 
@@ -2780,22 +2797,28 @@ function sameText(i){
   return !!(clip && lines[i] &&
             clip.items.some(c => c.text.trim() === lines[i].text.trim()));
 }
-function copyRhythm(){
-  const idx = targets();
-  if (!idx.length) return toast(T.pickLineFirst);
+function copyToClip(idx, whole){
   // Copy everything selected: the words, the layout, the voice, the marks and
   // the gaps between lines. Later either the rhythm alone or the lines
   // themselves can be pasted — one of them or the whole batch.
   const base = lines[idx[0]].start;
   clip = {
+    whole: !!whole,
     span: lines[idx[idx.length - 1]].end - base,
     items: idx.map(i => {
       const ln = lines[i];
       return {text: ln.text, voice: voiceOf(ln), keep: !!ln.keep,
-              backing: !!ln.backing, at: ln.start - base, len: ln.end - ln.start,
+              keepSoft: !!ln.keepSoft, backing: !!ln.backing, lock: !!ln.lock,
+              section: ln.section || null, sure: ln.sure,
+              at: ln.start - base, len: ln.end - ln.start,
               words: ln.words.map(w => ({w: w.w, s: w.s, dt: w.t - ln.start, d: w.d}))};
     }),
   };
+}
+function copyRhythm(){
+  const idx = targets();
+  if (!idx.length) return toast(T.pickLineFirst);
+  copyToClip(idx, false);
   refreshRhythm();
   toast(idx.length > 1 ? T.copiedLines(idx.length)
                        : T.copiedLine(shortLine(lines[idx[0]].text, 30)));
@@ -2805,13 +2828,26 @@ function putLine(ln, item, start){
   ln.text = item.text;
   ln.voice = item.voice;
   ln.keep = item.keep;
+  ln.keepSoft = item.keepSoft;
   ln.backing = item.backing;
-  ln.section = ln.section || null;
+  ln.lock = item.lock;
+  ln.section = item.section || null;
+  if (item.sure !== undefined) ln.sure = item.sure;
   ln.start = start;
   ln.end = start + Math.max(item.len, MIN_W * item.words.length);
   ln.words = item.words.map(c => ({w: c.w, s: c.s, t: start + c.dt, d: c.d}));
   const last = ln.words[ln.words.length - 1];
   if (last) ln.end = Math.max(ln.end, last.t + last.d);
+}
+function clipLinesAt(start, scale=1){
+  return clip.items.map(item => {
+    const ln = {text: "", words: [], section: null};
+    putLine(ln, {...item, len: item.len * scale,
+                 words: item.words.map(w => ({...w, dt: w.dt * scale,
+                                              d: Math.max(w.d * scale, MIN_W)}))},
+            start + item.at * scale);
+    return ln;
+  });
 }
 function pasteLine(){
   if (!clip) return toast(T.rhythmNone);
@@ -2826,19 +2862,46 @@ function pasteLine(){
   const room = next ? Math.max(next.start - start, 0.4) : Infinity;
   const k = Math.min(1, room / span);
   snap("");
-  const made = clip.items.map(item => {
-    const ln = {text: "", words: [], section: null};
-    putLine(ln, {...item, len: item.len * k,
-                 words: item.words.map(w => ({...w, dt: w.dt * k,
-                                              d: Math.max(w.d * k, MIN_W)}))},
-            start + item.at * k);
-    return ln;
-  });
+  const made = clipLinesAt(start, k);
   lines.splice(after + 1, 0, ...made);
   marked.clear();
   buildLines(); makeBlocks(); updateLanes();
-  selectLine(after + 1, false); curLine = -2; touched();
+  if (made.length > 1)
+    made.forEach((_, k) => marked.add(after + 1 + k));
+  selectLine(after + 1, false, made.length > 1 ? "keep" : "");
+  curLine = -2; touched();
   toast(made.length > 1 ? T.linesPasted(made.length) : T.linePasted);
+}
+function pasteCutAtPlayhead(){
+  if (!clip || !clip.whole) return pasteRhythm();
+  const start = mediaTime();
+  const made = clipLinesAt(start);
+  // Cutting already saved the complete pre-cut state. The following paste is
+  // the second half of that same move, not another edit: one Ctrl+Z must put
+  // the lines straight back where they came from instead of merely removing
+  // them from the destination and requiring a second undo.
+  lines.push(...made);
+  lines.sort((a, b) => a.start - b.start);
+  const at = made.map(ln => lines.indexOf(ln));
+  marked.clear();
+  buildLines(); makeBlocks(); updateLanes();
+  if (made.length > 1) at.forEach(i => marked.add(i));
+  selectLine(at[0], false, made.length > 1 ? "keep" : "");
+  curLine = -2; touched();
+  toast(made.length > 1 ? T.linesPasted(made.length) : T.linePasted);
+}
+function cutLines(){
+  const idx = targets();
+  if (!idx.length) return toast(T.pickLineFirst);
+  if (lines.length <= idx.length) return toast(T.delLast);
+  copyToClip(idx, true);
+  snap("");
+  idx.slice().reverse().forEach(i => lines.splice(i, 1));
+  const keep = clamp(idx[0], 0, lines.length - 1);
+  marked.clear();
+  buildLines(); makeBlocks(); updateLanes();
+  selectLine(keep, false); curLine = -2; touched();
+  toast(idx.length > 1 ? T.linesCut(idx.length) : T.lineCut);
 }
 function applyRhythm(i, item){
   const ln = lines[i];
@@ -2960,6 +3023,7 @@ function drawSummary(data){
   const q = quiet || [];
   const qTotal = q.reduce((n, x) => n + (x.end - x.start), 0);
   const v2 = lines.filter(l => l.voice === 2).length;
+  const vBoth = lines.filter(l => l.voice === 3).length;
   const kept = lines.filter(l => l.keep).length;
   const cells = [
     [T.rLength, fmt(dur)],
@@ -2970,6 +3034,7 @@ function drawSummary(data){
     [T.sEngine, (data && data.engine) || "—"],
   ];
   if (v2) cells.push([T.sVoice2, T.sLines(v2)]);
+  if (vBoth) cells.push([T.sVoiceBoth, T.sLines(vBoth)]);
   if (kept) cells.push([T.sKept, T.sLines(kept)]);
   box.innerHTML = cells.map(([k, v]) =>
     `<div class="c"><b>${esc(v)}</b><span>${esc(k)}</span></div>`).join("");
@@ -3111,9 +3176,14 @@ function paintMapInner(){
       g.fillStyle = ln.keepSoft ? "rgba(126,224,138,.5)" : "rgba(126,224,138,.8)";
       g.fillRect(x, 2, wd, h - 4);
     } else {
-      g.fillStyle = ln.voice === 2 ? colors[1] : colors[0];
       g.globalAlpha = 0.55;
-      g.fillRect(x, h - 6, wd, 4);
+      if (ln.voice === 3){
+        g.fillStyle = colors[0]; g.fillRect(x, h - 6, wd, 2);
+        g.fillStyle = colors[1]; g.fillRect(x, h - 4, wd, 2);
+      } else {
+        g.fillStyle = ln.voice === 2 ? colors[1] : colors[0];
+        g.fillRect(x, h - 6, wd, 4);
+      }
       g.globalAlpha = 1;
     }
   });
@@ -3221,7 +3291,7 @@ function makeBlocks(){
   box.innerHTML = ""; blockEls.length = 0;
   lines.forEach((ln, i) => {
     const e = document.createElement("div");
-    e.className = "blk" + (ln.voice === 2 ? " v2" : "") + (ln.backing ? " back" : "")
+    e.className = "blk" + voiceClass(ln) + (ln.backing ? " back" : "")
                 + (ln.keep ? " keep" : "")
                 + (doubtful(ln) ? " doubt" : "") + (ln.lock ? " lock" : "");
     e.dataset.i = i;
@@ -3251,7 +3321,7 @@ function makeBlocks(){
 // The second lane is only needed when the song has a second voice: otherwise
 // the timeline would be twice as tall for nothing.
 function updateLanes(){
-  const two = lines.some(l => l.voice === 2);
+  const two = lines.some(l => l.voice === 2 || l.voice === 3);
   const wrap = $("tlwrap");
   if (wrap.classList.contains("twolane") === two) return;
   wrap.classList.toggle("twolane", two);
@@ -4165,7 +4235,7 @@ function tick(){
     if (idx >= 0)
       for (const j of [idx - 1, idx + 1])
         if (j >= 0 && j < lines.length && lines[j].start <= t && t < lines[j].end
-            && (lines[j].voice === 2) !== (lines[idx].voice === 2)){
+            && differentVoices(lines[j], lines[idx])){
           duoIdx = j;
           break;
         }
@@ -4173,6 +4243,7 @@ function tick(){
       lineEls.forEach((L,i)=>{
         L.el.classList.toggle("back", !!lines[i].backing);
         L.el.classList.toggle("v2", lines[i].voice === 2);
+        L.el.classList.toggle("vboth", lines[i].voice === 3);
         L.el.classList.toggle("keep", !!lines[i].keep);
         L.el.classList.toggle("cur", i===idx || i===duoIdx);
         L.el.classList.toggle("done", i<Math.min(idx, duoIdx < 0 ? idx : duoIdx));
@@ -4261,8 +4332,13 @@ document.addEventListener("keydown", e => {
     const k = e.key.toLowerCase();
     if (k === "a" || k === "ф"){ e.preventDefault(); selectAllLines(); return; }
     if (k === "c" || k === "с"){ e.preventDefault(); copyRhythm(); return; }
+    if (k === "x" || e.code === "KeyX"){ e.preventDefault(); cutLines(); return; }
     if (k === "v" || k === "м"){
-      e.preventDefault(); e.shiftKey ? pasteLine() : pasteRhythm(); return; }
+      e.preventDefault();
+      if (clip && clip.whole && !e.shiftKey) pasteCutAtPlayhead();
+      else e.shiftKey ? pasteLine() : pasteRhythm();
+      return;
+    }
     if (k === "d" || k === "в"){ e.preventDefault(); duplicateLine(); return; }
   }
   switch(e.key){

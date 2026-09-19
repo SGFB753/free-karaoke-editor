@@ -254,6 +254,10 @@ def main():
     check("syllables: a long word still outweighs a short one",
           L.count_syllables("beautiful") > L.count_syllables("I") * 2)
     check("normalisation", L.normalize_token("«Всё!»") == "все")
+    spaced_punct = L.parse("Привет , мир ! Как дела ?")
+    check("standalone punctuation does not acquire a space before it",
+          spaced_punct.lines[0].text == "Привет, мир! Как дела?",
+          spaced_punct.lines[0].text)
 
     print("\nLines in brackets are backing vocals, not a heading")
     back = L.parse("""[Куплет]
@@ -2124,6 +2128,41 @@ You might also like
         ln.start, ln.end = a, b
     check("the brackets made it the second voice", duet.lines[1].voice == 2,
           duet.lines[1].voice)
+    cast = L.parse("""[Куплет 1: Rickey F]
+первая строка
+[Куплет 2: Hima]
+вторая строка
+[Куплет 3: Rickey F]
+снова первая
+[Припев: Rickey F & Hima]
+общая строка
+[вместе]
+ещё общая
+3: и эта тоже""")
+    check("performers named in section headings keep separate voices",
+          [ln.voice for ln in cast.lines[:3]] == [1, 2, 1],
+          [ln.voice for ln in cast.lines[:3]])
+    check("a jointly credited section is marked as both voices",
+          cast.lines[3].voice == 3, cast.lines[3].voice)
+    check("both-voice directives and 3: lines are understood",
+          [ln.voice for ln in cast.lines[4:]] == [3, 3],
+          [ln.voice for ln in cast.lines[4:]])
+    old_cast = [
+        {"section": "Куплет 1: Rickey F", "voice": 1},
+        {"section": None, "voice": 1},
+        {"section": "Припев: Masha Hima & Rickey F", "voice": 1},
+        {"section": "Куплет 2: Hima", "voice": 1},
+    ]
+    check("an old all-one-colour project is upgraded from its saved headings",
+          L.infer_saved_section_voices(old_cast) and
+          [ln["voice"] for ln in old_cast] == [1, 1, 3, 2], old_cast)
+    hand_cast = [
+        {"section": "Куплет 1: Rickey F", "voice": 2},
+        {"section": "Куплет 2: Hima", "voice": 1},
+    ]
+    check("manual voice choices in an existing project are never replaced",
+          not L.infer_saved_section_voices(hand_cast) and
+          [ln["voice"] for ln in hand_cast] == [2, 1], hand_cast)
     said_d2 = []
     A.repair_order(duet, log=said_d2.append)
     check("the backing line is not pulled off the lead",

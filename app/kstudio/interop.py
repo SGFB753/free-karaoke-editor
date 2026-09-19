@@ -52,7 +52,7 @@ def ultrastar_text(data: Dict, audio_name: str) -> str:
     def beat(t: float) -> int:
         return max(0, int(round((t - first) / US_TICK)))
 
-    duet = any(ln.get("voice") == 2 for ln in lines)
+    duet = any(ln.get("voice") in (2, 3) for ln in lines)
     out = [
         f"#TITLE:{(data.get('title') or 'Karaoke').strip()}",
         f"#ARTIST:{(data.get('artist') or '').strip()}",
@@ -86,9 +86,9 @@ def ultrastar_text(data: Dict, audio_name: str) -> str:
 
     if duet:
         out.append("P1")
-        out += part([ln for ln in lines if ln.get("voice") != 2])
+        out += part([ln for ln in lines if ln.get("voice") in (None, 1, 3)])
         out.append("P2")
-        out += part([ln for ln in lines if ln.get("voice") == 2])
+        out += part([ln for ln in lines if ln.get("voice") in (2, 3)])
     else:
         out += part(lines)
     out.append("E")
@@ -156,6 +156,8 @@ def ass_text(data: Dict) -> str:
         "-1,0,0,0,100,100,0,0,1,3,0,2,60,60,60,1",
         f"Style: Voice2,Arial,54,{c2},{dim},&H00101018,&H80000000,"
         "-1,0,0,0,100,100,0,0,1,3,0,8,60,60,60,1",
+        f"Style: Both,Arial,72,{c1},{c2},&H00101018,&H80000000,"
+        "-1,0,0,0,100,100,0,0,1,3,0,2,60,60,60,1",
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Text",
@@ -173,7 +175,8 @@ def ass_text(data: Dict) -> str:
             nxt = words[j + 1] if j + 1 < len(words) else None
             parts.append("{\\k%d}%s" % (cs, _ass_word(w["w"])
                          + ("" if nxt is None or nxt.get("g") else " ")))
-        style = "Voice2" if (ln.get("voice") == 2 or ln.get("backing")) else "Voice1"
+        style = ("Both" if ln.get("voice") == 3 else
+                 "Voice2" if (ln.get("voice") == 2 or ln.get("backing")) else "Voice1")
         rows.append((start, f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},"
                             f"{style},,0,0,0,,{''.join(parts)}"))
     rows.sort(key=lambda r: r[0])

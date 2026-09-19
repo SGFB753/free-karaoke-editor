@@ -282,6 +282,10 @@
   .ln .bad{color:var(--bad); font-size:.5em; vertical-align:super; margin-left:.2em}
   /* the second voice gets its own colour: another singer or another style */
   .ln.v2 .w .hl{color:var(--accent-2)}
+  /* Both singers on the same words: each colour owns half of every glyph. */
+  .ln.vboth .w .hl{color:transparent; -webkit-text-fill-color:transparent;
+    background:linear-gradient(to bottom,var(--accent) 0 48%,var(--accent-2) 52% 100%);
+    -webkit-background-clip:text; background-clip:text}
   /* a stretch where the recorded voice stays: the original sings it, not you */
   .blk.keep{background:repeating-linear-gradient(-45deg,
     rgba(126,224,138,.30) 0 7px, rgba(126,224,138,.14) 7px 14px);
@@ -292,6 +296,9 @@
     margin-left:.5em; opacity:.8; white-space:nowrap; font-style:normal}
   .blk.v2{border-style:dashed; background:rgba(255,138,209,.2);
     border-color:rgba(255,138,209,.6); color:#ffd7ee}
+  .blk.vboth{border-style:double; border-color:color-mix(in srgb,var(--accent) 50%,var(--accent-2));
+    background:linear-gradient(to bottom,color-mix(in srgb,var(--accent) 24%,transparent) 0 50%,
+      color-mix(in srgb,var(--accent-2) 24%,transparent) 50% 100%); color:#fff}
   .blk .backbadge{display:inline-block; margin-right:5px; padding:0 4px;
     border:1px solid currentColor; border-radius:4px; font-size:9px;
     line-height:14px; letter-spacing:.06em; vertical-align:1px}
@@ -457,6 +464,7 @@
   .tlwrap.twolane{height:158px}
   .tlwrap.twolane .blocks{height:68px}
   .tlwrap.twolane .blk.v2{top:34px}
+  .tlwrap.twolane .blk.vboth{top:17px}
   .tlwrap.twolane .words{top:112px}
   .blk.bad{border-color:var(--bad)}
   /* Grips at the block edges: the left one moves the line start, the right one

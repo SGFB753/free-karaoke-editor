@@ -514,6 +514,17 @@ def main():
             size -= 2
             font = ImageFont.truetype(font_path, size)
         return font
+    old_hot, old_hot2 = video.COL_HOT, video.COL_HOT2
+    video.COL_HOT, video.COL_HOT2 = (0, 255, 0), (255, 0, 255)
+    both_art = video.LineArt(
+        {"text": "sing together", "voice": 3,
+         "words": [{"w": "sing"}, {"w": "together"}]},
+        regular_font, 640, 40)
+    both_pixels = list(both_art.hot.getdata())
+    check("a shared line carries both voice colours in the finished video",
+          any(p[:3] == (0, 255, 0) for p in both_pixels) and
+          any(p[:3] == (255, 0, 255) for p in both_pixels))
+    video.COL_HOT, video.COL_HOT2 = old_hot, old_hot2
     phrase = "A longer lyric keeps the same readable letters " * 4
     art = video.LineArt({"text": phrase, "words": [{"w": w} for w in phrase.split()]},
                         regular_font, 1920, 115)
@@ -747,6 +758,10 @@ def main():
               "en", 0, {"text": "We'll climb the mountains before we sleep"}, 5.0),
           video.pill_text("en", 0,
                           {"text": "We'll climb the mountains before we sleep"}, 5.0))
+    check("the video removes accidental spaces before punctuation",
+          video.short_line("Hello , world ! What now ?") ==
+          "Hello, world! What now?",
+          video.short_line("Hello , world ! What now ?"))
     ru_pill = video.pill_text("ru", -1, {"text": "Пожелай мне"}, 9.4)
     en_pill = video.pill_text("en", 5, None, 4.0)
     check("the intro pill is written the same way",

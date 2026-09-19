@@ -19,6 +19,7 @@ import bisect
 import math
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -52,6 +53,17 @@ COL_PIP = (52, 58, 82)          # guide dots between lines
 # does not care what is behind it.
 COL_EDGE = (5, 6, 12)           # the outline under every letter
 SCRIM = 0.42                    # how deep the band under the words goes
+
+
+def _voice(line) -> int:
+    """1/2 are separate singers; 3 is the same phrase sung by both."""
+    value = line.get("voice", 1) if isinstance(line, dict) else 1
+    return value if value in (2, 3) else 1
+
+
+def _different_voices(a, b) -> bool:
+    # The values double as bit masks: 1, 2, and 1|2 for both.
+    return (_voice(a) & _voice(b)) == 0
 
 # A clip standing behind the lyrics is not there to be watched — it is there
 # to move a little colour. So it is taken small and blurred into a field.
@@ -112,6 +124,35 @@ def _hex_rgb(value, fallback):
 
 def _mix(a, b, k):
     return tuple(int(round(a[i] * (1 - k) + b[i] * k)) for i in range(3))
+
+
+def _soft_pill(frame, rect, radius):
+    """A frosted, softly glowing panel instead of a hard plastic outline."""
+    from PIL import Image, ImageDraw, ImageFilter
+    x0, y0, x1, y1 = map(int, rect)
+    w, h = max(1, x1 - x0), max(1, y1 - y0)
+    blur = max(5, int(h * 0.16))
+
+    # Blur the actual backdrop under the panel, then darken it through the
+    # rounded mask. This stays translucent over covers as well as gradients.
+    frosted = frame.crop((x0, y0, x1, y1)).filter(
+        ImageFilter.GaussianBlur(max(2, blur // 2))).convert("RGBA")
+    shade = Image.new("RGBA", (w, h), BG_TOP + (142,))
+    frosted = Image.alpha_composite(frosted, shade)
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, w - 1, h - 1), radius=radius,
+                                            fill=235)
+
+    # A blurred rim gives the edge shape without the cheap-looking hard ring.
+    pad = blur * 2
+    glow = Image.new("RGBA", (w + 2 * pad, h + 2 * pad), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    gd.rounded_rectangle((pad, pad, pad + w - 1, pad + h - 1),
+                         radius=radius, outline=(190, 210, 240, 135),
+                         width=max(2, blur // 3))
+    glow = glow.filter(ImageFilter.GaussianBlur(blur))
+    frame.paste(glow, (x0 - pad, y0 - pad), glow)
+    frame.paste(frosted, (x0, y0), mask)
 
 
 def _lum(c):
@@ -249,7 +290,8 @@ def short_line(text: str, most: int = 34) -> str:
     falls at the last space that fits, and an ellipsis says plainly that
     there is more.
     """
-    text = " ".join(str(text or "").split())
+    text = re.sub(r"\s+([,.;:!?…»\)\]\}])", r"\1",
+                  " ".join(str(text or "").split()))
     if len(text) <= most:
         return text
     cut = text[:most]
@@ -460,8 +502,10 @@ class LineArt:
         def joined(items, flags):
             out = ""
             for k, piece in enumerate(items):
-                out += ("" if k == 0 or flags[k] else " ") + piece
-            return out
+                piece = re.sub(r"\s+([,.;:!?…»\)\]\}])", r"\1", piece)
+                closes = bool(re.match(r"^[,.;:!?…»\)\]\}]", piece))
+                out += ("" if k == 0 or flags[k] or closes else " ") + piece
+            return re.sub(r"\s+([,.;:!?…»\)\]\}])", r"\1", out)
         text = joined(words, glue)
         max_w = width - 2 * margin
 
@@ -555,10 +599,22 @@ class LineArt:
         # the line after the next one: present, but clearly further away
         self.faint = self.dim.copy()
         self.faint.putalpha(self.faint.getchannel("A").point(lambda v: v * 45 // 100))
-        hot = COL_HOT2 if line.get("voice") == 2 else COL_HOT
+        hot = COL_HOT2 if _voice(line) == 2 else COL_HOT
         # a duet's backing line fills as it is sung too — only the queue lines
         # (drawn dim ahead of their time) never need a hot layer
         self.hot = draw(hot)
+        if _voice(line) == 3:
+            # Split every row between the two colours. Splitting the complete
+            # picture would colour the first wrapped row as one singer and the
+            # second row as the other, instead of showing unison.
+            second = draw(COL_HOT2)
+            mask = Image.new("L", (width, self.h), 0)
+            md = ImageDraw.Draw(mask)
+            for r in range(len(rows)):
+                y0 = self.pad + r * self.row_h
+                md.rectangle((0, y0 + self.row_h // 2, width,
+                              y0 + self.row_h), fill=255)
+            self.hot.paste(second, (0, 0), mask)
 
     def _fill_at(self, line, t):
         """(row, x) of the sweep at moment t."""
@@ -1267,8 +1323,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 and t < lines[lead - 1]["end"] \
                 and is_runover_pair(lines[lead - 1], lines[lead]) \
                 and not lines[lead - 1].get("backing") \
-                and (lines[lead].get("voice") == 2) \
-                == (lines[lead - 1].get("voice") == 2):
+                and _voice(lines[lead]) == _voice(lines[lead - 1]):
             runover = lead
             idx = lead - 1
 
@@ -1278,7 +1333,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         if idx >= 0 and duo < 0:
             for j in (idx - 1, idx + 1):
                 if 0 <= j < len(lines) and lines[j]["start"] <= t < lines[j]["end"] \
-                        and (lines[j].get("voice") == 2) != (lines[idx].get("voice") == 2):
+                        and _different_voices(lines[j], lines[idx]):
                     duo = j
                     break
 
@@ -1309,7 +1364,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                     pair0 = [idx] if duo < 0 else sorted(
                         [idx, duo], key=lambda j: (
                             bool(lines[j].get("backing")),
-                            lines[j].get("voice") == 2))
+                            _voice(lines[j]) == 2))
                     occ["main"] = pair0[0]
                     if len(pair0) > 1:
                         occ["side"] = pair0[1]
@@ -1388,7 +1443,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
             pair = [idx] if duo < 0 else sorted(
                 [idx, duo], key=lambda j: (
                     bool(lines[j].get("backing")),
-                    lines[j].get("voice") == 2))
+                    _voice(lines[j]) == 2))
             y_j = 0
             for k, j in enumerate(pair):
                 is_back = k == 1
@@ -1488,12 +1543,12 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 box = d.textbbox((0, 0), txt, font=pill_font)
                 tw, th = box[2] - box[0], box[3] - box[1]
                 pad_x, pad_y = int(H * 0.030), int(H * 0.022)
-                d.rounded_rectangle(
-                    [cx - tw // 2 - pad_x, cy - th // 2 - pad_y,
-                     cx + tw // 2 + pad_x, cy + th // 2 + pad_y],
-                    radius=int(th // 2 + pad_y),
-                    fill=_mix(BG_TOP, (255, 255, 255), 0.10),
-                    outline=_mix(BG_TOP, (255, 255, 255), 0.28))
+                pill_box = [cx - tw // 2 - pad_x, cy - th // 2 - pad_y,
+                            cx + tw // 2 + pad_x, cy + th // 2 + pad_y]
+                _soft_pill(frame, pill_box, int(th // 2 + pad_y))
+                # The helper pasted onto the frame after ``d`` was created;
+                # refresh the drawing context before putting text over it.
+                d = ImageDraw.Draw(frame)
                 d.text((cx, cy), txt, font=pill_font,
                        fill=_mix(COL_DIM, (255, 255, 255), 0.35), anchor="mm")
                 # The bar is centred too, right under the pill.
@@ -1731,6 +1786,7 @@ def video_report(payload, args, song: float, want: float) -> str:
     D = payload.get("data") or {}
     lines = D.get("lines") or []
     v2 = sum(1 for l in lines if l.get("voice") == 2)
+    both = sum(1 for l in lines if l.get("voice") == 3)
     kept = keep_spans(payload)
     kept_s = sum(b - a for a, b, _ in kept)
     colors = payload.get("colors") or []
@@ -1740,7 +1796,7 @@ def video_report(payload, args, song: float, want: float) -> str:
         for b in lines[i + 1:]:
             if b["start"] >= a["end"]:
                 break
-            if (b.get("voice") == 2) != (a.get("voice") == 2):
+            if _different_voices(b, a):
                 duo += 1
     audio_name = {"minus": tr("instrumental", "минусовка"),
                   "guide": tr("instrumental + quiet vocal", "минусовка + тихий вокал"),
@@ -1758,7 +1814,8 @@ def video_report(payload, args, song: float, want: float) -> str:
         (tr("Length", "Длина"), mmss(song) +
          (tr(f", rendering {mmss(want)}", f", рисуем {mmss(want)}") if want < song - 0.05 else "")),
         (tr("Lines", "Строк"), f"{len(lines)}" +
-         (tr(f", second voice: {v2}", f", второй голос: {v2}") if v2 else "")),
+         (tr(f", second voice: {v2}", f", второй голос: {v2}") if v2 else "") +
+         (tr(f", both voices: {both}", f", оба голоса: {both}") if both else "")),
         (tr("Together", "Одновременно"),
          tr(f"{duo} place{'s' if duo != 1 else ''} where two voices sing at once",
             f"{duo} мест, где поют вдвоём")

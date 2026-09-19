@@ -7,6 +7,23 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.48.12
+
+Long intro, interlude, and ending notices now use a softer translucent,
+frosted panel with a subtle glow instead of a hard outline. Accidental spaces
+before commas and other closing punctuation are also removed before display.
+
+Lines now have a separate Both voices state. The voice button cycles through
+the first singer, the second singer, and shared singing; shared lines use both
+colours in the editor, standalone HTML, and rendered video. Lyrics parsing also
+keeps stable voice assignments for performer names in headings such as
+`[Verse 2: Hima]` and understands `[both]`, `[together]`, and `3: line`.
+
+Selected lines can now be cut with Ctrl+X and pasted as a group with Ctrl+V at
+the timeline playhead. Voices, marks, locks, spacing, and
+hand-tuned word timing move with them. One Ctrl+Z returns the entire moved
+batch to its original place.
+
 ## 4.48.11
 
 On the timeline, Ctrl-click now always adds or removes a line from the batch

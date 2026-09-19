@@ -560,7 +560,17 @@ def save(folder: str, data: Dict) -> None:
 
 def load(folder: str) -> Dict:
     with open(os.path.join(folder, PROJECT_FILE), encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+    # Old projects stored every lead as voice 1 even when their Genius section
+    # headings named different performers. Infer only while the project still
+    # has that untouched all-main-voice shape; a person's assignments win.
+    if not data.get("voiceSectionsInferred") \
+            and L.infer_saved_section_voices(data.get("lines") or []):
+        # This marker is persisted with the next ordinary edit. It lets a user
+        # deliberately turn all lines back to voice 1 without the migration
+        # deciding again on every subsequent open.
+        data["voiceSectionsInferred"] = True
+    return data
 
 
 def keep_spans(data: Dict) -> List[List[float]]:

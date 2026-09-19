@@ -160,6 +160,76 @@ ok('the copy does not run into the next line',
 click("btnUndo"); await sleep(900);
 ok('Ctrl+Z removes the copy', (await srv()).length === before);
 
+console.log('\n--- cutting a selected batch and pasting it at the timeline playhead ---');
+pick(1); await sleep(120);
+doc.querySelectorAll('#scroll .ln')[2].dispatchEvent(
+  new w.MouseEvent('click',{bubbles:true, ctrlKey:true}));
+await sleep(120);
+const beforeCut = await srv();
+const cutLines = JSON.parse(JSON.stringify([beforeCut[1], beforeCut[2]]));
+w.document.dispatchEvent(new w.KeyboardEvent('keydown',
+  {key:'x', code:'KeyX', ctrlKey:true, bubbles:true, cancelable:true}));
+await sleep(900);
+const cut = await srv();
+ok('Ctrl+X removes every selected line', cut.length === beforeCut.length - 2,
+   `${beforeCut.length} → ${cut.length}`);
+ok('the cut buffer is explained', /Ctrl\+V/.test($("toast").textContent),
+   $("toast").textContent);
+w.document.dispatchEvent(new w.KeyboardEvent('keydown',
+  {key:'z', code:'KeyZ', ctrlKey:true, bubbles:true, cancelable:true}));
+await sleep(900);
+let restored = await srv();
+ok('Ctrl+Z immediately after cutting restores the lines at their old times',
+   restored.length === beforeCut.length &&
+   [1,2].every(i => restored[i].text === beforeCut[i].text &&
+                       Math.abs(restored[i].start - beforeCut[i].start) < .004));
+w.document.dispatchEvent(new w.KeyboardEvent('keydown',
+  {key:'y', code:'KeyY', ctrlKey:true, bubbles:true, cancelable:true}));
+await sleep(900);
+ok('Ctrl+Y cuts the same batch again', (await srv()).length === cut.length);
+// The first click above put the playhead 0.7 s before the first cut line.
+// Move that white timeline marker by five seconds; selection is deliberately
+// left elsewhere, because it must have no say in where a cut batch lands.
+const marker = Math.min(26.04, Math.max(0, cutLines[0].start - .7) + 5);
+w.document.dispatchEvent(new w.KeyboardEvent('keydown',
+  {key:'ArrowRight', bubbles:true, cancelable:true}));
+await sleep(120);
+w.document.dispatchEvent(new w.KeyboardEvent('keydown',
+  {key:'v', code:'KeyV', ctrlKey:true, bubbles:true, cancelable:true}));
+await sleep(1000);
+const moved = await srv();
+const pasted = cutLines.map(src => moved.find(l => l.text === src.text &&
+  Math.abs(l.start - (marker + src.start - cutLines[0].start)) < .004)).filter(Boolean);
+ok('Ctrl+V puts the first cut line exactly on the timeline playhead',
+   pasted.length > 0 && Math.abs(pasted[0].start - marker) < .004,
+   `${marker.toFixed(3)} / ` +
+   moved.map(l => l.start.toFixed(3)).join(' '));
+ok('Ctrl+V restores the whole batch there',
+   moved.length === beforeCut.length && pasted.length === 2 &&
+   pasted[0].text === cutLines[0].text &&
+   pasted[1].text === cutLines[1].text,
+   pasted.map(l => l.text).join(' | '));
+ok('the spacing inside the moved batch is preserved',
+   Math.abs((pasted[1].start - pasted[0].start) -
+            (cutLines[1].start - cutLines[0].start)) < .004,
+   `${(cutLines[1].start-cutLines[0].start).toFixed(3)} → ` +
+   (pasted[1].start-pasted[0].start).toFixed(3));
+ok('the project stays ordered even if another line lies inside the pasted span',
+   moved.every((l, i) => !i || moved[i - 1].start <= l.start));
+ok('voice, marks and locks travel with the cut lines', pasted.every((l, i) =>
+   (l.voice || 1) === (cutLines[i].voice || 1) && !!l.keep === !!cutLines[i].keep &&
+   !!l.lock === !!cutLines[i].lock));
+ok('the pasted batch remains selected',
+   doc.querySelectorAll('#scroll .ln.mark').length === 2);
+w.document.dispatchEvent(new w.KeyboardEvent('keydown',
+  {key:'z', code:'KeyZ', ctrlKey:true, bubbles:true, cancelable:true}));
+await sleep(900);
+restored = await srv();
+ok('one Ctrl+Z returns the moved batch to its original place',
+   restored.length === beforeCut.length &&
+   [1,2].every(i => restored[i].text === beforeCut[i].text &&
+                       Math.abs(restored[i].start - beforeCut[i].start) < .004));
+
 await put(original);                       // the stand as it was
 await sleep(300);
 ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));

@@ -154,7 +154,16 @@ ok('and a third takes it off', !(await proj()).lines[1].keep);
 ok('the mark left the text',
    !/поёт оригинал/.test(doc.querySelectorAll('#scroll .ln')[1].textContent));
 
-console.log('\n--- back to the main voice ---');
+console.log('\n--- both voices, then back to the main voice ---');
+click("btnVoice"); await sleep(900);
+const both = await proj();
+ok('the next state means both voices sing the same words', both.lines[1].voice === 3,
+   'voice=' + both.lines[1].voice);
+ok('the shared line has its own two-colour class on stage and timeline',
+   doc.querySelectorAll('#scroll .ln')[1].classList.contains('vboth') &&
+   doc.querySelectorAll('#blocks .blk')[1].classList.contains('vboth'));
+ok('the button names the shared state', /Оба голоса/.test($("btnVoice").textContent),
+   $("btnVoice").textContent);
 click("btnVoice"); await sleep(900);
 const d2 = await proj();
 ok('the voice went back to the first', (d2.lines[1].voice || 1) === 1, 'voice=' + d2.lines[1].voice);

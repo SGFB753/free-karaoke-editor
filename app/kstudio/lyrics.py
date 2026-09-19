@@ -34,10 +34,62 @@ SECTION_WORDS = (
 NOTEXT_RE = re.compile(
     r"(\d{1,3}:\d{1,2}(?:[.,]\d{1,3})?|\d+(?:[.,]\d+)?)\s*[-–—]{1,2}\s*"
     r"(\d{1,3}:\d{1,2}(?:[.,]\d{1,3})?|\d+(?:[.,]\d+)?)")
-# “2: line” — this line is sung by the second voice. “[voice 2]” switches
-# every following line until told otherwise.
-VOICE_LINE_RE = re.compile(r"^\s*([12])\s*[:>]\s+(.+)$")
-VOICE_DIR_RE = re.compile(r"^\s*(?:voice|голос|вокал)\s*([12])\s*$", re.I)
+# “2: line” — this line is sung by the second voice. “3: line” means both
+# voices sing the same words. “[voice 2]” switches every following line until
+# told otherwise; “[both]” and “[вместе]” switch to the shared voice.
+VOICE_LINE_RE = re.compile(r"^\s*([123])\s*[:>]\s+(.+)$")
+VOICE_DIR_RE = re.compile(r"^\s*(?:voice|голос|вокал)\s*([123])\s*$", re.I)
+BOTH_DIR_RE = re.compile(r"^\s*(?:both|together|unison|оба|вместе|дуэт)\s*$", re.I)
+# Genius commonly names the singer in a section: “[Verse 2: Hima]”. That is
+# the only dependable automatic speaker clue in plain lyrics — Whisper aligns
+# words, it does not diarize singers. A connector inside that attribution means
+# both named people sing the section.
+SECTION_SINGER_RE = re.compile(r"^\s*([^:]{1,28})\s*:\s*(\S.{0,70})\s*$")
+JOINT_SINGER_RE = re.compile(r"\s+(?:&|and|и|x|х|feat\.?|ft\.?)\s+", re.I)
+
+
+def section_singer_voice(heading: str, singer_voices: dict) -> Optional[int]:
+    """Voice implied by “[Verse: singer]”, if this really is a section."""
+    sm = SECTION_SINGER_RE.match(heading or "")
+    if not sm or not _is_section_name(sm.group(1)):
+        return None
+    singer = re.sub(r"\s+", " ", sm.group(2)).strip()
+    if JOINT_SINGER_RE.search(singer):
+        return 3
+    key = singer.casefold().strip(" .,:;—–-()[]")
+    if not key:
+        return None
+    if key not in singer_voices:
+        # There are two karaoke colours, not a unique colour per member. More
+        # than two named performers alternate lanes predictably.
+        singer_voices[key] = 1 + (len(singer_voices) % 2)
+    return singer_voices[key]
+
+
+def infer_saved_section_voices(lines: List[dict]) -> bool:
+    """Upgrade an old all-main-voice project from its saved section names.
+
+    Once a person has assigned any ordinary line to another voice, that is
+    their work and wins. This only repairs projects made before performer names
+    in Genius headings were understood.
+    """
+    if any((ln.get("voice") or 1) != 1 for ln in lines if not ln.get("backing")):
+        return False
+    singer_voices = {}
+    voice = 1
+    planned = []
+    for ln in lines:
+        if ln.get("section"):
+            inferred = section_singer_voice(str(ln["section"]), singer_voices)
+            if inferred is not None:
+                voice = inferred
+        planned.append((ln.get("voice") or 1) if ln.get("backing") else voice)
+    if not any(v != 1 for ln, v in zip(lines, planned) if not ln.get("backing")):
+        return False
+    for ln, value in zip(lines, planned):
+        if not ln.get("backing"):
+            ln["voice"] = value
+    return True
 # “Chorus x4” — the line is sung four times in a row. There is no need to
 # write it out four times: the repeats are expanded here.
 # “Some girls try too hard (Na-na-na)” — a lead line with the backing tacked on
@@ -155,7 +207,7 @@ class Line:
     start: Optional[float] = None      # from LRC, if set by hand
     end: Optional[float] = None
     backing: bool = False              # whole line in brackets — backing vocals
-    voice: int = 1                     # 1 or 2: the second voice gets its own colour
+    voice: int = 1                     # 1, 2, or 3 when both sing the same words
     keep: bool = False                 # keep the original voice on this stretch
     keep_soft: bool = False            # …but quietly, to be sung along with
     lock: bool = False                 # put right by hand: re-timing leaves it alone
@@ -227,6 +279,12 @@ class Lyrics:
 # by syllable — and it is never shown: on screen the word is whole again. The
 # soft hyphen is understood too, for text pasted from elsewhere.
 SYL_MARK = "=\u00ad"
+_CLOSE_PUNCT_RE = re.compile(r"^[,.;:!?…»\)\]\}]")
+
+
+def tidy_spacing(text: str) -> str:
+    """Remove accidental spaces before closing punctuation from pasted text."""
+    return re.sub(r"\s+([,.;:!?…»\)\]\}])", r"\1", str(text or ""))
 
 
 def _split_words(text: str) -> List[Word]:
@@ -252,7 +310,11 @@ def _split_words(text: str) -> List[Word]:
                 out.append(w)
             pending = ""
         elif out:
-            out[-1] = Word(out[-1].text + " " + tok)     # a mark after a word
+            # Lyrics copied from a page sometimes carry punctuation as a
+            # separate token: “слово , дальше”. A comma is not a word and must
+            # attach without a space; a dash deliberately keeps its air.
+            gap = "" if _CLOSE_PUNCT_RE.match(tok) else " "
+            out[-1] = Word(out[-1].text + gap + tok)
         else:
             pending = tok                                # a mark at the line start
     if pending and not out:
@@ -307,6 +369,7 @@ def parse(raw: str) -> Lyrics:
     pending_section: Optional[str] = None
     saw_content = False
     cur_voice = 1                  # which voice sings until told otherwise
+    singer_voices = {}             # stable colours for names in section headings
 
     for raw_line in raw.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
         line = raw_line.strip()
@@ -341,6 +404,9 @@ def parse(raw: str) -> Lyrics:
                 if d:                       # [voice 2] switches, it is not a heading
                     cur_voice = int(d.group(1))
                     continue
+                if BOTH_DIR_RE.match(m.group(1)):
+                    cur_voice = 3
+                    continue
                 span = NOTEXT_RE.search(m.group(1))
                 if span:
                     # “[Solo 3:10-3:50]”: a heading and a fact about the song —
@@ -354,6 +420,9 @@ def parse(raw: str) -> Lyrics:
                     continue
                 # a line like [Chorus] is a heading for the lines that follow
                 pending_section = m.group(1).strip()
+                inferred = section_singer_voice(pending_section, singer_voices)
+                if inferred is not None:
+                    cur_voice = inferred
                 continue
         m = ROUND_RE.match(line)
         if m and _split_words(m.group(1)):
@@ -389,8 +458,8 @@ def parse(raw: str) -> Lyrics:
             continue
         # the marks split the timing, never the reading: what is shown is the
         # line without them
-        shown = re.sub("[" + SYL_MARK + "]", "", line)
-        trail_shown = re.sub("[" + SYL_MARK + "]", "", trail) if trail else trail
+        shown = tidy_spacing(re.sub("[" + SYL_MARK + "]", "", line))
+        trail_shown = tidy_spacing(re.sub("[" + SYL_MARK + "]", "", trail)) if trail else trail
 
         saw_content = True
         if start is not None:
