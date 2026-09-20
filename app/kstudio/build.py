@@ -124,7 +124,8 @@ def build_html(out_path: str, lyrics: Lyrics, duration: float,
                colors=None, theme=None, keep_spans=None,
                cover_path: Optional[str] = None,
                cover_dark: Optional[int] = None,
-               cover_paths: Optional[list] = None) -> str:
+               cover_paths: Optional[list] = None,
+               soft_keep_level: Optional[float] = None) -> str:
     """tracks: {\'mix\'|\'instrumental\'|\'vocals\': (path, mime)} → path to the HTML."""
     with open(TEMPLATE, "r", encoding="utf-8") as f:
         tpl = f.read()
@@ -142,6 +143,11 @@ def build_html(out_path: str, lyrics: Lyrics, duration: float,
     # silently pull the old edits over the fresh alignment.
     sig = "|".join([title, str(round(duration, 1))] +
                    [f"{ln.start or 0:.2f}" for ln in lyrics.lines])
+    try:
+        soft_level = (None if soft_keep_level is None else
+                      round(max(0.05, min(0.8, float(soft_keep_level))), 2))
+    except (TypeError, ValueError):
+        soft_level = None
     payload = {
         # the player lives inside the page, so updating the program does not
         # change already built files — this mark says which code is inside
@@ -172,6 +178,9 @@ def build_html(out_path: str, lyrics: Lyrics, duration: float,
             "title": title,
             "artist": artist or lyrics.artist or "",
             "duration": round(duration, 3),
+            # Missing means the long-standing 35% guide level. Keeping the
+            # distinction lets old projects and the Default switch stay exact.
+            "softKeepLevel": soft_level,
             # Stretches where the original voice is left in: a vocalise or a
             # scream with no words has nothing to sing over, and muting it
             # leaves a hole in the song.

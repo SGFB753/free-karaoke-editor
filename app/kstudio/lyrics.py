@@ -287,6 +287,61 @@ def tidy_spacing(text: str) -> str:
     return re.sub(r"\s+([,.;:!?…»\)\]\}])", r"\1", str(text or ""))
 
 
+def repair_collapsed_json_words(lines: List[dict]) -> int:
+    """Give a zero-length saved word nearby free time without eating pauses.
+
+    A dragged boundary or older editor could leave a word at exactly the same
+    instant as its neighbour with ``d == 0``. It then flashes in one frame.
+    Only durations below half the editor's 60 ms minimum are repaired. The
+    word may reclaim an adjacent empty gap, capped by a modest syllable-based
+    speaking time; normally timed words and their intentional pauses are left
+    byte-for-byte alone.
+    """
+    fixed = 0
+    for line in lines or []:
+        words = line.get("words") or []
+        for i, word in enumerate(words):
+            try:
+                start = float(word.get("t", 0))
+                duration = max(0.0, float(word.get("d", 0)))
+            except (TypeError, ValueError):
+                continue
+            if duration >= 0.03:
+                continue
+            try:
+                before = (float(words[i - 1].get("t", start))
+                          + max(0.0, float(words[i - 1].get("d", 0)))) \
+                    if i else float(line.get("start", start))
+                after = float(words[i + 1].get("t", start + duration)) \
+                    if i + 1 < len(words) else float(line.get("end", start + duration))
+            except (TypeError, ValueError):
+                continue
+
+            free_before = max(0.0, start - before)
+            free_after = max(0.0, after - (start + duration))
+            if max(free_before, free_after) < 0.06:
+                continue
+            try:
+                syllables = max(0, int(word.get("s") or 0))
+            except (TypeError, ValueError):
+                syllables = 0
+            if not syllables:
+                syllables = count_syllables(str(word.get("w") or ""))
+            wanted = max(0.12, min(0.72, 0.18 * syllables))
+
+            if free_before >= free_after:
+                gained = min(wanted, free_before)
+                # End where the collapsed timestamp said the word ended. This
+                # is the characteristic “word landed on its neighbour” case.
+                word["t"] = start - gained
+                word["d"] = gained
+            else:
+                gained = min(wanted, free_after)
+                word["d"] = duration + gained
+            fixed += 1
+    return fixed
+
+
 def _split_words(text: str) -> List[Word]:
     """Split a line into words without losing anything.
 

@@ -225,6 +225,31 @@ await p.click('#btnKeep');
 ks = await keepState();
 ok('a second holds it back to a guide', ks.keep && ks.soft, JSON.stringify(ks));
 ok('and the button says so', /quiet|тихо/i.test(ks.btn), ks.btn);
+const softDefault = await p.$eval('#grpKeepSoft', e => ({
+  visible: !e.classList.contains('hide'),
+  custom: document.querySelector('#chkSoftCustom').checked,
+  disabled: document.querySelector('#rSoftLevel').disabled,
+  value: document.querySelector('#vSoftLevel').textContent
+}));
+ok('quiet original starts at the unchanged 35% default',
+   softDefault.visible && !softDefault.custom && softDefault.disabled
+   && softDefault.value === '35%', JSON.stringify(softDefault));
+await p.click('#chkSoftCustom');
+await p.$eval('#rSoftLevel', e => {
+  e.value = '18'; e.dispatchEvent(new Event('input', {bubbles:true}));
+});
+await sleep(900);
+let softSaved = await get('/api/project/' + encodeURIComponent(pid));
+ok('an own quiet-original level is saved',
+   Math.abs(softSaved.softKeepLevel - 0.18) < 0.001,
+   String(softSaved.softKeepLevel));
+await p.click('#chkSoftCustom');
+await sleep(900);
+softSaved = await get('/api/project/' + encodeURIComponent(pid));
+ok('switching back removes the override and restores the default',
+   softSaved.softKeepLevel == null
+   && await p.$eval('#vSoftLevel', e => e.textContent) === '35%',
+   String(softSaved.softKeepLevel));
 await p.click('#btnKeep');
 ks = await keepState();
 ok('a third gives the line back', !ks.keep && !ks.soft, JSON.stringify(ks));

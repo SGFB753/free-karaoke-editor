@@ -7,6 +7,25 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.49.1
+
+Quiet-original lines keep their familiar 35% vocal level by default. When one
+is selected, an optional project-wide control can lower or raise that guide
+voice; switching the control off restores the exact default in the editor,
+standalone page, MP3, and video.
+
+Starting a Ctrl-click selection no longer silently includes the line that had
+only been focused by an earlier plain click. A batch now contains only lines
+explicitly clicked with Ctrl, selected as a range, or otherwise batch-selected.
+
+An impossibly collapsed word with effectively zero duration now reclaims a
+bounded amount of adjacent empty time instead of flashing in a single video
+frame. Normally timed words never absorb genuine pauses between lyrics.
+
+Failed updates no longer leave a temporary rollback copy behind after the old
+application has been restored successfully. The copy is retained only when the
+rollback itself was incomplete or the installed update could not be launched.
+
 ## 4.48.12
 
 Long intro, interlude, and ending notices now use a softer translucent,

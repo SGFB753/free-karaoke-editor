@@ -907,13 +907,18 @@ initWebAudio().catch(() => {
 // speech, a moment that matters to the story. They are not yours to sing — the
 // original plays there whatever the “Voice” slider says.
 let keepOn = 0;                 // how loud the original stays right now
+const SOFT_KEEP_DEFAULT = 0.35;
+function softKeepLevel(){
+  const n = D.softKeepLevel == null ? NaN : Number(D.softKeepLevel);
+  return Number.isFinite(n) ? clamp(n, 0.05, 0.8) : SOFT_KEEP_DEFAULT;
+}
 function ramp(param, v){
   if (param.setTargetAtTime) param.setTargetAtTime(v, ctx.currentTime, 0.03);
   else param.value = v;
 }
 function inKeep(t){
   // Returns how loud the original stays here: 1 on a line that is not yours
-  // to sing, 0.35 on one to be sung along with — a guide, not a soloist —
+  // to sing, the project's guide level on one to be sung along with,
   // and 0 everywhere else. The breath between two kept lines counts as kept
   // too, when nobody's own line stands in it: the ends of lines are the
   // model's guesses, and muting the guess chewed a held word in half.
@@ -929,7 +934,7 @@ function inKeep(t){
   for (let i = 0; i < lines.length; i++){
     const ln = lines[i];
     if (!ln.keep) continue;
-    const lvl = ln.keepSoft ? 0.35 : 1;
+    const lvl = ln.keepSoft ? softKeepLevel() : 1;
     const pad = humanAt ? 0 : 0.25;
     if (ln.start - pad <= t && t < ln.end + pad) best = Math.max(best, lvl);
     if (ln.end <= t && t - ln.end <= 2.0){ prevEnd = ln.end; prevLvl = lvl; }

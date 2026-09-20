@@ -429,6 +429,15 @@
     font-size:0.8125rem; color:var(--muted); flex-wrap:wrap}
   .tlhead button{padding:5px 10px; font-size:0.75rem}
   .tlhead #btnKeep{margin-left:auto}
+  .softkeep{display:inline-flex; align-items:center; gap:7px; min-height:28px;
+    padding:2px 8px; border:1px solid var(--line); border-radius:8px;
+    color:var(--muted); font-size:0.75rem; white-space:nowrap}
+  .softkeep:not(.hide){margin-left:auto}
+  .softkeep:not(.hide) + #btnKeep{margin-left:0}
+  .softkeep label{display:inline-flex; align-items:center; gap:5px; cursor:pointer}
+  .softkeep input[type="range"]{width:92px; accent-color:var(--accent)}
+  .softkeep input[type="range"]:disabled{opacity:.4}
+  .softkeep b{min-width:2.6rem; color:var(--text); text-align:right}
   .chk{display:inline-flex; align-items:center; gap:6px; cursor:pointer}
   .howto{padding:0 14px 9px; font-size:0.8438rem; color:var(--muted); line-height:1.6}
   .howto b{color:var(--text)}
@@ -852,6 +861,13 @@
               title="Mark on the waveform the stretches that hold no words">✂ No words here</button>
       <input id="edNoText" class="notext" data-tp="noTextPh" data-tt="noTextLabel"
              placeholder="0:00-0:42, 3:10-3:50 — an intro, a vocalise, a solo">
+      <span id="grpKeepSoft" class="softkeep hide" data-tt="softKeepHint"
+            title="Use the familiar 35% guide level, or set one level for every quiet-original line in this project">
+        <label><input type="checkbox" id="chkSoftCustom">
+          <span data-t="softCustom">own level</span></label>
+        <input type="range" id="rSoftLevel" min="5" max="80" step="1" value="35" disabled>
+        <b id="vSoftLevel">35%</b>
+      </span>
       <button id="btnKeep" data-tt="keepHint" data-t="keep"
               title="Keep the original voice on this line: backing vocals, speech, a bit that matters to the story. You are not meant to sing it">♪ Original</button>
     </div>

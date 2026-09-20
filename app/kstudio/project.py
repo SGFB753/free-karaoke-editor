@@ -561,6 +561,10 @@ def save(folder: str, data: Dict) -> None:
 def load(folder: str) -> Dict:
     with open(os.path.join(folder, PROJECT_FILE), encoding="utf-8") as f:
         data = json.load(f)
+    # Repair impossible zero-frame words from old/manual edits in memory. The
+    # next ordinary save persists the correction; merely opening a project is
+    # still read-only.
+    L.repair_collapsed_json_words(data.get("lines") or [])
     # Old projects stored every lead as voice 1 even when their Genius section
     # headings named different performers. Infer only while the project still
     # has that untouched all-main-voice shape; a person's assignments win.
@@ -667,9 +671,11 @@ def unpack(zip_path: str, root: str) -> str:
 
 def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,
                no_text=None, keep_marks=None, check_off=None,
-               title=None, artist=None, cover_dark=None, pitch=None) -> Dict:
+               title=None, artist=None, cover_dark=None, pitch=None,
+               soft_keep_level=...) -> Dict:
     data = load(folder)
     data["lines"] = lines
+    L.repair_collapsed_json_words(data["lines"])
     if colors:
         data["colors"] = list(colors)[:2]
     if theme:
@@ -691,6 +697,15 @@ def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,
             data["coverDark"] = max(0, min(95, int(cover_dark)))
         except (TypeError, ValueError):
             pass
+    if soft_keep_level is not ...:
+        if soft_keep_level is None:
+            data.pop("softKeepLevel", None)
+        else:
+            try:
+                data["softKeepLevel"] = round(max(0.05, min(0.8,
+                    float(soft_keep_level))), 2)
+            except (TypeError, ValueError):
+                pass
     if pitch is not None:
         try:
             data["pitch"] = max(-6, min(6, int(pitch)))

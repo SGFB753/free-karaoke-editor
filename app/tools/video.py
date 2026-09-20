@@ -31,6 +31,7 @@ sys.path.insert(0, ROOT)
 from kstudio.i18n import tr, lang as program_lang   # noqa: E402
 from kstudio import audio as AU      # noqa: E402
 from kstudio import build as B       # noqa: E402
+from kstudio import lyrics as L       # noqa: E402
 from kstudio import winproc as WP     # noqa: E402
 
 # ---------------------------------------------------------------- look
@@ -340,6 +341,15 @@ KEEP_PAD = 0.0
 KEEP_GLUE = 0.0
 
 
+def soft_keep_level(payload: dict) -> float:
+    """Project override for quiet-original lines; old projects stay at 35%."""
+    try:
+        raw = (payload.get("data") or {}).get("softKeepLevel")
+        return SOFT_KEEP if raw is None else max(0.05, min(0.8, float(raw)))
+    except (TypeError, ValueError):
+        return SOFT_KEEP
+
+
 def keep_spans(payload: dict) -> list:
     """Stretches where the original voice is deliberately kept, with how loud.
 
@@ -371,7 +381,8 @@ def keep_spans(payload: dict) -> list:
                     pa = max(pa, e0)
                 if s0 >= b:
                     pb = min(pb, s0)
-            out.append((pa, pb, SOFT_KEEP if ln.get("keepSoft") else 1.0))
+            out.append((pa, pb, soft_keep_level(payload)
+                        if ln.get("keepSoft") else 1.0))
     for pair in data.get("keepSpans") or []:
         try:
             a, b = float(pair[0]), float(pair[1])
@@ -432,7 +443,7 @@ def extract_audio(payload: dict, html_path: str, tmp: str, mode: str) -> str:
             if soft:
                 soft_cond = "+".join("between(t\\,%.3f\\,%.3f)" % (a, b)
                                      for a, b in soft)
-                chain = f"volume={SOFT_KEEP}:enable='{soft_cond}',"
+                chain = f"volume={soft_keep_level(payload):.3f}:enable='{soft_cond}',"
             total = sum(b - a for a, b, _ in spans)
             quiet_n = len(soft)
             print(tr(f"Video audio: instrumental, the original voice kept on "
@@ -870,6 +881,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 on_progress(row)
     D = payload["data"]
     lines = D["lines"]
+    # Old or hand-edited data can contain a word with literally no duration.
+    # Repair only that impossible case; ordinary gaps remain real pauses.
+    L.repair_collapsed_json_words(lines)
     if not lines:
         raise SystemExit(tr("The page has no lyrics.", "В странице нет текста."))
     duration = AU.duration(audio_wav)

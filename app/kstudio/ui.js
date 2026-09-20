@@ -60,6 +60,9 @@ const STR = {
     keepHint: "Keep the original voice on this line: backing vocals, speech, a bit "
       + "that matters to the story. Pressed again, the original goes quiet — "
       + "a guide to sing along with. A third press gives the line back to you",
+    softCustom: "own level",
+    softKeepHint: "The familiar quiet-original level is 35%. Enable an own level "
+      + "to change every quiet-original line in this project; disable it to return to 35%",
     colorsHint: "What the singing is lit with: first colour is the main voice, " +
       "second is the second voice",
     voices: "voices", voice1: "Main voice", voice2: "Second voice", voiceBoth: "Both voices", backBadge: "BACK",
@@ -518,6 +521,9 @@ const STR = {
     keepHint: "Оставить на этой строке оригинальный голос: подпевка, речь, важный "
       + "для истории кусок. Второе нажатие делает оригинал тише — подсказкой, "
       + "чтобы петь в унисон. Третье возвращает строку вам",
+    softCustom: "своя громкость",
+    softKeepHint: "Обычная громкость режима «Оригинал: тихо» — 35%. Включите свою "
+      + "громкость, чтобы изменить её для всех таких строк проекта; отключите, чтобы вернуть 35%",
     colorsHint: "Чем подсвечивается пение: первый цвет — основной голос, второй — " +
       "второй голос",
     voices: "голоса", voice1: "Основной голос", voice2: "Второй голос", voiceBoth: "Оба голоса", backBadge: "БЭК",
@@ -2022,7 +2028,9 @@ window.addEventListener("beforeunload", () => {
   if (!dirty) return;
   clearTimeout(saveT);
   navigator.sendBeacon(`/api/project/${encodeURIComponent(pid)}/timings`,
-    new Blob([JSON.stringify({lines, colors, theme, pitch})], {type:"application/json"}));
+    new Blob([JSON.stringify({lines, colors, theme, pitch,
+      softKeepLevel: data && data.softKeepLevel != null ? data.softKeepLevel : null})],
+      {type:"application/json"}));
 });
 
 /* ================= audio ================= */
@@ -2076,9 +2084,16 @@ function seek(t){ waOffset = clamp(t,0,dur); curLine=-2;
 // On marked lines the voice always plays: that is audible here, not only in
 // the finished karaoke.
 let keepOn = 0;                 // how loud the original stays right now
+const SOFT_KEEP_DEFAULT = 0.35;
+let softKeepDraft = SOFT_KEEP_DEFAULT;
+function softKeepLevel(){
+  const raw = data && data.softKeepLevel;
+  const n = raw == null ? NaN : Number(raw);
+  return Number.isFinite(n) ? clamp(n, 0.05, 0.8) : SOFT_KEEP_DEFAULT;
+}
 function inKeep(t){
-  // How loud the original stays here: 1 where it sings alone, 0.35 where it
-  // is a guide to sing along with, 0 everywhere else.  The current line bounds
+  // How loud the original stays here: 1 where it sings alone, the project's
+  // guide level where it is sung along with, 0 everywhere else. The line bounds
   // are exact: after a person trims a phrase, no old padding or bridge may make
   // the removed part audible again.
   let humanAt = false;
@@ -2091,7 +2106,7 @@ function inKeep(t){
   for (let i = 0; i < lines.length; i++){
     const ln = lines[i];
     if (!ln.keep) continue;
-    const lvl = ln.keepSoft ? 0.35 : 1;
+    const lvl = ln.keepSoft ? softKeepLevel() : 1;
     if (ln.start <= t && t < ln.end) best = Math.max(best, lvl);
   }
   if (best >= 1) return 1;
@@ -2162,6 +2177,8 @@ let sel=-1, curLine=-1, curDuo=-1, loopSel=false, saveT=0;
 async function openProject(id){
   pid = id;
   data = await api("/api/project/"+encodeURIComponent(id));
+  softKeepDraft = data.softKeepLevel == null
+    ? SOFT_KEEP_DEFAULT : softKeepLevel();
   pitch = clamp(parseInt(data.pitch || 0, 10) || 0, -6, 6);
   refreshPitch();
   lines = data.lines;
@@ -2347,7 +2364,9 @@ function selectLine(i, jump, mode){
   const prev = sel, was = sel;
   sel = clamp(i, 0, lines.length-1);
   if (mode === "add"){                       // Ctrl — add or remove one
-    if (!marked.size && was >= 0) marked.add(was);
+    // A plain click only focuses a line; it does not silently put that line
+    // into a future batch. The first Ctrl-click starts the batch with the
+    // line that was actually clicked while Ctrl was held.
     if (marked.has(sel) && marked.size > 1) marked.delete(sel); else marked.add(sel);
     anchor = sel;
   } else if (mode === "range"){              // Shift — the whole run from the anchor
@@ -2693,6 +2712,24 @@ function refreshKeep(){
   $("btnKeep").classList.toggle("on", on);
   $("btnKeep").textContent = !on ? T.keep
     : (ln.keepSoft ? T.keepSoftYes : T.keepYes);
+  refreshSoftKeep();
+}
+function refreshSoftKeep(){
+  const ln = sel >= 0 ? lines[sel] : null;
+  const visible = !!(ln && ln.keep && ln.keepSoft);
+  const custom = !!(data && data.softKeepLevel != null);
+  const level = custom ? softKeepLevel() : SOFT_KEEP_DEFAULT;
+  $("grpKeepSoft").classList.toggle("hide", !visible);
+  $("chkSoftCustom").checked = custom;
+  $("rSoftLevel").disabled = !custom;
+  $("rSoftLevel").value = Math.round(level * 100);
+  $("vSoftLevel").textContent = Math.round(level * 100) + "%";
+}
+function applySoftKeepSetting(){
+  keepOn = hasStems ? inKeep(mediaTime()) : 0;
+  applyVoice();
+  refreshSoftKeep();
+  touched();
 }
 function toggleKeep(){
   // Three states in a circle: not kept → the original at full voice (not
@@ -2736,6 +2773,22 @@ function markKeep(i){
   el.appendChild(kp);
 }
 $("btnKeep").addEventListener("click", toggleKeep);
+$("chkSoftCustom").addEventListener("change", e => {
+  if (!data) return;
+  if (e.target.checked){
+    data.softKeepLevel = clamp(softKeepDraft, 0.05, 0.8);
+  } else {
+    softKeepDraft = softKeepLevel();
+    data.softKeepLevel = null;
+  }
+  applySoftKeepSetting();
+});
+$("rSoftLevel").addEventListener("input", e => {
+  if (!data || data.softKeepLevel == null) return;
+  softKeepDraft = clamp(Number(e.target.value) / 100, 0.05, 0.8);
+  data.softKeepLevel = softKeepDraft;
+  applySoftKeepSetting();
+});
 
 /* ---------- a line put right by hand ----------
    Re-timing used to throw away every hand-made correction along with the rest.
@@ -2989,6 +3042,7 @@ async function saveNow(){
        keepMarks: true,
        checkOff, title: songName, artist: songArtist,
        coverDark: (data && data.coverDark != null) ? data.coverDark : undefined,
+       softKeepLevel: data && data.softKeepLevel != null ? data.softKeepLevel : null,
        pitch});
     showProblems(r.problems);
     saveState("ok", T.savedOk);

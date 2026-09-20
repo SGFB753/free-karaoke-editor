@@ -966,7 +966,8 @@ class Handler(BaseHTTPRequestHandler):
                                     title=body.get("title"),
                                     artist=body.get("artist"),
                                     cover_dark=body.get("coverDark"),
-                                    pitch=body.get("pitch"))
+                                    pitch=body.get("pitch"),
+                                    soft_keep_level=body.get("softKeepLevel", ...))
                 return self._json({"ok": True, "problems": P.problems(data)})
 
             m = re.match(r"^/api/project/([^/]+)/pitch$", path)
@@ -1999,6 +2000,7 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
                      cover_path=(os.path.join(folder, data["cover"])
                                  if data.get("coverBg") and data.get("cover") else None),
                      cover_dark=data.get("coverDark"),
+                     soft_keep_level=data.get("softKeepLevel"),
                      cover_paths=([os.path.join(folder, n)
                                    for n in data.get("coverSet") or []]
                                   if data.get("coverBg") else None))
@@ -2052,6 +2054,7 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
                      cover_path=(os.path.join(folder, data["cover"])
                                  if data.get("coverBg") and data.get("cover") else None),
                      cover_dark=data.get("coverDark"),
+                     soft_keep_level=data.get("softKeepLevel"),
                      cover_paths=([os.path.join(folder, n)
                                    for n in data.get("coverSet") or []]
                                   if data.get("coverBg") else None))
@@ -2292,6 +2295,7 @@ def still_frame(folder: str, at: float, opening: bool = False) -> bytes:
                      cover_path=(os.path.join(folder, data["cover"])
                                  if data.get("coverBg") and data.get("cover") else None),
                      cover_dark=data.get("coverDark"),
+                     soft_keep_level=data.get("softKeepLevel"),
                      cover_paths=([os.path.join(folder, n)
                                    for n in data.get("coverSet") or []]
                                   if data.get("coverBg") else None))

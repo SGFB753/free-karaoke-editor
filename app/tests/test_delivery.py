@@ -597,6 +597,11 @@ def check_video(tmp):
     check("the stretches with the original use the edited bounds exactly",
           P0 == 0 and spans == [(5.0, 8.0, 1.0),
                                 (8.6, 9.6, video.SOFT_KEEP)], str(spans))
+    custom = json.loads(json.dumps(payload))
+    custom["data"]["softKeepLevel"] = 0.18
+    check("a project may turn the quiet original down without changing the default",
+          video.keep_spans(custom) == [(5.0, 8.0, 1.0), (8.6, 9.6, 0.18)],
+          str(video.keep_spans(custom)))
     clipped = {"data": {"lines": [
         {"start": 5.0, "end": 6.25, "keep": True, "words": [{"w": "x"}]},
         {"start": 7.0, "end": 8.0, "keep": True, "words": [{"w": "y"}]},

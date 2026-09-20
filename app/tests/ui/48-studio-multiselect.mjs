@@ -153,12 +153,17 @@ ok('at least three timeline blocks are reachable', tls.length >= 3, String(tls.l
 await hit(tls[0]);
 await hit(tls[1], ['Control']);
 m = await marks();
-ok('Ctrl+click keeps both timeline blocks selected', m.blocks === 2 && m.n === 2,
+ok('the first Ctrl+click does not inherit the previously focused block',
+   m.blocks === 1 && m.n === 1,
    JSON.stringify(m));
 await hit(tls[2], ['Control']);
 m = await marks();
-ok('another Ctrl+click adds a third timeline block', m.blocks === 3 && m.n === 3,
+ok('another Ctrl+click adds the second explicit block', m.blocks === 2 && m.n === 2,
    JSON.stringify(m));
+await hit(tls[0], ['Control']);
+m = await marks();
+ok('the originally focused block joins only after its own Ctrl+click',
+   m.blocks === 3 && m.n === 3, JSON.stringify(m));
 const timelineStyles = await p.evaluate(() => [...document.querySelectorAll('#blocks .blk.mark')]
   .map(e => {
     const s = getComputedStyle(e);

@@ -258,6 +258,43 @@ def main():
     check("standalone punctuation does not acquire a space before it",
           spaced_punct.lines[0].text == "Привет, мир! Как дела?",
           spaced_punct.lines[0].text)
+    collapsed = [{
+        "start": 218.78, "end": 224.64,
+        "words": [
+            {"w": "Вертит", "t": 218.78, "d": 0.50, "s": 2},
+            {"w": "планеты", "t": 219.70, "d": 0.0, "s": 3},
+            {"w": "шар", "t": 219.70, "d": 0.64, "s": 1},
+        ],
+    }]
+    check("a collapsed word reclaims the free time immediately before it",
+          L.repair_collapsed_json_words(collapsed) == 1
+          and abs(collapsed[0]["words"][1]["t"] - 219.28) < .001
+          and abs(collapsed[0]["words"][1]["d"] - .42) < .001,
+          collapsed[0]["words"][1])
+    real_pause = [{
+        "start": 10.0, "end": 13.0,
+        "words": [
+            {"w": "hold", "t": 10.0, "d": .3, "s": 1},
+            {"w": "on", "t": 12.4, "d": .3, "s": 1},
+        ],
+    }]
+    before_pause = json.dumps(real_pause, sort_keys=True)
+    check("a real pause between normally timed words stays untouched",
+          L.repair_collapsed_json_words(real_pause) == 0
+          and json.dumps(real_pause, sort_keys=True) == before_pause)
+    long_gap = [{
+        "start": 20.0, "end": 24.0,
+        "words": [
+            {"w": "first", "t": 20.0, "d": .3, "s": 1},
+            {"w": "planetary", "t": 23.0, "d": 0.0, "s": 4},
+            {"w": "next", "t": 23.0, "d": .4, "s": 1},
+        ],
+    }]
+    L.repair_collapsed_json_words(long_gap)
+    check("a collapsed word does not consume a genuinely long pause",
+          long_gap[0]["words"][1]["d"] <= .72
+          and long_gap[0]["words"][1]["t"] > 22.0,
+          long_gap[0]["words"][1])
 
     print("\nLines in brackets are backing vocals, not a heading")
     back = L.parse("""[Куплет]
@@ -703,7 +740,6 @@ You might also like
 
     print("\nFeeding the timings back in")
     lyr2 = L.parse(TEXT)
-    import json
     tj = os.path.join(tmp, "t.json")
     json.dump({"lines": [{"text": l.text, "start": l.start + 1.5, "end": l.end + 1.5,
                           "words": [{"w": w.text, "t": w.start + 1.5, "d": w.end - w.start}
@@ -2347,6 +2383,13 @@ You might also like
     check("the page knows where the original stays",
           payload["data"].get("keepSpans") == [[0.0, 8.0]],
           payload["data"].get("keepSpans"))
+    custom_page = os.path.join(tmp, "with-soft-original.html")
+    B.build_html(custom_page, lyr_page, 26.0,
+                 {"mix": (song_for_build, "audio/wav")}, "energy",
+                 embed=False, soft_keep_level=0.18)
+    check("the chosen quiet-original level reaches the standalone page",
+          B.read_payload(custom_page)["data"].get("softKeepLevel") == 0.18,
+          B.read_payload(custom_page)["data"].get("softKeepLevel"))
     plain = os.path.join(tmp, "no-keeps.html")
     B.build_html(plain, lyr_page, 26.0, {"mix": (song_for_build, "audio/wav")},
                  "energy", embed=False)

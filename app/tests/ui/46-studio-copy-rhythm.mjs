@@ -162,6 +162,10 @@ ok('Ctrl+Z removes the copy', (await srv()).length === before);
 
 console.log('\n--- cutting a selected batch and pasting it at the timeline playhead ---');
 pick(1); await sleep(120);
+// A plain click is only focus. Explicitly Ctrl-click both members of the
+// batch, just as a person would when choosing separate lines.
+doc.querySelectorAll('#scroll .ln')[1].dispatchEvent(
+  new w.MouseEvent('click',{bubbles:true, ctrlKey:true}));
 doc.querySelectorAll('#scroll .ln')[2].dispatchEvent(
   new w.MouseEvent('click',{bubbles:true, ctrlKey:true}));
 await sleep(120);

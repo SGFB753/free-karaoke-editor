@@ -383,7 +383,13 @@ def replace_in_place(staged: str, install: str, backup: str,
             except OSError as error:
                 rollback_errors.append(f"restore {name}: {error}")
         if rollback_errors:
-            note = "rollback: " + "; ".join(rollback_errors)
+            note = (f"rollback backup kept at {backup}; rollback: "
+                    + "; ".join(rollback_errors))
+            # The snapshot is the last chance for a manual recovery when the
+            # automatic rollback could not put every program file back.  The
+            # caller normally removes successful rollback snapshots, but must
+            # retain this one and mention its location in the error log.
+            original._karaoke_keep_backup = True
             if hasattr(original, "add_note"):
                 original.add_note(note)
             else:  # Python 3.8–3.10, still supported by the source edition.
@@ -408,15 +414,25 @@ def apply(archive: str, install: str, exe: str, pid: int,
     # well; replacement only touches entries inside the writable install root.
     backup = make_backup_path()
     backup_root = os.path.dirname(backup)
+    keep_backup = False
+    replacement_done = False
     try:
         replace_in_place(staged, install, backup, status)
+        replacement_done = True
         if launch_after:
             start_application(install, exe)
-    except Exception:
+    except Exception as error:
+        # A failed replacement has already rolled itself back. Its temporary
+        # snapshot is no longer useful unless that rollback was incomplete.
+        # If the new files were installed but could not be launched, retain the
+        # old application as a genuine recovery copy.
+        keep_backup = replacement_done or bool(
+            getattr(error, "_karaoke_keep_backup", False))
         raise
     finally:
         shutil.rmtree(stage_root, ignore_errors=True)
-    shutil.rmtree(backup_root, ignore_errors=True)
+        if not keep_backup:
+            shutil.rmtree(backup_root, ignore_errors=True)
     try:
         shutil.rmtree(os.path.dirname(archive), ignore_errors=True)
     except OSError:

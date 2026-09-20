@@ -588,6 +588,7 @@ def main():
         open(partial_exe, "wb").write(b"old")
         open(os.path.join(partial_stage, "KaraokeStudio.exe"), "wb").write(b"new")
         real_seconds = updater.RETRY_SECONDS
+        partial_error = None
         try:
             updater.RETRY_SECONDS = 0
             def keep_exe_locked(path):
@@ -597,14 +598,17 @@ def main():
             updater._remove = keep_exe_locked
             try:
                 updater.replace_in_place(partial_stage, partial, partial_backup)
-            except PermissionError:
-                pass
+            except PermissionError as error:
+                partial_error = error
         finally:
             updater._remove = real_remove
             updater.RETRY_SECONDS = real_seconds
         check("a locked executable does not prevent restoring the updater",
               open(os.path.join(partial, "updater", "KaraokeUpdater.exe"), "rb").read()
               == b"old-updater")
+        check("an incomplete rollback marks its backup for retention",
+              bool(getattr(partial_error, "_karaoke_keep_backup", False))
+              and os.path.isdir(partial_backup))
 
         # If copying the new application fails halfway, the old program comes
         # back while projects/output remain where they were.
@@ -632,6 +636,51 @@ def main():
               open(os.path.join(rollback, "KaraokeStudio.exe"), "rb").read() == b"old")
         check("rollback leaves project data untouched",
               open(os.path.join(rollback, "projects", "keep.json"), "rb").read() == b"keep")
+
+        # A successful automatic rollback has already put the old application
+        # back. Its Temp snapshot must not accumulate forever after every
+        # failed update.
+        cleanup_install = os.path.join(tmp, "cleanup-install")
+        cleanup_stage = os.path.join(tmp, "cleanup-stage")
+        cleanup_backup_root = os.path.join(tmp, "karaoke-rollback-cleanup")
+        cleanup_backup = os.path.join(cleanup_backup_root, "previous")
+        cleanup_archive = os.path.join(tmp, "cleanup-download", "update.zip")
+        os.makedirs(cleanup_install); os.makedirs(cleanup_stage)
+        os.makedirs(os.path.dirname(cleanup_archive))
+        open(cleanup_archive, "wb").write(b"archive")
+        real_wait_for = updater.wait_for
+        real_writable = updater.install_writable
+        real_stage_root = updater.make_stage_root
+        real_extract = updater.safe_extract
+        real_backup_path = updater.make_backup_path
+        real_replace = updater.replace_in_place
+        try:
+            updater.wait_for = lambda _pid: None
+            updater.install_writable = lambda _path: True
+            updater.make_stage_root = lambda: cleanup_stage
+            updater.safe_extract = lambda _archive, _root: cleanup_stage
+            updater.make_backup_path = lambda: cleanup_backup
+
+            def fail_after_rollback(_staged, _install, backup_path, _log=None):
+                os.makedirs(backup_path)
+                open(os.path.join(backup_path, "KaraokeStudio.exe"), "wb").write(b"old")
+                raise OSError("simulated update failure after complete rollback")
+
+            updater.replace_in_place = fail_after_rollback
+            try:
+                updater.apply(cleanup_archive, cleanup_install,
+                              "KaraokeStudio.exe", 0, launch_after=False)
+            except OSError:
+                pass
+        finally:
+            updater.wait_for = real_wait_for
+            updater.install_writable = real_writable
+            updater.make_stage_root = real_stage_root
+            updater.safe_extract = real_extract
+            updater.make_backup_path = real_backup_path
+            updater.replace_in_place = real_replace
+        check("a completed rollback removes its temporary backup",
+              not os.path.exists(cleanup_backup_root))
     return 0
 
 
