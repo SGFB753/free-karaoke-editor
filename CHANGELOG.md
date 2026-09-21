@@ -7,6 +7,25 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.49.2
+
+In an existing project, selected lines can now be marked as backing vocals with
+the Backing button, individually or as a group, without changing their singer,
+words or timing. The change can be undone with Ctrl+Z.
+
+If found or pasted lyrics are edited after they are first accepted, building
+now saves the current text. Previously it could use the earlier saved copy and
+bring back a deleted source-credit line.
+
+Words sung by both voices now fill with one stable blend of the two singer
+colours. The former hard split across every glyph could turn into ragged,
+seemingly random colour fragments after browser or video scaling.
+
+Parentheses now mark a backing part without inventing a second performer.
+Backing vocals inherit the colour of the named section performer or the lead
+they accompany, while keeping their smaller italic presentation. Existing
+projects migrate this automatic assignment once; later manual choices remain.
+
 ## 4.49.1
 
 Quiet-original lines keep their familiar 35% vocal level by default. When one

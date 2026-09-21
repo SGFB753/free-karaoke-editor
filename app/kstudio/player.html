@@ -79,9 +79,9 @@
   }
   /* The second voice gets its own colour: who sings and where the style changed. */
   .ln.v2 .w .hl{color:var(--accent-2)}
-  .ln.vboth .w .hl{color:transparent; -webkit-text-fill-color:transparent;
-    background:linear-gradient(to bottom,var(--accent) 0 48%,var(--accent-2) 52% 100%);
-    -webkit-background-clip:text; background-clip:text}
+  /* A solid blend survives font antialiasing and video scaling; a hard
+     half-and-half cut made individual letters look randomly patched. */
+  .ln.vboth .w .hl{color:color-mix(in srgb,var(--accent) 50%,var(--accent-2))}
   /* Two voices at once stay in the same centred seats they occupied in the
      preview. Number and colour distinguish them without a sideways jump. */
   .ln.pair{transform:none !important; transition:transform .25s, margin .25s}

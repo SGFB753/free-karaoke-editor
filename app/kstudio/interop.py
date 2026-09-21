@@ -176,7 +176,7 @@ def ass_text(data: Dict) -> str:
             parts.append("{\\k%d}%s" % (cs, _ass_word(w["w"])
                          + ("" if nxt is None or nxt.get("g") else " ")))
         style = ("Both" if ln.get("voice") == 3 else
-                 "Voice2" if (ln.get("voice") == 2 or ln.get("backing")) else "Voice1")
+                 "Voice2" if ln.get("voice") == 2 else "Voice1")
         rows.append((start, f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},"
                             f"{style},,0,0,0,,{''.join(parts)}"))
     rows.sort(key=lambda r: r[0])

@@ -90,13 +90,50 @@ def infer_saved_section_voices(lines: List[dict]) -> bool:
         if not ln.get("backing"):
             ln["voice"] = value
     return True
+
+
+def inherit_backing_voices(lines: List[dict]) -> int:
+    """Give backing lines the voice of the performer they accompany.
+
+    Parentheses describe presentation, not a singer. A backing line therefore
+    follows a named performer section when there is one, otherwise the nearest
+    ordinary line (normally the lead immediately above it). This is used once
+    when an older project is upgraded; later manual voice choices are kept.
+    """
+    singer_voices = {}
+    section_voice = None
+    changed = 0
+    for i, line in enumerate(lines or []):
+        if line.get("section"):
+            inferred = section_singer_voice(str(line["section"]), singer_voices)
+            if inferred is not None:
+                section_voice = inferred
+        if not line.get("backing"):
+            continue
+        # The old automatic rule always wrote voice 2. Voice 1 or both on an
+        # old backing line could only have been chosen by a person, so keep it.
+        raw_voice = line.get("voice")
+        if raw_voice in (1, 3):
+            continue
+        voice = section_voice
+        if voice is None:
+            anchor = next((lines[j] for j in range(i - 1, -1, -1)
+                           if not lines[j].get("backing")), None)
+            if anchor is None:
+                anchor = next((lines[j] for j in range(i + 1, len(lines))
+                               if not lines[j].get("backing")), None)
+            voice = (anchor or {}).get("voice") or 1
+        voice = voice if voice in (2, 3) else 1
+        if (raw_voice or 1) != voice:
+            line["voice"] = voice
+            changed += 1
+    return changed
 # “Chorus x4” — the line is sung four times in a row. There is no need to
 # write it out four times: the repeats are expanded here.
 # “Some girls try too hard (Na-na-na)” — a lead line with the backing tacked on
-# its tail. The tail is a line of its own, sung by someone else, usually at the
-# same time: left inside, the lead singer would be shown na-na-na as their own
-# words. Brackets in the MIDDLE of a line stay put — an aside is part of the
-# line it interrupts.
+# its tail. The tail is a line of its own, usually at the same time: left inside,
+# the lead singer would be shown na-na-na as words they must sing. Brackets in
+# the MIDDLE of a line stay put — an aside is part of the line it interrupts.
 TRAIL_RE = re.compile(r"^(.*\S)\s+(\([^()]{1,60}\))$")
 
 REPEAT_RE = re.compile(r"^(.*?)\s*[\(\[]?\s*[x×хХ]\s*(\d{1,2})\s*[\)\]]?\s*$", re.I)
@@ -499,8 +536,8 @@ def parse(raw: str) -> Lyrics:
         if start is None:
             line, times = _split_repeat(line)
 
-        # A backing tail on a lead line becomes a line of its own, second
-        # voice: “try too hard (Na-na-na)” is two people singing.
+        # A backing tail becomes a line of its own. Parentheses say how it is
+        # presented, not who sings it; its voice follows the current performer.
         trail = None
         if not backing:
             m = TRAIL_RE.match(line)
@@ -519,17 +556,17 @@ def parse(raw: str) -> Lyrics:
         saw_content = True
         if start is not None:
             lyr.has_manual_times = True
-        # Backing vocals default to the second voice: usually someone else sings
-        # them, and a colour of their own helps on screen.
+        # Parentheses mark a backing part, not another performer. It inherits
+        # the current section's singer and keeps the smaller italic treatment.
         for k in range(times):
             lyr.lines.append(Line(text=shown, words=_split_words(line),
                                   section=pending_section if k == 0 else None,
                                   start=start, backing=backing,
-                                  voice=voice or (2 if backing else cur_voice)))
+                                  voice=voice or cur_voice))
             if trail:
                 lyr.lines.append(Line(text=trail_shown, words=_split_words(trail),
                                       section=None, start=None, backing=True,
-                                      voice=2, tail=True))
+                                      voice=voice or cur_voice, tail=True))
         pending_section = None
 
     # with manual timings, a line ends where the next one begins

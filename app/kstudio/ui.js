@@ -56,6 +56,9 @@ const STR = {
     delLine: "－ line", delLineHint: "Delete the selected line from the lyrics",
     voiceHint: "Who sings the selected line: first voice, second voice, or both " +
       "together. Press repeatedly to cycle through all three states",
+    backing: "Backing", backingYes: "Backing: yes",
+    backingHint: "Mark selected lines as backing vocals without changing their words or singer",
+    backingChanged: (on, n) => `${n} line${n === 1 ? "" : "s"}: backing ${on ? "on" : "off"}`,
     keep: "♪ Original",
     keepHint: "Keep the original voice on this line: backing vocals, speech, a bit "
       + "that matters to the story. Pressed again, the original goes quiet — "
@@ -517,6 +520,9 @@ const STR = {
     delLine: "－ строка", delLineHint: "Удалить выбранную строку из текста песни",
     voiceHint: "Кто поёт выбранную строку: первый голос, второй или оба вместе. " +
       "Повторные нажатия переключают все три режима",
+    backing: "Бэк", backingYes: "Бэк: да",
+    backingHint: "Отметить выбранные строки как бэк-вокал, не меняя текст и исполнителя",
+    backingChanged: (on, n) => `${n} строк: бэк ${on ? "включён" : "выключен"}`,
     keep: "♪ Оригинал",
     keepHint: "Оставить на этой строке оригинальный голос: подпевка, речь, важный "
       + "для истории кусок. Второе нажатие делает оригинал тише — подсказкой, "
@@ -1014,7 +1020,7 @@ function relabel(){
     $("hint").textContent = T.hotkeys;
     if (sel >= 0) $("selNote").textContent = T.lineNo(sel+1, fmtMs(lines[sel].start));
     else $("selNote").textContent = T.noLine;
-    refreshVoice(); refreshKeep(); refreshRhythm(); drawSummary(lastData);
+    refreshVoice(); refreshBacking(); refreshKeep(); refreshRhythm(); drawSummary(lastData);
     $("zoomNote").textContent = Math.round(zoom) + T.sec;
     // The reasons in “Check” come from the server — ask again in the new language.
     api(`/api/project/${encodeURIComponent(pid)}`)
@@ -1866,6 +1872,7 @@ function foundRow(f){
 async function takeFound(f, withTimes){
   const timed = !!(withTimes && f.textTimed);
   $("taLyrics").value = (timed ? f.textTimed : f.text) || "";
+  $("inLyrics").value = "";
   $("pasteBox").classList.remove("hide");
   countPasted();
   note("lyricsNote", timed ? T.lyricsTookTimed : T.lyricsTook);
@@ -1933,16 +1940,20 @@ $("inAudio").addEventListener("paste", e => {
   $("inLink").focus();
 });
 $("btnUseText").addEventListener("click", () => useTyped(false));
+let typedLyricsPath = "", typedLyricsText = "";
 async function useTyped(quiet){
   const text = $("taLyrics").value.trim();
-  if (!text) return note("lyricsNote", T.pasteEmpty, true);
+  if (!text){ note("lyricsNote", T.pasteEmpty, true); return ""; }
   try{
     const name = lastSong ? (lastSong.track || lastSong.title || "lyrics") : "lyrics";
     const r = await api("/api/lyrics/save", {text, name});
     $("inLyrics").value = r.path;
+    typedLyricsPath = r.path;
+    typedLyricsText = text;
     if (!quiet) note("lyricsNote", T.textSaved);
     askReport();
-  }catch(e){ note("lyricsNote", e.message, true); }
+    return r.path;
+  }catch(e){ note("lyricsNote", e.message, true); return ""; }
 }
 
 /* ================= building a song ================= */
@@ -1960,12 +1971,19 @@ function initStripBacking(){
 }
 initStripBacking();
 $("btnBuild").addEventListener("click", async () => {
-  const audio = $("inAudio").value.trim(), lyrics = $("inLyrics").value.trim();
+  const audio = $("inAudio").value.trim();
+  let lyrics = $("inLyrics").value.trim();
   if (!audio || !lyrics) return toast(T.pickBoth);
   // The preview is about to be hidden behind the build screen. Leaving it
   // playing made it impossible to stop until the track ended.
   stopNewAudioPreview();
   try{
+    // Choosing a found text saves a working file immediately, but the user
+    // can still edit the visible textarea. The build must use that final text.
+    if (lyrics === typedLyricsPath && $("taLyrics").value.trim() !== typedLyricsText){
+      lyrics = await useTyped(true);
+      if (!lyrics) return;
+    }
     const cover = $("inCover").value.trim();
     const j = await api("/api/new", {audio, lyrics, align: $("selAlign").value,
       model: $("selModel").value, lang: $("selLang").value,
@@ -2310,7 +2328,7 @@ function pickRange(a, b){
     ? T.linesPicked(marked.size) : T.lineNo(sel + 1, fmtMs(lines[sel].start));
   $("selNote").classList.toggle("many", marked.size > 1);
   layoutBlocks();
-  refreshVoice(); refreshKeep(); refreshRhythm();
+  refreshVoice(); refreshBacking(); refreshKeep(); refreshRhythm();
 }
 $("scroll").addEventListener("pointerdown", e => {
   // The “click after a drag” flag lives exactly until the next press: otherwise,
@@ -2390,7 +2408,7 @@ function selectLine(i, jump, mode){
   if (prev >= 0) layoutBlock(prev);
   layoutBlock(sel);
   makeWords();                       // the word row always belongs to the selected line
-  refreshVoice(); refreshKeep(); refreshRhythm();
+  refreshVoice(); refreshBacking(); refreshKeep(); refreshRhythm();
 }
 function selectAllLines(){
   if (!lines.length) return;
@@ -2403,7 +2421,7 @@ function selectAllLines(){
   $("selNote").textContent = T.linesPicked(marked.size);
   $("selNote").classList.add("many");
   layoutBlocks();
-  refreshVoice(); refreshKeep(); refreshRhythm();
+  refreshVoice(); refreshBacking(); refreshKeep(); refreshRhythm();
 }
 // Scrolling the lyrics by hand. The only way used to be ↑ ↓ one line at a
 // time — you never get back to the start of a long song like that.
@@ -2684,6 +2702,23 @@ function refreshVoice(){
   $("btnVoice").textContent = sel < 0 ? T.voiceNone : T.voiceBtn(voiceOf(lines[sel]));
   $("btnVoice").classList.toggle("on", sel >= 0 && voiceOf(lines[sel]) !== 1);
 }
+function refreshBacking(){
+  const on = sel >= 0 && !!lines[sel].backing;
+  $("btnBacking").textContent = on ? T.backingYes : T.backing;
+  $("btnBacking").classList.toggle("on", on);
+}
+function toggleBacking(){
+  const idx = targets();
+  if (!idx.length) return toast(T.pickLineFirst);
+  snap("");
+  const on = !lines[idx[0]].backing;
+  idx.forEach(i => { lines[i].backing = on; });
+  buildLines(); makeBlocks();
+  selectLine(sel, false, "keep");
+  touched();
+  toast(T.backingChanged(on, idx.length));
+}
+$("btnBacking").addEventListener("click", toggleBacking);
 function toggleVoice(){
   const idx = targets();
   if (!idx.length) return toast(T.pickLineFirst);
@@ -3724,10 +3759,12 @@ function retext(i, text){
   if (!parts.length || parts.join(" ") === ln.text) return false;
   // A locked line must not be silently remapped: unlock it first.
   if (ln.lock){ toast(T.lineLocked); return false; }
+  const wasBracketed = /^\(.*\)$/.test(ln.text.trim());
   ln.text = parts.join(" ");
-  // Editing the text can turn a line into backing vocals and back.
-  ln.backing = /^\(.*\)$/.test(ln.text.trim());
-  if (ln.backing) ln.voice = 2;
+  // Parentheses can add/remove an automatic backing mark. Ordinary word edits
+  // must not erase a backing mark the user set with the toolbar button.
+  const isBracketed = /^\(.*\)$/.test(ln.text.trim());
+  if (isBracketed || wasBracketed) ln.backing = isBracketed;
   // Dots added to a long scream, one word fixed in the middle: where the words
   // are the same words, their times are THEIR times — laying the whole line
   // out anew threw away exactly the rhythm the person had already set. Only

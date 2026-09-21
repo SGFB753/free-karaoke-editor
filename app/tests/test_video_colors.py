@@ -164,8 +164,8 @@ def main():
     check("and it never jumps past three", video.pips_lit(10.0, 0.01) == 3)
 
     print("\nA duet frame: the backing is previewed and stays centred off the dots")
-    # The second voice used to draw at full size and land on the countdown
-    # dots. Now the lead sits where a solo line sits, and the backing is
+    # A backing overdub may use the same performer and colour as its lead.
+    # It still needs its own row: the lead sits where a solo line sits, and the backing is
     # centred under it with the same typography and spacing as every other
     # line. It is already in its final seat before its first word, so starting
     # the colour sweep cannot make it jump, resize or brighten suddenly.
@@ -176,7 +176,7 @@ def main():
                       "words": [{"w": "lead", "t": 5.0, "d": 1.3, "s": 1},
                                 {"w": "line", "t": 6.3, "d": 1.3, "s": 1},
                                 {"w": "here", "t": 7.6, "d": 1.3, "s": 1}]},
-                     {"text": "(na-na-na)", "start": 5.5, "end": 10.5, "voice": 2,
+                     {"text": "(na-na-na)", "start": 5.5, "end": 10.5, "voice": 1,
                       "backing": True,
                       "words": [{"w": "(na-na-na)", "t": 5.5, "d": 5.0, "s": 3}]},
                      {"text": "next lead", "start": 12.0, "end": 14.0, "voice": 1,
@@ -521,9 +521,10 @@ def main():
          "words": [{"w": "sing"}, {"w": "together"}]},
         regular_font, 640, 40)
     both_pixels = list(both_art.hot.getdata())
-    check("a shared line carries both voice colours in the finished video",
-          any(p[:3] == (0, 255, 0) for p in both_pixels) and
-          any(p[:3] == (255, 0, 255) for p in both_pixels))
+    shared = video._mix(video.COL_HOT, video.COL_HOT2, 0.5)
+    check("a shared line uses one clean blend instead of splitting its glyphs",
+          any(p[:3] == shared for p in both_pixels) and
+          not any(p[:3] in ((0, 255, 0), (255, 0, 255)) for p in both_pixels))
     video.COL_HOT, video.COL_HOT2 = old_hot, old_hot2
     phrase = "A longer lyric keeps the same readable letters " * 4
     art = video.LineArt({"text": phrase, "words": [{"w": w} for w in phrase.split()]},

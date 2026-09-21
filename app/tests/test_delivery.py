@@ -642,6 +642,7 @@ def check_remove_backing():
         initial = {
             "title": "Song", "artist": "Artist", "model": "medium",
             "duration": 40, "source_lyrics": source,
+            "backingVoicesInherited": True,
             "lines": [
                 {"text": "(echo)", "backing": True, "section": "Verse",
                  "start": 18.16, "end": 20, "lock": True},

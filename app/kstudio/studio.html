@@ -282,10 +282,9 @@
   .ln .bad{color:var(--bad); font-size:.5em; vertical-align:super; margin-left:.2em}
   /* the second voice gets its own colour: another singer or another style */
   .ln.v2 .w .hl{color:var(--accent-2)}
-  /* Both singers on the same words: each colour owns half of every glyph. */
-  .ln.vboth .w .hl{color:transparent; -webkit-text-fill-color:transparent;
-    background:linear-gradient(to bottom,var(--accent) 0 48%,var(--accent-2) 52% 100%);
-    -webkit-background-clip:text; background-clip:text}
+  /* Both singers on the same words use one stable blend. Splitting every
+     glyph in half looked ragged after browser scaling and video resizing. */
+  .ln.vboth .w .hl{color:color-mix(in srgb,var(--accent) 50%,var(--accent-2))}
   /* a stretch where the recorded voice stays: the original sings it, not you */
   .blk.keep{background:repeating-linear-gradient(-45deg,
     rgba(126,224,138,.30) 0 7px, rgba(126,224,138,.14) 7px 14px);
@@ -816,6 +815,8 @@
               title="Delete the selected line from the lyrics">－ line</button>
       <button id="btnVoice" data-tt="voiceHint"
               title="Second voice for the selected line: another singer or another way of singing. Painted in the second colour">◑ Voice 1</button>
+      <button id="btnBacking" data-tt="backingHint" data-t="backing"
+              title="Mark selected lines as backing vocals without changing their words or singer">Backing</button>
       <button id="btnRhythm" data-tt="rhythmHint" data-t="copyRhythm"
               title="Copy the selected line — its words and its rhythm (Ctrl+C)">⧉ Copy</button>
       <button id="btnPasteLine" data-tt="pasteLineHint" data-t="pasteLine" disabled

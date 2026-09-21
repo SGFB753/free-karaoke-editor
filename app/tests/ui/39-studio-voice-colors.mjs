@@ -159,14 +159,41 @@ click("btnVoice"); await sleep(900);
 const both = await proj();
 ok('the next state means both voices sing the same words', both.lines[1].voice === 3,
    'voice=' + both.lines[1].voice);
-ok('the shared line has its own two-colour class on stage and timeline',
+ok('the shared line has its own shared-colour class on stage and timeline',
    doc.querySelectorAll('#scroll .ln')[1].classList.contains('vboth') &&
    doc.querySelectorAll('#blocks .blk')[1].classList.contains('vboth'));
+const compactCss = html.replace(/\s+/g, '');
+ok('the shared text uses a stable blend instead of splitting every glyph',
+   compactCss.includes('.ln.vboth.w.hl{color:color-mix(') &&
+   !compactCss.includes('.ln.vboth.w.hl{color:transparent'));
 ok('the button names the shared state', /Оба голоса/.test($("btnVoice").textContent),
    $("btnVoice").textContent);
 click("btnVoice"); await sleep(900);
 const d2 = await proj();
 ok('the voice went back to the first', (d2.lines[1].voice || 1) === 1, 'voice=' + d2.lines[1].voice);
+console.log('\n--- backing can be marked after the project is built ---');
+const originalText = d2.lines[1].text;
+click('btnBacking'); await sleep(900);
+const backed = (await proj()).lines[1];
+ok('the selected line is now backing on disk without changing words or singer',
+   backed.backing === true && backed.text === originalText && (backed.voice || 1) === 1);
+ok('the stage and timeline show the backing mark',
+   doc.querySelectorAll('#scroll .ln')[1].classList.contains('back') &&
+   doc.querySelectorAll('#blocks .blk')[1].classList.contains('back') &&
+   !!doc.querySelectorAll('#blocks .blk')[1].querySelector('.backbadge'));
+click('btnUndo'); await sleep(900);
+ok('undo removes the backing mark', !(await proj()).lines[1].backing);
+doc.querySelectorAll('#scroll .ln')[0].dispatchEvent(new w.MouseEvent('click',
+  {bubbles:true, ctrlKey:true}));
+doc.querySelectorAll('#scroll .ln')[1].dispatchEvent(new w.MouseEvent('click',
+  {bubbles:true, ctrlKey:true}));
+click('btnBacking'); await sleep(900);
+const group = await proj();
+ok('one click marks both selected lines as backing',
+   group.lines[0].backing === true && group.lines[1].backing === true);
+click('btnUndo'); await sleep(900);
+ok('one undo restores the whole group',
+   !(await proj()).lines[0].backing && !(await proj()).lines[1].backing);
 // put the colour back so the other suites are not disturbed
 $("col2").value = "#ff8ad1";
 $("col2").dispatchEvent(new w.Event('input',{bubbles:true}));

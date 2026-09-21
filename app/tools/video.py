@@ -610,22 +610,11 @@ class LineArt:
         # the line after the next one: present, but clearly further away
         self.faint = self.dim.copy()
         self.faint.putalpha(self.faint.getchannel("A").point(lambda v: v * 45 // 100))
-        hot = COL_HOT2 if _voice(line) == 2 else COL_HOT
+        hot = (COL_HOT2 if _voice(line) == 2 else
+               _mix(COL_HOT, COL_HOT2, 0.5) if _voice(line) == 3 else COL_HOT)
         # a duet's backing line fills as it is sung too — only the queue lines
         # (drawn dim ahead of their time) never need a hot layer
         self.hot = draw(hot)
-        if _voice(line) == 3:
-            # Split every row between the two colours. Splitting the complete
-            # picture would colour the first wrapped row as one singer and the
-            # second row as the other, instead of showing unison.
-            second = draw(COL_HOT2)
-            mask = Image.new("L", (width, self.h), 0)
-            md = ImageDraw.Draw(mask)
-            for r in range(len(rows)):
-                y0 = self.pad + r * self.row_h
-                md.rectangle((0, y0 + self.row_h // 2, width,
-                              y0 + self.row_h), fill=255)
-            self.hot.paste(second, (0, 0), mask)
 
     def _fill_at(self, line, t):
         """(row, x) of the sweep at moment t."""
@@ -1347,7 +1336,8 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
         if idx >= 0 and duo < 0:
             for j in (idx - 1, idx + 1):
                 if 0 <= j < len(lines) and lines[j]["start"] <= t < lines[j]["end"] \
-                        and _different_voices(lines[j], lines[idx]):
+                        and (_different_voices(lines[j], lines[idx])
+                             or lines[j].get("backing") or lines[idx].get("backing")):
                     duo = j
                     break
 
@@ -1810,7 +1800,7 @@ def video_report(payload, args, song: float, want: float) -> str:
         for b in lines[i + 1:]:
             if b["start"] >= a["end"]:
                 break
-            if _different_voices(b, a):
+            if _different_voices(b, a) or b.get("backing") or a.get("backing"):
                 duo += 1
     audio_name = {"minus": tr("instrumental", "минусовка"),
                   "guide": tr("instrumental + quiet vocal", "минусовка + тихий вокал"),

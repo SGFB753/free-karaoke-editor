@@ -507,6 +507,9 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             "source_audio": local_audio,
             "source_lyrics": local_lyrics,
             "stripBacking": strip_backing,
+            # Round brackets describe a backing part; its colour already comes
+            # from the performer section parsed above, not an invented voice 2.
+            "backingVoicesInherited": True,
             "source_title": (source_title or "").strip()
                             or os.path.splitext(os.path.basename(audio_path))[0],
             "created": time.time(),
@@ -574,6 +577,12 @@ def load(folder: str) -> Dict:
         # deliberately turn all lines back to voice 1 without the migration
         # deciding again on every subsequent open.
         data["voiceSectionsInferred"] = True
+    # Older projects forced every parenthesised line to voice 2. Upgrade that
+    # automatic choice once, after section performers have been inferred;
+    # the marker makes every later manual assignment authoritative.
+    if not data.get("backingVoicesInherited"):
+        L.inherit_backing_voices(data.get("lines") or [])
+        data["backingVoicesInherited"] = True
     return data
 
 
@@ -846,9 +855,10 @@ def problems(data: Dict) -> List[Dict]:
                            f"слова разъехались на {max(gaps):.1f} с"), "gap"))
 
         if i and lines[i - 1]["end"] > ln["start"] + 1e-6 \
+                and not (lines[i - 1].get("backing") or ln.get("backing")) \
                 and (lines[i - 1].get("voice") or 1) == (ln.get("voice") or 1):
-            # different voices overlapping is a duet — na-na-na behind the
-            # lead — and flagging it would bury real warnings under noise
+            # A backing overdub may use the same performer and colour as its
+            # lead. That overlap is intentional regardless of voice number.
             why.append((tr("overlaps the previous line", "налезает на предыдущую"),
                         "overlap"))
 

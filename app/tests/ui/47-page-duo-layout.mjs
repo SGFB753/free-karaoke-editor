@@ -11,10 +11,10 @@ const ok = (n, c, e='') => { console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:''
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 const PY = process.env.KARAOKE_PYTHON || 'python3';
 
-// A song of our own: two lines, one in brackets (the second voice), overlapping.
+// A song of our own: an explicitly assigned second-voice backing overlaps lead.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'duo_'));
 const txt = path.join(tmp, 'lyrics.txt');
-fs.writeFileSync(txt, 'title: Дуэт\n\nПервый голос ведёт мелодию\n(а второй ему вторит)\nПотом снова один\n', 'utf8');
+fs.writeFileSync(txt, 'title: Дуэт\n\nПервый голос ведёт мелодию\n[голос 2]\n(а второй ему вторит)\n[голос 1]\nПотом снова один\n', 'utf8');
 const page = path.join(tmp, 'p.html');
 execFileSync(PY, ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', page,
   '--align','energy','--no-separate','--ui-lang','ru','--colors','#4de1ff,#ff5577']);

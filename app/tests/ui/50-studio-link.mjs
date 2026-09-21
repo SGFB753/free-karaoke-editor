@@ -169,7 +169,20 @@ console.log('\n--- a job that fell over lets you out ---');
 // answer that had to be shown. A text file picked as the song gets there.
 $('inAudio').value = $('inLyrics').value;
 $('inAudio').dispatchEvent(new w.Event('input',{bubbles:true}));
+const staleTextPath = $('inLyrics').value;
+$('taLyrics').value = 'исправленная строка\nбез ссылки на источник';
+$('taLyrics').dispatchEvent(new w.Event('input',{bubbles:true}));
 click('btnBuild');
+await until(() => $('inLyrics').value !== staleTextPath);
+ok('build saves the latest textarea edit instead of the old found text',
+   $('inLyrics').value !== staleTextPath);
+const finalRep = await (await fetch(API + '/api/report', {method:'POST',
+  headers:{'Content-Type':'application/json'},
+  body: JSON.stringify({audio: keptAudio, lyrics: $('inLyrics').value,
+                        align:'energy', separate:false})})).json();
+ok('the saved build input contains the final two lines',
+   finalRep.text && finalRep.text.lines === 2,
+   JSON.stringify(finalRep.text || finalRep).slice(0, 90));
 const wayOut = await until(() => !$('btnJobBack').classList.contains('hide'), 90000);
 ok('the way back appears when the job fails', wayOut,
    ($('jobLog').textContent.split('\n').pop() || '').slice(0, 70));

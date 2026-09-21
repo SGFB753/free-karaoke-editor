@@ -325,11 +325,11 @@ def main():
                          "[00:13.00] (самостоятельный бэк)\n"
                          "[00:15.00] Снова основная")
     check("ready LRC recognises a whole bracketed line as backing",
-          timed_back.lines[2].backing and timed_back.lines[2].voice == 2,
+          timed_back.lines[2].backing and timed_back.lines[2].voice == 1,
           [(x.text, x.backing, x.voice, x.start) for x in timed_back.lines])
     check("ready LRC splits a trailing backing part from its lead",
           len(timed_back.lines) == 4 and timed_back.lines[1].tail
-          and timed_back.lines[1].backing and timed_back.lines[1].voice == 2,
+          and timed_back.lines[1].backing and timed_back.lines[1].voice == 1,
           [(x.text, x.backing, x.voice, x.start) for x in timed_back.lines])
 
     genius = L.parse("""[Куплет]
@@ -424,8 +424,8 @@ You might also like
     check("[Куплет] is still a heading", back.lines[0].section == "Куплет")
     check("the backing flag reaches the player data",
           back.lines[1].to_json().get("backing") is True)
-    check("backing counts as the second voice at once",
-          back.lines[1].to_json().get("voice") == 2)
+    check("backing inherits the voice of the performer it accompanies",
+          back.lines[1].to_json().get("voice") == 1)
     check("an ordinary line is sung by the main voice",
           [ln.voice for ln in back.lines if ln.text == "Обычная строка"] == [1])
 
@@ -474,7 +474,7 @@ You might also like
           f"{voices[1]} «{texts[1]}»")
     check("the mark itself did not reach the text", not any(t.startswith("2:") for t in texts),
           " | ".join(texts))
-    check("backing is still the second voice", voices[2] == 2)
+    check("backing follows the current performer", voices[2] == 1)
     check("“x3” expanded into three lines",
           texts.count("Припев") == 3, " | ".join(texts))
     check("the repeats take the voice from the switch", set(voices[3:6]) == {1}, str(voices[3:6]))
@@ -1534,20 +1534,19 @@ You might also like
           tiny.lines[0].end > 10.5, f"{tiny.lines[0].start:.1f}–{tiny.lines[0].end:.1f}")
 
     print("\nA backing tail becomes a line of its own")
-    # “Some girls try too hard (Na-na-na)”: the tail is another person singing,
-    # usually at the same time. Left inside, the lead would be shown na-na-na
-    # as their own words.
+    # “Some girls try too hard (Na-na-na)”: the tail is backing sung at the
+    # same time. Parentheses describe its presentation, not another performer.
     party = L.parse("Лид поёт своё (на-на-на)\n"
                     "(на-на-на, на-на-на)\n"
                     "Скобки (внутри) строки остаются\n"
                     "Повтор в конце (x2)\n"
                     "Хвост-заголовок (Chorus)")
     texts = [(ln.text, ln.voice, ln.backing) for ln in party.lines]
-    check("the tail split off as the second voice",
-          ("Лид поёт своё", 1, False) in texts and ("(на-на-на)", 2, True) in texts,
+    check("the tail split off with its performer's voice",
+          ("Лид поёт своё", 1, False) in texts and ("(на-на-на)", 1, True) in texts,
           texts[:2])
-    check("a whole-bracket line is the second voice as before",
-          ("(на-на-на, на-на-на)", 2, True) in texts)
+    check("a whole-bracket line keeps the current performer's voice",
+          ("(на-на-на, на-на-на)", 1, True) in texts)
     check("brackets in the middle stay where they are",
           any(t == "Скобки (внутри) строки остаются" and v == 1 for t, v, _ in texts),
           [t for t, v, _ in texts])
@@ -2155,14 +2154,14 @@ You might also like
     check("a backing line with no lead above it is left to the model",
           A.place_backing(lonely, 30.0) == 0)
 
-    print("\nA duet is not a defect")
+    print("\nA backing overdub is not a defect")
     # Blink-182, “The Party Song”: na-na-na behind the lead, two texts at once.
-    # The overlap is the point — only same-voice overlaps are trouble.
+    # It may be the same performer; backing overlap is intentional either way.
     duet = L.parse("главная строка тут\n(на на на)\nвторая главная тут")
     for ln, (a, b) in zip(duet.lines, [(10.0, 14.0), (10.5, 13.5), (14.5, 18.0)]):
         A._spread(ln.words, a, b)
         ln.start, ln.end = a, b
-    check("the brackets made it the second voice", duet.lines[1].voice == 2,
+    check("the brackets kept the lead performer's voice", duet.lines[1].voice == 1,
           duet.lines[1].voice)
     cast = L.parse("""[Куплет 1: Rickey F]
 первая строка
@@ -2183,6 +2182,15 @@ You might also like
     check("both-voice directives and 3: lines are understood",
           [ln.voice for ln in cast.lines[4:]] == [3, 3],
           [ln.voice for ln in cast.lines[4:]])
+    cast_backs = L.parse("""[Куплет 1: Rickey F]
+первая строка
+(первый бэк)
+[Куплет 2: Hima]
+вторая строка
+(второй бэк)""")
+    check("backing vocals inherit the named section performer",
+          [ln.voice for ln in cast_backs.lines] == [1, 1, 2, 2],
+          [ln.voice for ln in cast_backs.lines])
     old_cast = [
         {"section": "Куплет 1: Rickey F", "voice": 1},
         {"section": None, "voice": 1},
@@ -2199,6 +2207,37 @@ You might also like
     check("manual voice choices in an existing project are never replaced",
           not L.infer_saved_section_voices(hand_cast) and
           [ln["voice"] for ln in hand_cast] == [2, 1], hand_cast)
+    old_backs = [
+        {"section": "Куплет 1: Rickey F", "voice": 1},
+        {"section": None, "voice": 2, "backing": True},
+        {"section": "Куплет 2: Hima", "voice": 2},
+        {"section": None, "voice": 2, "backing": True},
+    ]
+    check("old automatic backing colours are inherited from their performers once",
+          L.inherit_backing_voices(old_backs) == 1 and
+          [ln["voice"] for ln in old_backs] == [1, 1, 2, 2], old_backs)
+    hand_backs = [
+        {"voice": 2},
+        {"voice": 1, "backing": True},
+        {"voice": 3, "backing": True},
+    ]
+    check("recognisable old manual backing choices survive migration",
+          L.inherit_backing_voices(hand_backs) == 0 and
+          [ln["voice"] for ln in hand_backs] == [2, 1, 3], hand_backs)
+    from kstudio import project as PJ3
+    migration_folder = os.path.join(tmp, "backing-voice-migration")
+    os.makedirs(migration_folder, exist_ok=True)
+    PJ3.save(migration_folder, {"lines": [
+        {"text": "lead", "voice": 1},
+        {"text": "(back)", "voice": 2, "backing": True},
+    ]})
+    migrated = PJ3.load(migration_folder)
+    migrated["lines"][1]["voice"] = 2       # a later choice made by hand
+    PJ3.save(migration_folder, migrated)
+    check("the one-time migration never overwrites a later manual choice",
+          migrated.get("backingVoicesInherited") is True and
+          PJ3.load(migration_folder)["lines"][1]["voice"] == 2,
+          PJ3.load(migration_folder))
     said_d2 = []
     A.repair_order(duet, log=said_d2.append)
     check("the backing line is not pulled off the lead",
@@ -2215,11 +2254,11 @@ You might also like
     check("same-voice overlap is still pulled apart",
           same_v.lines[0].end <= 12.0, same_v.lines[0].end)
 
-    from kstudio import project as PJ3
     duet_lines = [
         {"text": "главная", "start": 10.0, "end": 14.0, "voice": 1,
          "words": [{"w": "главная", "t": 10.0, "d": 4.0, "s": 3}]},
-        {"text": "(на на на)", "start": 10.5, "end": 13.5, "voice": 2,
+        {"text": "(на на на)", "start": 10.5, "end": 13.5, "voice": 1,
+         "backing": True,
          "words": [{"w": "на", "t": 10.5, "d": 3.0, "s": 1}]},
         {"text": "хвост", "start": 13.0, "end": 15.0, "voice": 1,
          "words": [{"w": "хвост", "t": 13.0, "d": 2.0, "s": 1}]},

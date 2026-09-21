@@ -12,7 +12,7 @@ const PY = process.env.KARAOKE_PYTHON || 'python3';
 // A song of our own: a main line, a backing line, a main line again.
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'voice_'));
 const txt = path.join(tmp, 'lyrics.txt');
-fs.writeFileSync(txt, 'title: Проба\n\nОсновная строка тут\n(подпевка звучит)\nСнова основная\n', 'utf8');
+fs.writeFileSync(txt, 'title: Проба\n\nОсновная строка тут\n[голос 2]\n(подпевка звучит)\n[голос 1]\nСнова основная\n', 'utf8');
 const page = path.join(tmp, 'p.html');
 execFileSync(PY, ['karaoke.py', process.env.KARAOKE_SONG, txt, '-o', page,
   '--align','energy','--no-separate','--ui-lang','ru','--colors','#4de1ff,#ff5577']);
@@ -34,7 +34,7 @@ await sleep(300);
 const lns = () => [...doc.querySelectorAll('#scroll .ln')];
 
 console.log('--- the second voice ---');
-ok('a line in brackets is marked as the second voice',
+ok('an explicitly assigned backing line uses the second voice',
    lns()[1].classList.contains('v2'), [...lns()[1].classList].join(' '));
 ok('ordinary lines as the first', !lns()[0].classList.contains('v2') &&
    !lns()[2].classList.contains('v2'));
@@ -135,7 +135,7 @@ ok("the second line's words light up as well", lit.length > 0);
 ok('there are no JS errors on the second page', w2.__errs.length===0, w2.__errs.slice(0,2).join(' | '));
 
 console.log('\n--- different voices do not blur together ---');
-// Line 1 is the second voice (in brackets), line 0 the first. They sound at once.
+// Line 1 was explicitly assigned to voice 2; it sounds over voice 1.
 ok('both are marked as “singing together”',
    cur.every(e => e.classList.contains('duo')),
    cur.map(e => e.className).join(' | '));
