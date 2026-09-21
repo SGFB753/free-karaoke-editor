@@ -236,6 +236,31 @@ def find_font(explicit=None) -> str:
                             "Не нашёл ни одного шрифта .ttf — укажите его ключом --font"))
 
 
+def find_italic_font(font_path: str) -> str:
+    """Use the bold italic face of the video font for backing vocals."""
+    pairs = {
+        "segoeuib.ttf": "segoeuiz.ttf",
+        "arialbd.ttf": "arialbi.ttf",
+        "verdanab.ttf": "verdanaz.ttf",
+        "calibrib.ttf": "calibriz.ttf",
+        "dejavusans-bold.ttf": "DejaVuSans-BoldOblique.ttf",
+        "liberationsans-bold.ttf": "LiberationSans-BoldItalic.ttf",
+        "arial bold.ttf": "Arial Bold Italic.ttf",
+    }
+    sibling = pairs.get(os.path.basename(font_path).lower())
+    candidates = ([os.path.join(os.path.dirname(font_path), sibling)]
+                  if sibling else [])
+    candidates += [
+        r"C:\Windows\Fonts\segoeuiz.ttf",
+        r"C:\Windows\Fonts\arialbi.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf",
+        "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans-BoldOblique.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-BoldItalic.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold Italic.ttf",
+    ]
+    return next((path for path in candidates if os.path.isfile(path)), font_path)
+
+
 def next_sung(lines, i: int) -> int:
     """The next line the singer actually sings: backing does not count.
 
@@ -880,24 +905,26 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     W, H = args.width, args.height
     margin = int(W * 0.06)
     font_path = find_font(args.font)
+    italic_font_path = find_italic_font(font_path)
     base_main = int(H * 0.072)
     base_side = int(H * 0.042)
     cache_font = {}
 
-    def font_for(text, max_w, main):
+    def font_for(text, max_w, main, italic=False):
         size = base_main if main else base_side
         # the width belongs in the key: the same text is measured both against
         # the frame and against nothing at all, to decide whether to wrap
-        key = (text, size, max_w)
+        key = (text, size, max_w, italic)
         if key in cache_font:
             return cache_font[key]
-        f = ImageFont.truetype(font_path, size)
+        face = italic_font_path if italic else font_path
+        f = ImageFont.truetype(face, size)
         # the floor scales with the seat: a side font can start BELOW a fixed
         # floor, and then a long line simply ran off the edge, unshrunk
         floor = max(10, min(18, size - 2))
         while size > floor and f.getlength(text) > max_w:
             size -= 2
-            f = ImageFont.truetype(font_path, size)
+            f = ImageFont.truetype(face, size)
         cache_font[key] = f
         return f
 
@@ -984,7 +1011,9 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 # the oldest goes, not the whole shelf: clearing everything
                 # made the very lines on screen be typeset again
                 store.pop(next(iter(store)))
-            store[i] = LineArt(lines[i], font_for, W, margin, main,
+            line_font = lambda text, max_w, is_main: font_for(
+                text, max_w, is_main, bool(lines[i].get("backing")))
+            store[i] = LineArt(lines[i], line_font, W, margin, main,
                                align="center")
         return store[i]
 

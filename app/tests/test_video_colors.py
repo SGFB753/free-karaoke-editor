@@ -79,6 +79,31 @@ def main():
     check("the video was built", os.path.isfile(args.output) and os.path.getsize(args.output) > 1000,
           str(os.path.getsize(args.output)) if os.path.isfile(args.output) else "нет файла")
 
+    # The editor makes backing vocals italic; the exported frame must use an
+    # italic face too, not merely draw a smaller upright line in brackets.
+    styles = {}
+    original_art = video.LineArt
+    class TrackedArt(original_art):
+        def __init__(self, line, *a, **kw):
+            super().__init__(line, *a, **kw)
+            styles[bool(line.get("backing"))] = self.font.getname()[1].lower()
+    video.LineArt = TrackedArt
+    original_output = args.output
+    try:
+        backed = json.loads(json.dumps(payload))
+        backed["data"]["lines"][1]["backing"] = True
+        args.still = 3.0
+        args.output = os.path.join(tmp, "backing.png")
+        video.render(backed, wav, args.output, args)
+    finally:
+        video.LineArt = original_art
+        args.output = original_output
+        del args.still
+    check("a backing line is italic in the exported frame",
+          any(s in styles.get(True, "") for s in ("italic", "oblique"))
+          and not any(s in styles.get(False, "") for s in ("italic", "oblique")),
+          styles)
+
     from kstudio import audio as AU
     png = os.path.join(tmp, "frame.png")
     subprocess.run([AU.ffmpeg(), "-y", "-v", "error", "-ss", "4.0", "-i", args.output,

@@ -7,6 +7,12 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.49.4
+
+Backing-vocal lines are italic in exported videos, matching the editor
+preview. The cover-darkness browser test now waits for the autosave to reach
+the project file instead of relying on a fixed delay.
+
 ## 4.49.3
 
 Dragging a line across its neighbours no longer makes later lyrics disappear

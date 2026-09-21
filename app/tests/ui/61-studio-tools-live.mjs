@@ -338,9 +338,14 @@ ok('a cover arrives by link', byUrl.ok === true && byUrl.cover === true,
   });
   await p.click('#nCoverDark', {clickCount: 3});
   await p.type('#nCoverDark', '83');
-  await sleep(1200);
   const shown = await p.$eval('#rCoverDark', e => +e.value);
   ok('a typed percent moves the slider with it', shown === 83, shown);
+  // Autosaving is asynchronous; on a busy release runner it can take longer
+  // than a fixed sleep even though the edit is correctly queued.
+  await p.waitForFunction(async id => {
+    const r = await fetch('/api/project/' + encodeURIComponent(id));
+    return r.ok && (await r.json()).coverDark === 83;
+  }, {timeout: 10000, polling: 200}, pid).catch(() => {});
   const saved = await get('/api/project/' + encodeURIComponent(pid));
   ok('and a typed percent reaches the disk', saved.coverDark === 83,
      saved.coverDark);
