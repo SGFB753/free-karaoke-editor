@@ -7,6 +7,13 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.49.3
+
+Dragging a line across its neighbours no longer makes later lyrics disappear
+from the editor preview: the active line and pauses are found by time even
+while timeline blocks are temporarily out of order. Releasing a dragged line
+also refreshes the preview immediately, without selecting another line.
+
 ## 4.49.2
 
 Manually pasted lyrics no longer require a redundant Use this text button:

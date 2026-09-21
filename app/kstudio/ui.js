@@ -2544,9 +2544,17 @@ function refreshHistory(){
 // While nobody sings the stage is empty and it is impossible to tell whether
 // the song is running. A moving countdown means everything else moves too.
 function idxAt(t){
+  const idx = latestStartedLine(t);
+  return idx >= 0 && t < lines[idx].end ? idx : -1;
+}
+// A timeline edit can temporarily put a line before or after its neighbours.
+// Keep the lyric order intact, but find the line by its actual start time;
+// stopping at the first future line made all later lyrics vanish in preview.
+function latestStartedLine(t){
   let idx = -1;
-  for (let i=0;i<lines.length;i++){ if (lines[i].start <= t) idx = i; else break; }
-  return (idx >= 0 && t < lines[idx].end) ? idx : -1;
+  for (let i = 0; i < lines.length; i++)
+    if (lines[i].start <= t && (idx < 0 || lines[i].start >= lines[idx].start)) idx = i;
+  return idx;
 }
 let waitFrom = 0;
 function showWait(t, cur){
@@ -2561,7 +2569,8 @@ function showWait(t, cur){
   const left = s => s >= 60 ? fmt(s) : Math.ceil(s) + T.sec;
   // the wait is until the singer's own next line — a backing na-na-na in the
   // middle of the gap is not what the countdown is for
-  const next = lines.find(l => l.start > t && !l.backing);
+  const next = lines.filter(l => l.start > t && !l.backing)
+    .reduce((best, l) => !best || l.start < best.start ? l : best, null);
   if (!next){                              // the song is over
     if (dur - t < 3){ box.classList.add("hide"); return; }
     box.classList.remove("hide");
@@ -2571,7 +2580,8 @@ function showWait(t, cur){
     $("waitFill").style.width = dur ? (100 * t / dur).toFixed(1) + "%" : "0";
     return;
   }
-  const prev = lines.filter(l => l.end <= t).pop();
+  const prev = lines.filter(l => l.end <= t)
+    .reduce((best, l) => !best || l.end > best.end ? l : best, null);
   const from = prev ? prev.end : 0;
   const span = Math.max(next.start - from, 0.001);
   if (span < MIN_GAP){ box.classList.add("hide"); return; }
@@ -3477,9 +3487,12 @@ function showNextHint(){
   const visible = lines.some(l => l.end > a && l.start < b);
   if (visible || !lines.length){ box.classList.add("hide"); return; }
   const t = mediaTime();
-  const next = lines.find(l => l.start >= b);
+  const next = lines.filter(l => l.start >= b)
+    .reduce((best, l) => !best || l.start < best.start ? l : best, null);
   const back = !next;
-  const target = next || lines.filter(l => l.end <= a).pop() || lines[0];
+  const previous = lines.filter(l => l.end <= a)
+    .reduce((best, l) => !best || l.end > best.end ? l : best, null);
+  const target = next || previous || lines[0];
   const away = back ? t - target.end : target.start - t;
   box.classList.toggle("back", back);
   box.classList.remove("hide");
@@ -3612,6 +3625,16 @@ function drawBlocks(){                       // once a frame — one container s
 
 /* ---------- dragging the blocks ---------- */
 let drag=null, wdrag=null, diveAt=null;
+function refreshStageAfterDrag(){
+  // Moving a block changes the word timing without rebuilding its stage DOM.
+  // In WebView2 a masked, transformed text layer could then stay blank until
+  // selecting another line caused a repaint. Recreate that layer once at the
+  // end of a real drag, keeping the selection and the current scroll offset.
+  buildLines();
+  lineEls.forEach((L, i) => L.el.classList.toggle("sel", i === sel));
+  paintMarks();
+  curLine = -2;
+}
 $("blocks").addEventListener("dblclick", e => {
   const blk = e.target.closest(".blk"); if (!blk) return;
   editText(+blk.dataset.i);          // edit the text where the line is seen
@@ -3669,7 +3692,7 @@ $("words").addEventListener("pointerdown", e => {
   const el = e.target.closest(".wrd"); if (!el || sel < 0) return;
   const j = +el.dataset.j, w = lines[sel].words[j];
   snap("");
-  wdrag = {j, x0:e.clientX, t0:w.t, d0:w.d,
+  wdrag = {j, x0:e.clientX, t0:w.t, d0:w.d, moved:false,
            mode: e.target.dataset.wgrip || "move"};
   el.classList.add("on");
   $("tlwrap").classList.add("drag");
@@ -3677,6 +3700,7 @@ $("words").addEventListener("pointerdown", e => {
 });
 window.addEventListener("pointermove", e => {
   if (wdrag){
+    if (e.clientX !== wdrag.x0) wdrag.moved = true;
     const dt = (e.clientX - wdrag.x0) / $("tlwrap").clientWidth * zoom;
     editWord(wdrag.j, wdrag.mode, wdrag.t0, wdrag.d0, dt);
     const w = lines[sel].words[wdrag.j];
@@ -3686,6 +3710,7 @@ window.addEventListener("pointermove", e => {
     return;
   }
   if (!drag) return;
+  if (e.clientX !== drag.x0) drag.moved = true;
   const dt = (e.clientX - drag.x0) / $("tlwrap").clientWidth * zoom;
   const ln = lines[drag.i];
   if (drag.group){
@@ -3749,9 +3774,13 @@ window.addEventListener("pointermove", e => {
 });
 window.addEventListener("pointerup", e => {
   if (wdrag){
+    const moved = wdrag.moved;
     wdrag = null;
     wordEls.forEach(e => e.classList.remove("on"));
-    $("tlwrap").classList.remove("drag"); curLine=-2; touched();
+    $("tlwrap").classList.remove("drag");
+    if (moved) refreshStageAfterDrag();
+    else curLine = -2;
+    touched();
     return;
   }
   // A still second click on an already-selected block dives to the line
@@ -3772,7 +3801,11 @@ window.addEventListener("pointerup", e => {
   }
   diveAt = null;
   if (!drag) return;
-  drag = null; $("tlwrap").classList.remove("drag"); curLine=-2; touched();
+  const moved = drag.moved;
+  drag = null; $("tlwrap").classList.remove("drag");
+  if (moved) refreshStageAfterDrag();
+  else curLine = -2;
+  touched();
 });
 function nearestOnset(t){
   if (!onsets.length) return null;
@@ -4352,11 +4385,11 @@ function tick(){
     showWait(t, idxAt(t));
     const kp = hasStems && playing ? inKeep(t) : 0;
     if (kp !== keepOn){ keepOn = kp; applyVoice(); }
-    let idx=-1;
-    for (let i=0;i<lines.length;i++){ if (lines[i].start <= t) idx=i; else break; }
+    let idx = latestStartedLine(t);
     // The song is over — turn the highlight off. Otherwise the last line hangs
     // lit until the end of the recording and looks forgotten.
-    if (idx === lines.length - 1 && idx >= 0 && t > lines[idx].end + 0.25) idx = -1;
+    if (idx >= 0 && t > lines[idx].end + 0.25
+        && !lines.some(l => l.start > t)) idx = -1;
     // The second voice can sound together with the first: the neighbour whose
     // time covers this moment and whose voice differs is the duet partner. It
     // used to sit unlit while its words were being sung.

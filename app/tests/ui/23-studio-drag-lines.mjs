@@ -87,6 +87,39 @@ const back = await srvStarts();
 ok('it came back to about where it was', Math.abs(back[2]-before[2]) < 0.6,
    `was ${before[2].toFixed(2)} now ${back[2].toFixed(2)}`);
 
+// A line may temporarily cross its neighbour while the user moves it. The
+// lyric preview must still find the line under the playhead, not stop scanning
+// at the first block whose start now lies in the future.
+console.log('\n--- crossing a neighbour keeps the preview visible ---');
+const project = await (await fetch(API+'/api/project/'+encodeURIComponent(PID))).json();
+const nextLine = project.lines[3];
+const playAt = nextLine.start + Math.min(0.2, (nextLine.end-nextLine.start)/2);
+const moveBy = playAt + 1 - back[2];
+const zoomSeconds = parseFloat($('zoomNote').textContent);
+const dx = moveBy / zoomSeconds * $('tlwrap').clientWidth;
+const crossing = doc.querySelectorAll('.blk')[2];
+// The minimap is the public seek gesture; no test-only access to editor state.
+$('mmap').dispatchEvent(pd('pointerdown', playAt / 26.04 * 900));
+$('mmap').dispatchEvent(pd('pointerup', playAt / 26.04 * 900));
+crossing.dispatchEvent(pd('pointerdown', 100));
+w.dispatchEvent(pd('pointermove', 100 + dx));
+await sleep(100);
+const active = [...doc.querySelectorAll('#scroll .ln')]
+  .findIndex(el => el.classList.contains('cur'));
+const movedStart = parseFloat(crossing.style.left) / ($('tlwrap').clientWidth / zoomSeconds);
+ok('the dragged line crossed the playhead', movedStart > playAt);
+ok('the following line remains active in the preview during the drag',
+   active === 3, `active line ${active + 1}`);
+const stageBeforeRelease = doc.querySelectorAll('#scroll .ln')[2];
+w.dispatchEvent(pd('pointerup', 100 + dx));
+await sleep(100);
+ok('releasing the block refreshes the stage instead of leaving stale text',
+   doc.querySelectorAll('#scroll .ln')[2] !== stageBeforeRelease);
+ok('the dragged line stays selected after that refresh',
+   doc.querySelectorAll('#scroll .ln')[2].classList.contains('sel'));
+ok('the following line is still visible after release',
+   doc.querySelectorAll('#scroll .ln')[3].classList.contains('cur'));
+
 // --- the right edge stretches the duration --------------------------------
 console.log('\n--- dragging the right edge ---');
 const grip = doc.querySelector('.blk [data-grip="right"]');
