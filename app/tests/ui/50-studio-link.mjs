@@ -101,26 +101,28 @@ ok('taking one puts it into the text field', took, $('inLyrics').value.slice(-30
 ok('the words are in the box, to be read and corrected',
    $('taLyrics').value.split('\n').length >= 2, $('taLyrics').value.slice(0, 40));
 ok('and the box is open', !$('pasteBox').classList.contains('hide'));
+ok('automatically found lyrics keep the Use button',
+   !$('btnUseText').classList.contains('hide'));
 const first = $('inLyrics').value;
 
 console.log('\n--- or the text is pasted by hand ---');
+click('btnPasteText'); // close the found-text preview
+click('btnPasteText'); // open a new manual paste
+ok('manual text needs no extra Use button', $('btnUseText').classList.contains('hide'));
 $('taLyrics').value = 'строка руками\nвторая строка руками';
 $('taLyrics').dispatchEvent(new w.Event('input',{bubbles:true}));
 ok('the lines in the box are counted', /2 строки/.test($('pasteCount').textContent),
    $('pasteCount').textContent);
-click('btnUseText');
-await until(() => $('inLyrics').value !== first);
-ok('the pasted text becomes a file of its own',
-   $('inLyrics').value !== first && /\.txt$/.test($('inLyrics').value),
-   $('inLyrics').value.slice(-40));
-ok('and the window says it is in place', /Текст на месте/.test($('lyricsNote').textContent),
+ok('the old found file is no longer selected', !$('inLyrics').value && !!first);
+ok('the window says this text will be used at build time', /при сборке/.test($('lyricsNote').textContent),
    $('lyricsNote').textContent);
 
 $('taLyrics').value = '   ';
 $('taLyrics').dispatchEvent(new w.Event('input',{bubbles:true}));
-click('btnUseText');
+click('btnBuild');
 await sleep(300);
-ok('an empty box is not saved as a text', /пусто/.test($('lyricsNote').textContent),
+ok('an empty manual box cannot start a build', /пусто/.test($('lyricsNote').textContent) &&
+   !$('inLyrics').value,
    $('lyricsNote').textContent);
 
 console.log('\n--- lyrics pasted into the field made for a path ---');

@@ -9,6 +9,10 @@ commits themselves are one click away in the history.
 
 ## 4.49.2
 
+Manually pasted lyrics no longer require a redundant Use this text button:
+the edited field is saved when building. Automatically found lyrics and
+transcription drafts retain their confirmation button.
+
 In an existing project, selected lines can now be marked as backing vocals with
 the Backing button, individually or as a group, without changing their singer,
 words or timing. The change can be undone with Ctrl+Z.

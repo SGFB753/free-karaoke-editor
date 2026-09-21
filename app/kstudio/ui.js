@@ -304,6 +304,7 @@ const STR = {
     hideText: "Hide",
     pasteEmpty: "There is nothing in the box yet",
     textSaved: "The lyrics are in place",
+    textReady: "The text below will be used when you build the song.",
     countLines: n => n + (n === 1 ? " line" : " lines"),
     lyricsSearching: "Looking for the lyrics by the name of the song…",
     lyricsFoundN: (n, src) => "Found on " + src + ": " + n +
@@ -763,6 +764,7 @@ const STR = {
     hideText: "Свернуть",
     pasteEmpty: "В поле пока пусто",
     textSaved: "Текст на месте",
+    textReady: "Текст из поля ниже будет взят при сборке песни.",
     countLines: n => n + " " + (n % 10 === 1 && n % 100 !== 11 ? "строка"
       : ([2,3,4].includes(n % 10) && ![12,13,14].includes(n % 100)) ? "строки" : "строк"),
     lyricsSearching: "Ищу текст по названию песни…",
@@ -1293,7 +1295,10 @@ $("newAudioPlayer").addEventListener("timeupdate", updateNewAudioClock);
 $("newAudioPlayer").addEventListener("loadedmetadata", updateNewAudioClock);
 $("newAudioPlayer").addEventListener("durationchange", updateNewAudioClock);
 $("inAudio").addEventListener("input", () => { updateNewAudioPreview(); askReport(); });
-$("inLyrics").addEventListener("input", askReport);
+$("inLyrics").addEventListener("input", () => {
+  setLyricsBoxMode("file");
+  askReport();
+});
 ["selAlign","selModel","selLang","chkSep"].forEach(id =>
   $(id).addEventListener("change", askReport));
 
@@ -1396,6 +1401,7 @@ async function usePickedFile(kind, file){
     if (kind === "lyrics2") return realign(got.path);
     if (kind === "lyrics"){
       $("inLyrics").value = got.path;
+      setLyricsBoxMode("file");
     } else {
       await selectLocalAudio(got.path, file.name);
       return;
@@ -1568,6 +1574,7 @@ async function showDir(path){
       return;
     }
     $("inLyrics").value = x.path;
+    setLyricsBoxMode("file");
     askReport();
   }, (x.size/1024/1024).toFixed(1)+T.mb)));
   if (!d.dirs.length && !d.files.length)
@@ -1632,7 +1639,10 @@ window.addEventListener("drop", async e => {
     if (audio){ toast(T.taking(audio.name));
       const uploaded = await upload(audio);
       await selectLocalAudio(uploaded.path, audio.name, !text); }
-    if (text){ $("inLyrics").value = (await upload(text)).path; }
+    if (text){
+      $("inLyrics").value = (await upload(text)).path;
+      setLyricsBoxMode("file");
+    }
     toast(audio && text ? T.filesOk
                         : T.filesHalf);
     askReport();
@@ -1655,6 +1665,12 @@ async function upload(file){
 let lastSong = null;
 let newCoverFromLink = false;
 let lyricsSearchSeq = 0;
+let lyricsBoxMode = "file";
+function setLyricsBoxMode(mode){
+  lyricsBoxMode = mode;
+  $("btnUseText").classList.toggle("hide", mode === "manual");
+  if (mode === "file") $("pasteBox").classList.add("hide");
+}
 
 function setNewCover(path, name, fromLink){
   $("inCover").value = path || "";
@@ -1716,6 +1732,7 @@ async function selectLocalAudio(path, name, searchLyrics = true){
 
 function resetNewSongForm(){
   lyricsSearchSeq++;
+  setLyricsBoxMode("file");
   $("inAudio").value = "";
   updateNewAudioPreview();
   $("inLyrics").value = "";
@@ -1871,6 +1888,7 @@ function foundRow(f){
 // with one press, and it is still there to be read and corrected.
 async function takeFound(f, withTimes){
   const timed = !!(withTimes && f.textTimed);
+  setLyricsBoxMode("found");
   $("taLyrics").value = (timed ? f.textTimed : f.text) || "";
   $("inLyrics").value = "";
   $("pasteBox").classList.remove("hide");
@@ -1881,7 +1899,11 @@ async function takeFound(f, withTimes){
 $("btnPasteText").addEventListener("click", () => {
   const box = $("pasteBox");
   box.classList.toggle("hide");
-  if (!box.classList.contains("hide")){ $("taLyrics").focus(); countPasted(); }
+  if (!box.classList.contains("hide")){
+    setLyricsBoxMode("manual");
+    $("inLyrics").value = "";
+    $("taLyrics").focus(); countPasted();
+  }
 });
 $("btnTranscribe").addEventListener("click", async () => {
   const audio = $("inAudio").value.trim();
@@ -1891,6 +1913,7 @@ $("btnTranscribe").addEventListener("click", async () => {
       model: $("selModel").value, lang: $("selLang").value});
     watchJob(j.job, T.jobTranscribe, result => {
       screen("scrNew");
+      setLyricsBoxMode("transcribed");
       $("taLyrics").value = result.text || "";
       $("pasteBox").classList.remove("hide");
       // A draft is not silently accepted. Leaving the file field empty makes
@@ -1907,7 +1930,10 @@ $("btnTranscribe").addEventListener("click", async () => {
   }catch(e){ note("lyricsNote", e.message, true); }
 });
 $("btnPasteHide").addEventListener("click", () => $("pasteBox").classList.add("hide"));
-$("taLyrics").addEventListener("input", countPasted);
+$("taLyrics").addEventListener("input", () => {
+  countPasted();
+  if (lyricsBoxMode === "manual") note("lyricsNote", T.textReady);
+});
 function countPasted(){
   const n = $("taLyrics").value.split("\n").filter(x => x.trim()).length;
   $("pasteCount").textContent = n ? T.countLines(n) : "";
@@ -1923,6 +1949,7 @@ $("inLyrics").addEventListener("paste", e => {
     ? (e.clipboardData || window.clipboardData).getData("text") : "";
   if (!looksLikeText(raw)) return;                  // a path: let it through
   e.preventDefault();
+  setLyricsBoxMode("manual");
   $("taLyrics").value = raw.replace(/\r\n?/g, "\n").replace(/[\u2028\u2029]/g, "\n").trim();
   $("pasteBox").classList.remove("hide");
   countPasted();
@@ -1973,14 +2000,25 @@ initStripBacking();
 $("btnBuild").addEventListener("click", async () => {
   const audio = $("inAudio").value.trim();
   let lyrics = $("inLyrics").value.trim();
-  if (!audio || !lyrics) return toast(T.pickBoth);
+  if (!audio || (lyricsBoxMode !== "manual" && !lyrics)) return toast(T.pickBoth);
   // The preview is about to be hidden behind the build screen. Leaving it
   // playing made it impossible to stop until the track ended.
   stopNewAudioPreview();
   try{
+    if (lyricsBoxMode === "manual"){
+      if (!$("taLyrics").value.trim()){
+        note("lyricsNote", T.pasteEmpty, true);
+        return;
+      }
+      if (lyrics !== typedLyricsPath || $("taLyrics").value.trim() !== typedLyricsText){
+        lyrics = await useTyped(true);
+        if (!lyrics) return;
+      }
+    }
     // Choosing a found text saves a working file immediately, but the user
     // can still edit the visible textarea. The build must use that final text.
-    if (lyrics === typedLyricsPath && $("taLyrics").value.trim() !== typedLyricsText){
+    if (lyricsBoxMode === "found" && lyrics === typedLyricsPath
+        && $("taLyrics").value.trim() !== typedLyricsText){
       lyrics = await useTyped(true);
       if (!lyrics) return;
     }
