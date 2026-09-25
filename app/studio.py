@@ -2687,7 +2687,23 @@ def main(argv=None) -> int:
         return 0
     if args[:1] == ["--internal-ytdlp"]:
         import yt_dlp
-        return int(yt_dlp.main(args[1:]) or 0)
+        try:
+            return int(yt_dlp.main(args[1:]) or 0)
+        except Exception as exc:
+            # This entry point runs inside the windowed PyInstaller EXE.  An
+            # exception escaping its top level opens an "Unhandled exception
+            # in script" dialog and leaves the Studio waiting behind it.  The
+            # parent process already owns the retry and the readable error;
+            # give it a normal non-zero result and whatever diagnostic stream
+            # is usable instead of putting a crash window in front of people.
+            for stream in (sys.stderr, sys.stdout):
+                try:
+                    print(f"ERROR: {type(exc).__name__}: {exc}",
+                          file=stream, flush=True)
+                    break
+                except Exception:
+                    continue
+            return 1
     if args[:1] == ["--internal-package-smoke"]:
         try:
             if os.name == "nt":

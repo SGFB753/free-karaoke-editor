@@ -29,6 +29,13 @@ def check(name, yes):
 
 
 def main():
+    # A downloader fault in the windowed frozen helper must return to its
+    # parent as an ordinary failed command. Letting it escape opens a separate
+    # PyInstaller "Unhandled exception in script" dialog over the Studio.
+    with patch("yt_dlp.main", side_effect=OSError(22, "Invalid argument")):
+        check("the packaged yt-dlp entry point contains its exceptions",
+              studio.main(["--internal-ytdlp", "https://example.invalid"]) == 1)
+
     # Preserve subprocess diagnostics even if the exception itself has no text.
     def failed_download(log):
         log("[download] Got error: SSL UNEXPECTED_EOF_WHILE_READING")

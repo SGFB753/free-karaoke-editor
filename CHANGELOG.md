@@ -7,6 +7,13 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.49.5
+
+A transient Windows socket error in the bundled yt-dlp helper no longer opens
+an “Unhandled exception in script” dialog over the Studio. The helper now
+returns the failure to the main window, which retries it once and then shows a
+normal connection error if it persists.
+
 ## 4.49.4
 
 Backing-vocal lines are italic in exported videos, matching the editor

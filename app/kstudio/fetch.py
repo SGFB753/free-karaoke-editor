@@ -73,7 +73,12 @@ STALE = ("pip install -U yt-dlp",)
 NETWORK_ERROR = re.compile(
     r"UNEXPECTED_EOF_WHILE_READING|EOF occurred in violation of protocol|"
     r"connection (?:reset|aborted)|remote end closed connection|"
-    r"(?:read |connection )?timed out", re.I)
+    r"(?:read |connection )?timed out|"
+    # Windows can surface a failed socket read as bare EINVAL instead of a
+    # TransportError. yt-dlp then exits through its top level; one identical
+    # retry is appropriate and a persistent failure gets the same useful
+    # connection advice as the other transport errors.
+    r"\[Errno 22\]\s*Invalid argument", re.I)
 
 
 class FetchError(RuntimeError):

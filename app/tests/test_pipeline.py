@@ -3084,6 +3084,14 @@ You might also like
         result = FE._network_attempt(["downloader"], lambda s: None, time.time() + 60)
         check("persistent SSL errors stop after one extra attempt",
               result[0] == 1 and attempt.call_count == 2)
+    einval_lines = ["ERROR: OSError: [Errno 22] Invalid argument"]
+    with patch.object(FE, "_attempt", side_effect=[(1, einval_lines),
+                                                   (0, ["done"])]) as attempt, \
+            patch.object(FE.time, "sleep"):
+        check("a Windows socket EINVAL gets one clean retry",
+              FE._network_attempt(["downloader"], lambda s: None,
+                                  time.time() + 60)[0] == 0
+              and attempt.call_count == 2)
     for label, errors, remaining in [
             ("rate limit", ssl_lines + ["ERROR: HTTP Error 429"], 60),
             ("certificate error", ["ERROR: CERTIFICATE_VERIFY_FAILED"], 60),
