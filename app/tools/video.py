@@ -898,6 +898,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     # Old or hand-edited data can contain a word with literally no duration.
     # Repair only that impossible case; ordinary gaps remain real pauses.
     L.repair_collapsed_json_words(lines)
+    L.repair_overlapping_json_words(lines)
     if not lines:
         raise SystemExit(tr("The page has no lyrics.", "В странице нет текста."))
     duration = AU.duration(audio_wav)

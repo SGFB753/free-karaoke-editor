@@ -7,6 +7,26 @@ commits themselves are one click away in the history.
 
 ---
 
+## 4.49.6
+
+Adjacent word timings within one line no longer overlap after automatic
+alignment or when loading older projects. Each word ends no later than the
+next onset; word starts, pauses, and overlaps between separate lines stay intact.
+
+Whisper timing with a separated vocal stem now checks the final word for a
+sharp level drop followed by a sustained quiet tail, instead of carrying the
+line through that decay. Held or gradually fading notes, locked lines, and
+backing vocals are excluded from this correction.
+
+No-lyrics marks no longer jump when dragging right to left or across timeline
+layers. Mouse-wheel scrolling works in marking mode, and adding or removing
+a mark can be undone.
+
+Copied lines preserve joined syllables. Pasting rhythm from a batch matches
+line text first and replaces the target line's duration without retaining
+its old long tail. Pasting lines or rhythm clears multiple selection;
+cutting and moving a batch keeps it selected.
+
 ## 4.49.5
 
 A transient Windows socket error in the bundled yt-dlp helper no longer opens

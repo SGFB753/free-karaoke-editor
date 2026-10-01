@@ -137,6 +137,34 @@ async function fieldInternals(){
 }
 
 await p.goto(API + '/', {waitUntil:'networkidle0'});
+// Centring a partially clipped highlight centres its text in the narrow clip,
+// not over the base word. Measure glyph positions, not just span rectangles.
+const highlightOffsets = await p.evaluate(() => {
+  const offsets = [];
+  for (const kind of ['', 'back', 'v2', 'vboth']) {
+    const line = document.createElement('div');
+    line.className = 'ln cur ' + kind;
+    line.style.width = '260px';
+    document.body.appendChild(line);
+    for (const text of ['Длинное слово ', 'следующее ']) {
+      const word = document.createElement('span'); word.className = 'w';
+      const hl = document.createElement('span'); hl.className = 'hl';
+      hl.textContent = text;
+      const base = document.createTextNode(text);
+      word.append(hl, base); line.appendChild(word);
+      for (const width of ['10%', '50%', '100%']) {
+        hl.style.width = width;
+        const a = document.createRange(), b = document.createRange();
+        a.selectNodeContents(hl.firstChild); b.selectNodeContents(base);
+        offsets.push(Math.abs(a.getBoundingClientRect().left - b.getBoundingClientRect().left));
+      }
+    }
+    line.remove();
+  }
+  return offsets;
+});
+ok('partial highlighting stays aligned with the base words in every voice',
+   highlightOffsets.every(x => x < .5), highlightOffsets.map(x => x.toFixed(1)).join(', '));
 await sleep(600);
 
 console.log('--- the list of songs ---');

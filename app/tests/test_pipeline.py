@@ -296,6 +296,27 @@ def main():
           and long_gap[0]["words"][1]["t"] > 22.0,
           long_gap[0]["words"][1])
 
+    overlap = [{"start": 36.18, "end": 37.06, "words": [
+        {"w": "first", "t": 36.18, "d": .60},
+        {"w": "next", "t": 36.66, "d": .12},
+        {"w": "last", "t": 36.78, "d": .28},
+    ]}]
+    check("overlapping words finish at the next onset without moving it",
+          L.repair_overlapping_json_words(overlap) == 1
+          and overlap[0]["words"][0]["d"] == .48
+          and overlap[0]["words"][1]["t"] == 36.66)
+    check("word overlap repair is idempotent",
+          L.repair_overlapping_json_words(overlap) == 0)
+    check("word overlap repair preserves real pauses",
+          L.repair_overlapping_json_words(real_pause) == 0
+          and json.dumps(real_pause, sort_keys=True) == before_pause)
+    model_overlap = L.parse("first next")
+    model_overlap.words[0].start, model_overlap.words[0].end = 1.0, 1.6
+    model_overlap.words[1].start, model_overlap.words[1].end = 1.48, 2.0
+    model_overlap.lines[0].start, model_overlap.lines[0].end = 1.0, 2.0
+    check("fresh alignment serializes non-overlapping words too",
+          model_overlap.lines[0].to_json()["words"][0]["d"] == .48)
+
     print("\nLines in brackets are backing vocals, not a heading")
     back = L.parse("""[Куплет]
 Обычная строка
@@ -1246,6 +1267,48 @@ You might also like
     check("a genuinely held first syllable keeps its full duration",
           A.refine_leading_silence(held_onset, held_wav) == 0
           and held_onset.lines[0].start == 2.0)
+
+    # A trailing alignment boundary may include the quiet decay after a word.
+    # Use this word's level, and preserve real held notes and manual timings.
+    from unittest.mock import patch
+    def trailing_fixture(end=2.0):
+        lyr = L.parse("one word")
+        A._spread(lyr.words, 0.0, end)
+        lyr.lines[0].start, lyr.lines[0].end = 0.0, end
+        return lyr
+
+    fading = [0.5] * 60 + [0.04] * 45 + [0.0] * 20
+    trailing = trailing_fixture()
+    before_first = (trailing.words[0].start, trailing.words[0].end)
+    with patch.object(AU, "rms_envelope", return_value=(fading, 0.02)):
+        count = A.refine_trailing_silence(trailing, "vocal.wav")
+    check("a quiet final-word tail ends near the voice rather than its decay",
+          count == 1 and 1.2 <= trailing.lines[0].end <= 1.3,
+          trailing.lines[0].end)
+    check("tail refinement leaves the earlier words and final-word onset intact",
+          (trailing.words[0].start, trailing.words[0].end) == before_first
+          and trailing.words[-1].start == 1.0)
+    for label, envelope, end in [
+        ("a held final note", [0.5] * 200 + [0.0] * 20, 4.0),
+        ("a quiet sustained note", [0.10] * 100 + [0.0] * 20, 2.0),
+        ("a naturally fading held note", [0.5] * 50 + [0.5 * (0.95 ** i) for i in range(50)] + [0.0] * 25, 2.0),
+        ("another syllable after the boundary", fading[:100] + [0.5] * 25, 2.0),
+        ("a missing vocal stem", [0.01] * 125, 2.0),
+        ("an incomplete audio file", fading[:100], 2.0),
+    ]:
+        kept = trailing_fixture(end)
+        with patch.object(AU, "rms_envelope", return_value=(envelope, 0.02)):
+            count = A.refine_trailing_silence(kept, "vocal.wav")
+        check(label + " is not shortened", count == 0 and kept.lines[0].end == end)
+    for flag in ["lock", "keep", "backing", "fixed"]:
+        kept = trailing_fixture()
+        if flag == "fixed":
+            kept.fixed_line_indices.add(0)
+        else:
+            setattr(kept.lines[0], flag, True)
+        with patch.object(AU, "rms_envelope", return_value=(fading, 0.02)):
+            count = A.refine_trailing_silence(kept, "vocal.wav")
+        check(flag + " lines keep their final boundary", count == 0 and kept.lines[0].end == 2.0)
 
     # A different failure happens inside a line: the previous word is held,
     # while a barely recognised next word is painted before its new attack.

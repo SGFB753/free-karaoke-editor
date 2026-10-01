@@ -2495,10 +2495,21 @@ function centerLine(i){
 /* ---------- undo ----------
    Edits go to disk by themselves, so there is no “close without saving” here,
    and undo is the only protection from a wrong move. We keep snapshots of the
-   lines: there are few of them, and this way no inverse action has to be
+   lines and no-lyrics marks: there are few of them, and no inverse action has to be
    written for every kind of edit. */
 const past = [], future = [];
 let lastSnap = {what: "", at: 0};
+function historyState(){
+  return JSON.stringify({lines, noText: $("edNoText").value});
+}
+function restoreHistory(state){
+  const saved = JSON.parse(state);
+  lines = saved.lines;
+  $("edNoText").value = saved.noText;
+  marksFromField();
+  markFrom = markTo = null;
+  drawWave();
+}
 function snap(what){
   // A run of identical small steps (holding [ or ]) is one undo step, or it
   // would take fifty presses to get back to where things were.
@@ -2508,15 +2519,15 @@ function snap(what){
     return;
   }
   lastSnap = {what: what || "", at: now};
-  past.push(JSON.stringify(lines));
+  past.push(historyState());
   if (past.length > 120) past.shift();
   future.length = 0;
   refreshHistory();
 }
 function undo(){
   if (!past.length){ refreshHistory(); return toast(T.nothingToUndo); }
-  future.push(JSON.stringify(lines));
-  lines = JSON.parse(past.pop());
+  future.push(historyState());
+  restoreHistory(past.pop());
   lastSnap = {what: "", at: 0};
   buildLines(); makeBlocks();
   selectLine(clamp(sel, 0, lines.length - 1), false);
@@ -2526,8 +2537,8 @@ function undo(){
 }
 function redo(){
   if (!future.length){ refreshHistory(); return toast(T.nothingToRedo); }
-  past.push(JSON.stringify(lines));
-  lines = JSON.parse(future.pop());
+  past.push(historyState());
+  restoreHistory(future.pop());
   lastSnap = {what: "", at: 0};
   buildLines(); makeBlocks();
   selectLine(clamp(sel, 0, lines.length - 1), false);
@@ -2947,7 +2958,8 @@ function copyToClip(idx, whole){
               keepSoft: !!ln.keepSoft, backing: !!ln.backing, lock: !!ln.lock,
               section: ln.section || null, sure: ln.sure,
               at: ln.start - base, len: ln.end - ln.start,
-              words: ln.words.map(w => ({w: w.w, s: w.s, dt: w.t - ln.start, d: w.d}))};
+              words: ln.words.map(w => ({w: w.w, s: w.s, g: w.g,
+                                        dt: w.t - ln.start, d: w.d}))};
     }),
   };
 }
@@ -2971,7 +2983,7 @@ function putLine(ln, item, start){
   if (item.sure !== undefined) ln.sure = item.sure;
   ln.start = start;
   ln.end = start + Math.max(item.len, MIN_W * item.words.length);
-  ln.words = item.words.map(c => ({w: c.w, s: c.s, t: start + c.dt, d: c.d}));
+  ln.words = item.words.map(c => ({w: c.w, s: c.s, g: c.g, t: start + c.dt, d: c.d}));
   const last = ln.words[ln.words.length - 1];
   if (last) ln.end = Math.max(ln.end, last.t + last.d);
 }
@@ -3002,9 +3014,7 @@ function pasteLine(){
   lines.splice(after + 1, 0, ...made);
   marked.clear();
   buildLines(); makeBlocks(); updateLanes();
-  if (made.length > 1)
-    made.forEach((_, k) => marked.add(after + 1 + k));
-  selectLine(after + 1, false, made.length > 1 ? "keep" : "");
+  selectLine(after + 1, false);
   curLine = -2; touched();
   toast(made.length > 1 ? T.linesPasted(made.length) : T.linePasted);
 }
@@ -3042,9 +3052,14 @@ function cutLines(){
 function applyRhythm(i, item){
   const ln = lines[i];
   if (ln.words.length !== item.words.length) return false;
-  item.words.forEach((c, j) => { ln.words[j].t = ln.start + c.dt; ln.words[j].d = c.d; });
+  item.words.forEach((c, j) => {
+    ln.words[j].t = ln.start + c.dt;
+    ln.words[j].d = c.d;
+    if (c.g !== undefined) ln.words[j].g = c.g;
+  });
   const last = ln.words[ln.words.length - 1];
-  ln.end = Math.max(ln.end, last.t + last.d);
+  ln.end = ln.start + item.len;
+  if (last) ln.end = Math.max(ln.end, last.t + last.d);
   return true;
 }
 function pasteRhythm(){
@@ -3056,13 +3071,20 @@ function pasteRhythm(){
             : [sel];
   const list = idx.length ? idx : [sel];
   const one = clip.items.length === 1;
-  const src = k => one ? clip.items[0] : clip.items[k % clip.items.length];
+  // Repeats can be selected in a different order, or include only part of
+  // the copied batch. Match the lyrics before falling back to position.
+  const src = k => {
+    const positional = clip.items[k % clip.items.length];
+    if (one || positional.text.trim() === lines[list[k]].text.trim()) return positional;
+    return clip.items.find(c => c.text.trim() === lines[list[k]].text.trim()) || positional;
+  };
   const bad = list.filter((i, k) => lines[i].words.length !== src(k).words.length);
   if (bad.length === list.length)
     return toast(T.rhythmMismatch(src(0).words.length, lines[sel].words.length));
   snap("");
   let done = 0;
   list.forEach((i, k) => { if (applyRhythm(i, src(k))) done++; });
+  selectLine(sel, false);
   layoutBlocks(); makeWords(); curLine = -2; touched();
   toast(done > 1 ? T.rhythmPastedN(done) : T.rhythmPasted);
 }
@@ -4099,7 +4121,7 @@ function spread(ln){
 // button, and the middle button pans from anywhere.
 let tlpan = null;
 $("tlwrap").addEventListener("wheel", e => {
-  if (!dur || marking) return;
+  if (!dur) return;
   const raw = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
   if (!raw) return;
   if (e.ctrlKey || e.metaKey){
@@ -4113,6 +4135,7 @@ $("tlwrap").addEventListener("wheel", e => {
                     ? $("tlwrap").clientWidth : 1);
   const dt = clamp(px / 100 * zoom * 0.12, -zoom * 0.8, zoom * 0.8);
   seek(mediaTime() + dt);
+  if (marking && markFrom !== null) markTo = timelineTime(e);
   drawWave();
   drawBlocks();
   paintMap();
@@ -4123,8 +4146,10 @@ $("tlwrap").addEventListener("pointerdown", e => {
   // While marking, the timeline is for marking: a press on an existing mark
   // takes it off, a press anywhere else starts a new one.
   if (marking){
-    const t = tOf(e.offsetX), at = markAt(t);
+    if (e.button !== 0) return;
+    const t = timelineTime(e), at = markAt(t);
     if (at >= 0){
+      snap("");
       marks.splice(at, 1);
       marksToField();
       touched();
@@ -4133,6 +4158,8 @@ $("tlwrap").addEventListener("pointerdown", e => {
       return;
     }
     markFrom = t; markTo = t;
+    try { $("tlwrap").setPointerCapture(e.pointerId); } catch (err) {}
+    e.preventDefault();
     return;
   }
   // Empty timeline space means seeking. What lies on it does not: a line block
@@ -4305,17 +4332,28 @@ $("btnClip").addEventListener("click", () => {
   toast(moved ? T.clipMoved(n, moved) : T.clipDone(n));
 });
 
-$("tlwrap").addEventListener("pointermove", e => {
+function timelineTime(e){
+  return clamp(tOf(e.clientX - $("tlwrap").getBoundingClientRect().left), 0, dur);
+}
+window.addEventListener("pointermove", e => {
   if (!marking || markFrom === null) return;
-  markTo = tOf(e.offsetX);
+  markTo = timelineTime(e);
   drawWave();
 });
-window.addEventListener("pointerup", () => {
+window.addEventListener("pointerup", e => {
   if (!marking || markFrom === null) return;
+  markTo = timelineTime(e);
   const a = Math.min(markFrom, markTo === null ? markFrom : markTo);
   const b = Math.max(markFrom, markTo === null ? markFrom : markTo);
   markFrom = markTo = null;
-  if (addMark(a, b)){ toast(T.markAdded(markTime(a), markTime(b))); touched(); }
+  if (b - a >= 0.3){
+    snap("");
+    if (addMark(a, b)){ toast(T.markAdded(markTime(a), markTime(b))); touched(); }
+  }
+  drawWave();
+});
+window.addEventListener("pointercancel", () => {
+  markFrom = markTo = null;
   drawWave();
 });
 

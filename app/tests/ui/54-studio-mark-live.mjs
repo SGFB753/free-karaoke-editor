@@ -71,6 +71,42 @@ await sleep(300);
 ok('the mark is gone', (await marksLen()) === 0, await marksLen());
 ok('the field is empty again', (await field()) === '', await field());
 
+console.log('\n--- reverse marking uses timeline coordinates across its layers ---');
+await p.$eval('#tlwrap', el => {
+  const layer = document.createElement('div');
+  layer.id = 'mark-test-layer';
+  Object.assign(layer.style, {position:'absolute', left:'55%', top:'0',
+    width:'25%', height:'100%', zIndex:'50'});
+  el.appendChild(layer);
+});
+await p.mouse.move(box.x + box.w * .70, y);
+await p.mouse.down();
+await p.mouse.move(box.x + box.w * .40, y, {steps:12});
+await p.mouse.up();
+await sleep(200);
+const reverse = (await field()).split('-').map(v => {
+  const [m,s] = v.split(':'); return +m * 60 + +s;
+});
+ok('dragging left across a child layer marks the actual times',
+   Math.abs(reverse[0] - 6) < .15 && Math.abs(reverse[1] - 10.5) < .15,
+   await field());
+await p.$eval('#mark-test-layer', el => el.remove());
+await p.click('#btnUndo'); await sleep(200);
+ok('undo removes the drawn mark', (await marksLen()) === 0, await field());
+await p.click('#btnRedo'); await sleep(200);
+ok('redo restores the drawn mark', (await marksLen()) === 1, await field());
+await p.click('#btnUndo'); await sleep(200);
+
+console.log('\n--- the wheel works while the marking button is on ---');
+const clockBefore = await p.$eval('#tCur', el => el.textContent);
+await p.mouse.move(box.x + box.w * .5, y);
+await p.mouse.wheel({deltaY:250}); await sleep(250);
+ok('the wheel moves the timeline without leaving marking mode',
+   await p.$eval('#tCur', el => el.textContent) !== clockBefore &&
+   await p.$eval('#btnMark', el => el.classList.contains('on')));
+await p.mouse.wheel({deltaY:-250}); await sleep(250);
+ok('scrolling by itself creates no mark', (await marksLen()) === 0);
+
 console.log('\n--- two marks in a row, and touching ones become one ---');
 for (const [from, to] of [[0.10, 0.20], [0.50, 0.62]]){
   await p.mouse.move(box.x + box.w * from, y);

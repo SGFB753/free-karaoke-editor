@@ -64,6 +64,9 @@ const mine = JSON.parse(JSON.stringify(lines0));
 mine[1].words[0].d = 0.2;
 mine[1].words[1].t = mine[1].start + 0.2; mine[1].words[1].d = 0.9;
 mine[1].words[2].t = mine[1].start + 1.1; mine[1].words[2].d = 0.3;
+mine[1].end = mine[1].start + 1.6;
+mine[1].words[1].g = true;
+mine[3].end = mine[3].start + 4;
 await put(mine);
 await sleep(200);
 doc.querySelectorAll('.card') && click("btnBack");
@@ -91,6 +94,8 @@ ok('and the same lengths', dst.words.every((x, j) => Math.abs(x.d - src.words[j]
    dst.words.map(x => x.d.toFixed(2)).join(' '));
 ok('the start of the line did not move', Math.abs(dst.start - mine[3].start) < 1e-6,
    `${mine[3].start} → ${dst.start}`);
+ok('the target takes the copied span instead of retaining its old long tail',
+   Math.abs((dst.end - dst.start) - (src.end - src.start)) < .004);
 ok('the line is not shorter than its words',
    dst.end >= dst.words[dst.words.length-1].t + dst.words[dst.words.length-1].d - 1e-6);
 
@@ -113,6 +118,18 @@ await sleep(150);
 click("btnRhythm"); await sleep(150);
 ok('it says how many lines were copied', /2/.test($("toast").textContent),
    $("toast").textContent);
+const secondSource = (await srv())[2];
+click("btnPaste"); await sleep(900);
+ok('pasting rhythm clears the multiple selection',
+   doc.querySelectorAll('#scroll .ln.mark').length === 0);
+pick(2); await sleep(120);
+click("btnPaste"); await sleep(900);
+const secondTarget = (await srv())[2];
+ok('pasting part of a copied batch matches the text instead of taking its first rhythm',
+   secondTarget.words.every((word, j) =>
+     Math.abs(word.t - secondSource.words[j].t) < .004 &&
+     Math.abs(word.d - secondSource.words[j].d) < .004)
+   && !/не совпадает|different|mismatch/i.test($("toast").textContent));
 const beforeBlock = await srv();
 pick(4); await sleep(150);
 click("btnPasteLine"); await sleep(1000);
@@ -122,6 +139,11 @@ ok('there are two more lines', withBlock.length === beforeBlock.length + 2,
 ok('exactly the copied ones were pasted',
    withBlock[5].text === beforeBlock[1].text && withBlock[6].text === beforeBlock[2].text,
    `${withBlock[5].text} | ${withBlock[6].text}`);
+ok('a pasted batch clears the multiple selection',
+   doc.querySelectorAll('#scroll .ln.mark').length === 0 &&
+   doc.querySelectorAll('.blk.mark').length === 0);
+ok('glued syllables keep their presentation when whole lines are pasted',
+   withBlock[5].words[1].g === true);
 ok('they come after the line we were standing on',
    withBlock[5].start >= withBlock[4].end - 1e-6,
    `${withBlock[4].end.toFixed(2)} → ${withBlock[5].start.toFixed(2)}`);

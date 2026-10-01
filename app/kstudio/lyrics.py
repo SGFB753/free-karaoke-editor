@@ -282,6 +282,7 @@ class Line:
         }
         if self.sure is not None:
             out["sure"] = round(self.sure, 3)
+        repair_overlapping_json_words([out])
         return out
 
 
@@ -322,6 +323,29 @@ _CLOSE_PUNCT_RE = re.compile(r"^[,.;:!?…»\)\]\}]")
 def tidy_spacing(text: str) -> str:
     """Remove accidental spaces before closing punctuation from pasted text."""
     return re.sub(r"\s+([,.;:!?…»\)\]\}])", r"\1", str(text or ""))
+
+
+def repair_overlapping_json_words(lines: List[dict]) -> int:
+    """Keep sequential words inside one line from painting simultaneously.
+
+    Preserve every onset and intentional gap; only shorten the previous
+    word's overhanging end. Equal/reversed onsets require alignment repair,
+    not a zero-length word. Different lines may legitimately overlap.
+    """
+    fixed = 0
+    for line in lines or []:
+        words = line.get("words") or []
+        for word, following in zip(words, words[1:]):
+            try:
+                start = float(word["t"])
+                duration = float(word["d"])
+                next_start = float(following["t"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if next_start > start and duration > next_start - start + 1e-6:
+                word["d"] = round(next_start - start, 6)
+                fixed += 1
+    return fixed
 
 
 def repair_collapsed_json_words(lines: List[dict]) -> int:

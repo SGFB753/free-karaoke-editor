@@ -1310,6 +1310,7 @@ def realign_part(folder: str, opts: dict, log) -> dict:
     if onset_audio and engine == "whisper" and not piece.fixed_line_starts:
         A.refine_leading_silence(piece, onset_audio, log=log)
         A.refine_uncertain_word_onsets(piece, onset_audio, log=log)
+        A.refine_trailing_silence(piece, onset_audio, log=log)
 
     fresh = [ln.to_json() for ln in piece.lines]
     moved = 0
@@ -1469,6 +1470,7 @@ def realign(folder: str, opts: dict, log) -> dict:
     if onset_audio and engine == "whisper" and not lyr.fixed_line_starts:
         A.refine_leading_silence(lyr, onset_audio, log=log)
         A.refine_uncertain_word_onsets(lyr, onset_audio, log=log)
+        A.refine_trailing_silence(lyr, onset_audio, log=log)
     fresh = [ln.to_json() for ln in lyr.lines]
     # A line put right by hand outweighs anything a model returns for it.
     if not removed_backing:

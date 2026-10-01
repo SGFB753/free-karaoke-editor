@@ -705,6 +705,8 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     repair_order(lyrics, log=log)
     repair_ragged(lyrics, log=log)
     _fill_lines(lyrics, duration)      # after repairs the bounds may exceed the track
+    if isolated:
+        refine_trailing_silence(lyrics, audio_path, log=log)
 
     # What could not be spread stays a pile, and a pile is not a timing: those
     # lines fly past in a blink. Better to name them than to hand over a page
@@ -868,6 +870,67 @@ def refine_leading_silence(lyrics: Lyrics, vocal_audio: str,
     if fixed:
         log(tr(f"  early line starts moved to the detected voice onset: {fixed}",
                f"  ранних начал строк перенесено к найденному вступлению вокала: {fixed}"))
+    return fixed
+
+
+def refine_trailing_silence(lyrics: Lyrics, vocal_audio: str,
+                            log: Log = _noop) -> int:
+    """Remove a sustained quiet tail from the final word, on vocals only.
+
+    Measure against this word, not the song's loudest verse. Never shorten a
+    held note merely because it is long, and leave a margin for consonants.
+    This is intentionally not suitable for a mix or for manually fixed lines.
+    """
+    try:
+        from . import audio as AU
+        env, hop = AU.rms_envelope(vocal_audio, hop_ms=20)
+    except Exception:
+        return 0
+    if not env or hop <= 0:
+        return 0
+    fixed = 0
+    for index, ln in enumerate(lyrics.lines):
+        if index in lyrics.fixed_line_indices or ln.lock or ln.keep or ln.backing \
+                or not ln.words:
+            continue
+        word = ln.words[-1]
+        if word.start is None or word.end is None or word.end - word.start < 0.6:
+            continue
+        lo = max(0, int(word.start / hop))
+        hi = min(len(env), int(word.end / hop))
+        if hi <= lo:
+            continue
+        peak = max(env[lo:hi])
+        if peak < 0.08:           # an unreliable/mostly missing separated word
+            continue
+        threshold = peak * 0.20
+        voiced = [i for i in range(lo, hi) if env[i] >= threshold]
+        if not voiced or (voiced[-1] - voiced[0] + 1) * hop < 0.18:
+            continue
+        boundary = voiced[-1] + 1
+        window = max(1, int(0.06 / hop))
+        before = env[max(lo, boundary - window):boundary]
+        faded = env[boundary:min(hi, boundary + window)]
+        # A gradual fade can be a real held note. Require a distinct drop,
+        # followed by the sustained low-level suffix, rather than a threshold
+        # crossing alone.
+        if not before or not faded or sum(before) / len(before) \
+                < 3.0 * max(sum(faded) / len(faded), 1e-6):
+            continue
+        end = (voiced[-1] + 1) * hop + 0.06
+        if end - word.start < 0.18 or word.end - end < 0.32:
+            continue
+        # A new/continuing syllable immediately after the model boundary is
+        # evidence against trimming. Missing audio is not evidence of silence.
+        after = min(len(env), hi + max(1, int(0.16 / hop)))
+        if after - hi < int(0.12 / hop) or any(v >= threshold for v in env[hi:after]):
+            continue
+        word.end = end
+        ln.end = max(w.end for w in ln.words if w.end is not None)
+        fixed += 1
+    if fixed:
+        log(tr(f"  quiet final-word tails shortened: {fixed}",
+               f"  затихших хвостов последних слов сокращено: {fixed}"))
     return fixed
 
 

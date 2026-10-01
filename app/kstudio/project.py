@@ -466,6 +466,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
         if vocals and engine == "whisper" and not lyr.fixed_line_starts:
             A.refine_leading_silence(lyr, vocals, log=log)
             A.refine_uncertain_word_onsets(lyr, vocals, log=log)
+            A.refine_trailing_silence(lyr, vocals, log=log)
         log(tr(f"Timing ready ({B.ENGINE_LABEL.get(engine, engine)}).",
            f"Разметка готова ({B.ENGINE_LABEL.get(engine, engine)})."))
 
@@ -568,6 +569,7 @@ def load(folder: str) -> Dict:
     # next ordinary save persists the correction; merely opening a project is
     # still read-only.
     L.repair_collapsed_json_words(data.get("lines") or [])
+    L.repair_overlapping_json_words(data.get("lines") or [])
     # Old projects stored every lead as voice 1 even when their Genius section
     # headings named different performers. Infer only while the project still
     # has that untouched all-main-voice shape; a person's assignments win.
@@ -685,6 +687,7 @@ def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,
     data = load(folder)
     data["lines"] = lines
     L.repair_collapsed_json_words(data["lines"])
+    L.repair_overlapping_json_words(data["lines"])
     if colors:
         data["colors"] = list(colors)[:2]
     if theme:
