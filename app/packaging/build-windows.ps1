@@ -118,6 +118,7 @@ try {
         if ($Smoke.HasExited) { break }
     }
     if (-not $Ready) { throw 'Packaged Studio did not answer its smoke test.' }
+    if ($WithQwen -and -not $State.caps.qwen) { throw 'Packaged Qwen engine is missing.' }
 } finally {
     if (-not $Smoke.HasExited) { Stop-Process -Id $Smoke.Id -Force }
 }

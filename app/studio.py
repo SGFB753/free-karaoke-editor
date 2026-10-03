@@ -2825,6 +2825,14 @@ def main(argv=None) -> int:
                 # much as the renderer below. Importing it also exercises the
                 # bundled pythonnet/.NET bridge without opening a window.
                 import webview  # noqa: F401
+            from kstudio import qwen as QW
+            if QW.available():
+                # A selectable Qwen engine must import from the finished EXE,
+                # not only from the build venv. No weights/network are needed.
+                QW.prepare_import()
+                from qwen_asr import Qwen3ForcedAligner  # noqa: F401
+            if FE.available():
+                import pytubefix  # noqa: F401
             from PIL import (Image, ImageDraw, ImageEnhance, ImageFilter,
                              ImageFont, ImageStat)
             image = Image.new("RGB", (4, 4), "white")
