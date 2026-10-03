@@ -28,13 +28,18 @@ await page.waitForFunction(()=>!document.getElementById('letterDlg').classList.c
 ok('double-click offers individual letters and selects the vowel',await page.$eval('#letterChoices',el=>
   [...el.children].map(b=>b.textContent).join('')==='дну' && el.querySelector('[aria-pressed="true"]').textContent==='у'));
 ok('the playhead can be used as the vowel end',await page.$eval('#letterToCursor',el=>el.checked&&!el.disabled));
-console.log('  playhead:',await page.$eval('#letterCursorLabel',el=>el.textContent));
+const cursorLabel=await page.$eval('#letterCursorLabel',el=>el.textContent);
+console.log('  playhead:',cursorLabel);
+// Mouse coordinates quantize the seek to a pixel; assert the actual chosen cursor.
+const cursorMatch=cursorLabel.match(/(\d+):(\d+)\.(\d+)/);
+const cursorEnd=Number(cursorMatch[1])*60+Number(cursorMatch[2])+Number(cursorMatch[3])/1000;
 await page.click('#letterApply');await saved();
 let lines=await read();
 ok('the written line stays unchanged',lines[0].text==='Тут дну');
 ok('only the vowel carries the long timing',lines[0].words.length===3 && lines[0].words[1].w==='дн'
   && lines[0].words[2].w==='у' && lines[0].words[2].g===true && lines[0].words[1].d<.2
-  && Math.abs(lines[0].words[2].t+lines[0].words[2].d-5.5)<.03);
+  && Math.abs(lines[0].words[2].t+lines[0].words[2].d-cursorEnd)<.003);
+const heldDuration=lines[0].words[2].d;
 ok('other words and lines were not moved',JSON.stringify(lines[0].words[0])===JSON.stringify(fixture[0].words[0])
   && JSON.stringify(lines[1].words)===JSON.stringify(fixture[1].words));
 ok('preview keeps the letter parts together without an inserted space',await page.$eval('#scroll .ln .wgroup',el=>
@@ -73,11 +78,11 @@ await page.evaluate(()=>{document.querySelector('#words .wrd[data-j="1"]').focus
 await page.waitForFunction(()=>!document.getElementById('letterDlg').classList.contains('hide'));
 ok('keyboard users can open the same control',await page.$eval('#letterChoices',el=>el.children.length===3));
 await page.keyboard.press('Escape');
-ok('Escape cancels without changing timing',Math.abs((await read())[0].words[2].d-2.98)<.03);
+ok('Escape cancels without changing timing',Math.abs((await read())[0].words[2].d-heldDuration)<.003);
 await page.$eval('#inlineLineText',el=>{el.value='Вот дну';el.dispatchEvent(new Event('input',{bubbles:true}));});
 await page.click('#btnApplyLineText');await saved();lines=await read();
 ok('editing another word preserves the held-letter layout',lines[0].text==='Вот дну' && lines[0].words.length===3
-  && lines[0].words[2].w==='у' && lines[0].words[2].g===true && lines[0].words[2].d>2.9);
+  && lines[0].words[2].w==='у' && lines[0].words[2].g===true && Math.abs(lines[0].words[2].d-heldDuration)<.003);
 // Copy letter timing into an unsplit repeat, without requiring chip-count equality.
 await page.$eval('#inlineLineText',el=>{el.value='Тут дну';el.dispatchEvent(new Event('input',{bubbles:true}));});
 await page.click('#btnApplyLineText');await saved();await page.click('#btnRhythm');

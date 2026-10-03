@@ -30,6 +30,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -230,10 +231,20 @@ def start_studio(port: int, projects: str, song: str = "", lyrics_api: str = "")
                KARAOKE_STUB_AUDIO=song,
                KARAOKE_LYRICS_API=lyrics_api or "http://127.0.0.1:9",
                KARAOKE_GENIUS_URL=lyrics_api or "http://127.0.0.1:9")
-    return subprocess.Popen(
+    process = subprocess.Popen(
         [sys.executable, os.path.join(ROOT, "studio.py"),
          "--port", str(port), "--no-browser"],
-        cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace")
+    # Expected-error scenarios emit tracebacks. An unread Windows pipe can
+    # fill and block the job before it marks itself done, masquerading as a hang.
+    process.test_output = []
+    def drain():
+        for line in process.stdout:
+            process.test_output.append(line)
+            del process.test_output[:-100]
+    threading.Thread(target=drain, daemon=True).start()
+    return process
 
 
 def make_project(api: str, song: str, text: str) -> bool:

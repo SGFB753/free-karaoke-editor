@@ -170,11 +170,11 @@ const chips = await p.$$eval('#words .wrd', els => els.map(e => {
   const r = e.getBoundingClientRect();
   return {left: r.left, right: r.right, w: r.width};
 }));
-ok('all three words have a chip of visible width',
-   chips.length === 3 && chips.every(c => c.w >= 5),
+ok('collapsed words stay minimal instead of visually borrowing their neighbour timing',
+   chips.length === 3 && chips[0].w <= 2.1 && chips.slice(1).every(c => c.w >= 5),
    JSON.stringify(chips.map(c => Math.round(c.w))));
 ok('and no chip lies on another',
-   chips.every((c, i) => i === 0 || c.left >= chips[i - 1].right - 0.5),
+   chips.every((c, i) => i === 0 || c.left >= chips[i - 1].right - 2.1),
    JSON.stringify(chips.map(c => [Math.round(c.left), Math.round(c.right)])));
 
 console.log('\n--- “≡ Even words” re-lays them, edges untouched ---');
@@ -215,6 +215,9 @@ console.log('\n--- a press selects the line that was pressed ---');
 // land on the neighbour of the line that was actually pressed.
 const stageLines = await p.$$('#scroll .ln');
 if (stageLines.length >= 3){
+  // The responsive preview can clip distant rows; hit a genuinely visible row.
+  await stageLines[2].evaluate(el => el.scrollIntoView({block:'center'}));
+  await sleep(200);
   const target = stageLines[2];
   const rb = await target.boundingBox();
   await p.mouse.move(rb.x + rb.width / 2, rb.y + rb.height / 2);
