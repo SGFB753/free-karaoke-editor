@@ -5332,7 +5332,9 @@ async function reveal(path){
 window.addEventListener("resize", () => { layoutBlocks(); drawWave(); drawBlocks(); });
 // Re-centre when the countdown or responsive shell changes available height,
 // not only when playback moves to another lyric line.
-new ResizeObserver(()=>requestAnimationFrame(()=>centerLine(curLine))).observe($("stage"));
+if (typeof ResizeObserver === "function") {
+  new ResizeObserver(()=>requestAnimationFrame(()=>centerLine(curLine))).observe($("stage"));
+}
 loadList().catch(e => { document.body.innerHTML =
   '<div class="empty"><h2>' + esc(T.serverDown) + '</h2>' + esc(e.message) + '</div>'; });
 })();

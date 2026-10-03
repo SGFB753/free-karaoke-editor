@@ -218,9 +218,16 @@ class QwenTests(unittest.TestCase):
         import numpy as np
         with self.assertRaisesRegex(ValueError,'Qwen'):
             Q.align_qwen(L.parse('Привіт'),'unused',10,'uk',model=FakeModel())
-        with patch('kstudio.audio.read_pcm_mono',return_value=np.zeros(160000,dtype=np.int16)):
+        with patch('kstudio.audio.read_pcm_mono',return_value=np.zeros(160000,dtype=np.int16)), \
+             patch.object(A, 'align_whisper', side_effect=AssertionError('No audio must not trigger model recovery')):
             with self.assertRaises(ValueError):
                 Q.align_qwen(L.parse('Hello'),'unused',10,'en',skip=[(0,10)],model=FakeModel())
+
+    def test_missing_optional_whisper_recovery_has_a_readable_error(self):
+        with patch.object(A, 'align_whisper', side_effect=ModuleNotFoundError('stable_whisper')):
+            with self.assertRaisesRegex(ValueError, 'Whisper'):
+                Q._independent_jobs(L.parse('Hello').lines, 'unused', 10, 0, 10,
+                                    'en', None, lambda msg: None, [], 'small')
 
     def test_engine_dispatch_never_calls_whisper(self):
         lyr=L.parse('Hello')

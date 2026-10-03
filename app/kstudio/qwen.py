@@ -271,8 +271,12 @@ def _independent_jobs(lines, audio_path, duration, lo, hi, language, device, log
             w.start = w.end = w.prob = None
     log(tr(f"Qwen placement failed: obtaining independent phrase bounds with Whisper ({model_name}).",
            f"Qwen потерял привязку: получаю независимые границы фраз через Whisper ({model_name})."))
-    A.align_whisper(guide, audio_path, duration, model_name, language, device, log,
-                    skip=list(holes) + [(0, lo), (hi, duration)])
+    try:
+        A.align_whisper(guide, audio_path, duration, model_name, language, device, log,
+                        skip=list(holes) + [(0, lo), (hi, duration)])
+    except ImportError as exc:
+        raise ValueError(tr("Qwen placement failed and optional Whisper recovery is unavailable. Add manual anchors or install Whisper; the result will not be saved.",
+                            "Qwen потерял привязку, а Whisper для перепроверки не установлен. Добавьте ручные отметки или установите Whisper; результат не будет сохранён.")) from exc
     if _failed_placement(guide.lines):
         raise ValueError(tr("Independent phrase alignment also failed. Check the lyrics and add manual anchors or choose Whisper.",
                             "Независимая привязка фраз тоже не удалась. Проверьте текст, добавьте ручные отметки или выберите Whisper."))
@@ -481,6 +485,9 @@ def align_qwen(lyrics, audio_path, duration, language="auto", device=None,
                          timestamp_step=(getattr(model, "timestamp_segment_time", 0) or 0) / 1000)
 
         for n, (lines, lo, hi) in enumerate(jobs, 1):
+            if holes and not any(min(hi, b) > max(lo, a) for a, b in A.keep_windows(holes, duration)):
+                raise ValueError(tr("No audio remains outside the 'no lyrics' marks.",
+                                    "Не осталось звука вне отметок «нет текста»."))
             log(tr(f"Qwen: block {n}/{len(jobs)} ({A.mmss(lo)}–{A.mmss(hi)})",
                    f"Qwen: блок {n}/{len(jobs)} ({A.mmss(lo)}–{A.mmss(hi)})"))
             invalid = False
