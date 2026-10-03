@@ -3,6 +3,7 @@
 // quiet stretches turned into marks with one press, a frame of the clip
 // without rendering a file, and a song packed to travel between computers.
 import puppeteer from 'puppeteer';
+import {useWorkspaceNavigation} from '../helpers/workspace-navigation.mjs';
 
 const API = process.env.KARAOKE_API;
 let fail = 0;
@@ -103,6 +104,7 @@ ok('and it is not the same frame as the song',
 console.log('\n--- the quiet stretches become marks with one press ---');
 const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disable-dev-shm-usage']});
 const p = await b.newPage();
+useWorkspaceNavigation(p);
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 // One handler, two moods: the questions are dismissed except when a test
 // step means to walk through one.
@@ -173,20 +175,19 @@ await p.waitForSelector('#scrEdit:not(.hide)', {timeout:20000});
 await sleep(900);
 
 const originalLayout = await p.$eval('#btnKeep', e => {
-  const button = e.getBoundingClientRect();
-  const bar = e.parentElement.getBoundingClientRect();
-  return {rightGap: Math.round(bar.right - button.right),
-          last: e === e.parentElement.lastElementChild,
+  return {pane: e.closest('[data-pane]')?.dataset.pane,
+          available: !!e.closest('[data-pane]') && !e.closest('details'),
           redundant: !!document.querySelector('#chkKeepMarks')};
 });
-ok('Original is the rightmost toolbar control',
-   originalLayout.last && originalLayout.rightGap < 30,
+ok('Original is available in the line inspector',
+   originalLayout.pane === 'line' && originalLayout.available,
    JSON.stringify(originalLayout));
 ok('there is no redundant keep-original checkbox', !originalLayout.redundant);
 
 // Start from no marks at all, whatever the song came with.
 await p.$eval('#edNoText', e => { e.value = ''; e.dispatchEvent(new Event('change', {bubbles:true})); });
 await sleep(200);
+if (!(await p.$eval('.review-summary', e => e.open))) await p.click('.review-summary > summary');
 const chips = await p.$$('#sum .qchip i');
 ok('the heard stretches offer to be marked', chips.length > 0, chips.length);
 if (chips.length){

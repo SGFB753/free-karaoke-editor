@@ -540,6 +540,15 @@ def main():
             font = ImageFont.truetype(font_path, size)
         return font
     old_hot, old_hot2 = video.COL_HOT, video.COL_HOT2
+    held = {"text":"дну", "words":[{"w":"дн","t":1,"d":.12},
+                                    {"w":"у","t":1.12,"d":3,"g":True}]}
+    held_art = video.LineArt(held,regular_font,640,40)
+    check("letter timing adds no gap inside a written word",
+          abs(held_art.word_x[1]-(held_art.word_x[0]+held_art.word_w[0]))<.01)
+    check("the video fills only the held vowel after its consonants are done",
+          held_art.fill_x(held,2)>held_art.word_x[1]
+          and held_art.fill_x(held,2)<held_art.word_x[1]+held_art.word_w[1]
+          and held_art.fill_x(held,3)>held_art.fill_x(held,2))
     video.COL_HOT, video.COL_HOT2 = (0, 255, 0), (255, 0, 255)
     both_art = video.LineArt(
         {"text": "sing together", "voice": 3,

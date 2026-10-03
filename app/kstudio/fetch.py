@@ -19,6 +19,7 @@ import sys
 import sysconfig
 import tempfile
 import time
+from urllib.parse import urlsplit, parse_qs
 from typing import Callable, Optional
 
 from . import audio as AU
@@ -83,6 +84,52 @@ NETWORK_ERROR = re.compile(
 
 class FetchError(RuntimeError):
     pass
+
+
+class BrowserRequired(FetchError):
+    """A browser session may help; access still needs explicit consent."""
+
+
+BROWSERS = ('chrome', 'edge', 'firefox')
+
+
+def saved_browser(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            browser = json.load(f).get('browser')
+        return browser if browser in BROWSERS else None
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def save_browser(path, browser):
+    if browser is not None and browser not in BROWSERS:
+        raise FetchError('Unsupported browser')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + '.tmp', 'w', encoding='utf-8') as f:
+        json.dump({'browser': browser}, f)
+    os.replace(path + '.tmp', path)
+
+
+def youtube_url(url):
+    host = (urlsplit(url).hostname or '').lower()
+    return host == 'youtu.be' or host == 'youtube.com' or host.endswith('.youtube.com')
+
+
+def youtube_video_url(url):
+    """Canonical public video URL, without playlist or tracking parameters."""
+    parsed = urlsplit(check_url(url))
+    if not youtube_url(url) or parsed.username or parsed.password:
+        raise FetchError(tr('The alternative downloader supports YouTube links only.',
+                            'Альтернативный загрузчик поддерживает только ссылки YouTube.'))
+    parts = parsed.path.strip('/').split('/')
+    video = (parts[0] if parsed.hostname.lower() == 'youtu.be' else
+             parts[1] if len(parts) == 2 and parts[0] in ('shorts', 'embed', 'live') else
+             parse_qs(parsed.query).get('v', [''])[0])
+    if not re.fullmatch(r'[A-Za-z0-9_-]{11}', video):
+        raise FetchError(tr('Use a link to a specific YouTube video.',
+                            'Нужна ссылка на конкретное видео YouTube.'))
+    return 'https://www.youtube.com/watch?v=' + video
 
 
 def _setting(*names) -> str:
@@ -537,7 +584,90 @@ def _empty(folder: str) -> None:
             pass
 
 
-def download(url: str, dest_dir: str, log: Optional[Callable] = None) -> dict:
+def download(url: str, dest_dir: str, log: Optional[Callable] = None, *, browser=None,
+             browser_only=False, embedded=None) -> dict:
+    try:
+        return _download_sources(url, dest_dir, log, browser=browser, browser_only=browser_only)
+    except FetchError as error:
+        # Embedded browsing is a last resort, not an alternative for missing,
+        # private or deleted videos, certificate errors, or explicit settings.
+        eligible = (isinstance(error, BrowserRequired) or TRY_AGAIN.search(str(error)) or
+                    RATE_LIMIT.search(str(error)) or
+                    re.search(r'DPAPI|decrypt|cookie database|Could not copy', str(error), re.I))
+        if embedded and youtube_url(url) and not extra_args() and eligible:
+            return embedded(youtube_video_url(url), dest_dir, log)
+        raise
+
+
+def _download_sources(url: str, dest_dir: str, log: Optional[Callable] = None, *, browser=None, browser_only=False) -> dict:
+    if browser is not None and browser not in BROWSERS:
+        raise FetchError('Unsupported browser')
+    if browser_only and (not browser or not youtube_url(url)):
+        raise FetchError(tr('No browser-session permission for this download.',
+                            'Для этой загрузки нет разрешения на сессию браузера.'))
+    if not browser_only:
+        try:
+            return _download(url, dest_dir, log)
+        except FetchError as original:
+            # Never read an unrelated browser profile, override explicitly supplied
+            # cookie options, or cycle authenticated clients after another refusal.
+            configured = any(arg.startswith('--cookies') for arg in extra_args())
+            if (youtube_url(url) and not extra_args() and
+                    (isinstance(original, BrowserRequired) or TRY_AGAIN.search(str(original)))):
+                try:
+                    return _independent_download(url, dest_dir, log)
+                except FetchError as fallback:
+                    if log:
+                        log(str(fallback))
+            if not browser or not youtube_url(url) or configured:
+                raise
+            if not isinstance(original, BrowserRequired):
+                raise
+    elif any(arg.startswith('--cookies') for arg in extra_args()):
+        return _download(url, dest_dir, log)  # explicit settings retain precedence
+    if log:
+        log(tr(f'YouTube refused anonymous access — trying the authorised {browser} browser session once.',
+               f'YouTube отказал без авторизации — один раз пробую разрешённую сессию {browser}.'))
+    try:
+        return _download(url, dest_dir, log, browser=browser)
+    except FetchError as exc:
+        raise FetchError(str(exc) + tr(
+            ' — The browser session could not be used. Studio does not clear browser cookies. YouTube connection restrictions can also affect the alternative downloader.',
+            ' — Не удалось использовать сессию браузера. Студия не удаляет cookies браузера. Ограничение подключения со стороны YouTube может затронуть и альтернативный загрузчик.')) from exc
+
+
+def _independent_download(url, dest_dir, log=None):
+    """One bounded, anonymous local fallback; no third-party download service."""
+    url = youtube_video_url(url)
+    say = log or (lambda _: None)
+    say(tr('Trying the built-in alternative YouTube downloader…',
+           'Пробую встроенный альтернативный загрузчик YouTube…'))
+    os.makedirs(dest_dir, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.fetch-', dir=dest_dir) as tmp:
+        command = ([sys.executable, '--internal-youtube'] if getattr(sys, 'frozen', False)
+                   else [sys.executable, '-m', 'kstudio.youtube'])
+        env = dict(os.environ)
+        env['PYTHONPATH'] = os.path.dirname(os.path.dirname(__file__)) + os.pathsep + env.get('PYTHONPATH', '')
+        try:
+            result = WP.run(command + [url, tmp, str(MAX_MB)], capture_output=True,
+                            text=True, encoding='utf-8', errors='replace', timeout=min(TIMEOUT, 180), env=env)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise FetchError(tr('Alternative downloader failed: ', 'Альтернативный загрузчик: ') + str(exc)) from exc
+        if result.returncode:
+            raise FetchError((result.stderr or result.stdout or 'Alternative downloader failed').strip()[-1500:])
+        with open(os.path.join(tmp, 'result.json'), encoding='utf-8') as f:
+            info = json.load(f)
+        src = os.path.join(tmp, info['name'])
+        if os.path.basename(info['name']) != info['name'] or not os.path.isfile(src):
+            raise FetchError('Invalid alternative downloader output')
+        dst = _free_name(dest_dir, info['name'])
+        shutil.move(src, dst)
+        info.update(path=dst, cover=None, url=url)
+        return info
+
+
+def _download(url: str, dest_dir: str, log: Optional[Callable] = None, *, browser=None,
+              cookie_file=None, user_agent=None) -> dict:
     """Put the sound of `url` into `dest_dir` and say what came out.
 
     Raises FetchError with something readable: a link that leads nowhere, a
@@ -560,18 +690,26 @@ def download(url: str, dest_dir: str, log: Optional[Callable] = None) -> dict:
     deadline = time.time() + TIMEOUT
     say(tr("Taking the sound from the link…", "Достаю звук по ссылке…"))
     try:
-        for i, client in enumerate(CLIENTS):
+        clients = ('',) if browser or cookie_file else CLIENTS
+        for i, client in enumerate(clients):
             args = _base_args(cmd, tmp)
             if client:
                 args += ["--extractor-args", f"youtube:player_client={client}"]
             args += extra_args() + ["--", url]
+            if browser:
+                args[-2:-2] = ['--cookies-from-browser', browser]
+            if cookie_file:
+                args[-2:-2] = ['--cookies', cookie_file]
+            if user_agent:
+                args[-2:-2] = ['--user-agent', user_agent]
             code, lines = _network_attempt(args, say, deadline)
             if code == 0:
                 break
             reason = _reason(lines, code)
             tail = "\n".join(lines)
             if RATE_LIMIT.search(tail):
-                raise FetchError(reason + tr(
+                error_type = BrowserRequired if youtube_url(url) else FetchError
+                raise error_type(reason + tr(
                     " — YouTube has temporarily limited this IP. Repeating the "
                     "download now only extends the block. Open YouTube in a "
                     "browser on the same connection and complete its check, then "
@@ -591,11 +729,11 @@ def download(url: str, dest_dir: str, log: Optional[Callable] = None) -> dict:
                     " — соединение при скачивании оборвалось. Проверьте подключение или VPN/прокси; "
                     "попробуйте позже либо выберите аудиофайл с диска."))
             again = bool(TRY_AGAIN.search(tail))
-            if again and i + 1 < len(CLIENTS):
+            if again and i + 1 < len(clients):
                 say(tr(f"The site turned this client away ({reason}) — "
-                       f"asking again as “{CLIENTS[i + 1]}”…",
+                       f"asking again as “{clients[i + 1]}”…",
                        f"Сайт отказал этому клиенту ({reason}) — "
-                       f"спрашиваю ещё раз как «{CLIENTS[i + 1]}»…"))
+                       f"спрашиваю ещё раз как «{clients[i + 1]}»…"))
                 _empty(tmp)
                 continue
             if again:

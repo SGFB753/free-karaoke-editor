@@ -69,7 +69,7 @@ def parse_args(argv=None):
     p.add_argument("-o", "--output", help="where to save the HTML (next to the audio by default)")
 
     g = p.add_argument_group("timing")
-    g.add_argument("--align", choices=["auto", "whisper", "energy", "none"], default="auto",
+    g.add_argument("--align", choices=["auto", "whisper", "qwen", "energy", "none"], default="auto",
                    help="alignment engine (auto by default)")
     g.add_argument("--whisper-model", default="medium",
                    help="Whisper model: tiny/base/small/medium/large-v3")

@@ -19,6 +19,7 @@ TEMPLATE = os.path.join(os.path.dirname(__file__), "player.html")
 def ENGINE_NAME(engine: str) -> str:
     return {
         "whisper": tr("Whisper timing", "разметка Whisper"),
+        "qwen": tr("Qwen timing (experimental)", "разметка Qwen (экспериментальная)"),
         "energy":  tr("timing by loudness", "разметка по энергии"),
         "manual":  tr("timings from the text", "тайминги из текста"),
         "json":    tr("timings from a file", "тайминги из файла"),
@@ -30,7 +31,7 @@ class _EngineLabel(dict):
     """ENGINE_LABEL.get(x, x) — the familiar shape, translated on the spot."""
 
     def get(self, key, default=None):
-        return ENGINE_NAME(key) if key in ("whisper", "energy", "manual",
+        return ENGINE_NAME(key) if key in ("whisper", "qwen", "energy", "manual",
                                            "json", "none") else default
 
 

@@ -2,6 +2,7 @@
 // must survive, and if the official instrumental starts elsewhere, the shift
 // has to be found and applied.
 import puppeteer from 'puppeteer';
+import { useWorkspaceNavigation } from '../helpers/workspace-navigation.mjs';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -20,6 +21,7 @@ ok('a track shifted by 1.5 s is ready', fs.existsSync(shifted));
 
 const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disable-dev-shm-usage']});
 const p = await b.newPage();
+useWorkspaceNavigation(p);
 await p.setViewport({width:1366, height:768});
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 await p.goto(API + '/', {waitUntil:'networkidle0'});
@@ -104,11 +106,12 @@ await p.reload({waitUntil:'networkidle0'});
 await new Promise(r=>setTimeout(r,600));
 await p.click('.card');
 await new Promise(r=>setTimeout(r,2500));
+await p.click('#btnWorkspaceProject');
 const btn = await p.evaluate(() => {
   const b = document.getElementById('btnTrack');
   return b ? {text: b.textContent.trim(), visible: !!b.offsetParent} : null;
 });
-ok('the “Own backing track” button is in plain sight', btn && btn.visible, btn ? btn.text : 'no button');
+ok('the “Own backing track” button is visible in the Song inspector', btn && btn.visible, btn ? btn.text : 'no button');
 
 console.log('\n--- a foreign file does not bring the server down ---');
 const bad = await (await fetch(API+'/api/project/'+encodeURIComponent(PID)+'/track', {

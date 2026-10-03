@@ -4,16 +4,26 @@
 // the side panel drawn across the toolbar — and both were invisible to every
 // other check we had.
 import puppeteer from 'puppeteer';
+import { useWorkspaceNavigation } from '../helpers/workspace-navigation.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
 
 const API = process.env.KARAOKE_API;
 let fail = 0;
 const ok = (n, c, e='') => { console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:'')); if(!c) fail++; };
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
+async function preview(name){
+  const directory = process.env.KARAOKE_DESIGN_PREVIEW_DIR;
+  if (!directory) return;
+  fs.mkdirSync(directory, {recursive:true});
+  await p.screenshot({path:path.join(directory, name + '.png')});
+}
 
 const b = await puppeteer.launch({headless:'new',
   executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
   args:['--no-sandbox','--disable-dev-shm-usage']});
 const p = await b.newPage();
+useWorkspaceNavigation(p);
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('dialog', d => d.dismiss());
 
@@ -119,7 +129,7 @@ async function fieldInternals(){
       const fr = field.getBoundingClientRect();
       const fieldCs = getComputedStyle(field);
       const label = (field.querySelector('label') || {}).textContent || '';
-      const fieldLeft = fr.left;
+      const fieldLeft = fr.left + parseFloat(fieldCs.paddingLeft) + parseFloat(fieldCs.borderLeftWidth);
       for (const child of field.children) {
         const r = child.getBoundingClientRect();
         if (r.width === 0 || r.height === 0) continue;
@@ -168,6 +178,15 @@ ok('partial highlighting stays aligned with the base words in every voice',
 await sleep(600);
 
 console.log('--- the list of songs ---');
+const libraryProjects = (await (await fetch(API+'/api/state')).json()).projects;
+const visibleProjectIds = await p.$$eval('#cards .card', els=>els.map(el=>el.dataset.id));
+ok('the library keeps the server order, newest activity first',
+   libraryProjects.every((project,i)=>i===0 || project.edited<=libraryProjects[i-1].edited) &&
+   JSON.stringify(visibleProjectIds)===JSON.stringify(libraryProjects.map(project=>project.id)));
+await p.setViewport({width:1366, height:820});
+await preview('01-library');
+ok('the running application version is visible',
+   /^v\d+\.\d+\.\d+/.test(await p.$eval('#scrList .app-version', e=>e.textContent)));
 for (const [w, h] of SIZES){
   await p.setViewport({width: w, height: h});
   await sleep(300);
@@ -176,6 +195,8 @@ for (const [w, h] of SIZES){
   const center = await formCentering();
   ok(`${w}×${h}: the cards are centered in the viewport`, center !== null && center <= 1,
      center !== null ? `offset ${center.toFixed(1)}px` : 'elements not found');
+  ok(`${w}×${h}: songs stay in one vertical list`,
+     await p.$eval('#cards', el=>getComputedStyle(el).gridTemplateColumns.trim().split(/\s+/).length===1));
 }
 
 console.log('\n--- the screen for a new song ---');
@@ -183,6 +204,18 @@ await p.setViewport({width: 1366, height: 820});
 await sleep(200);
 await p.click('#btnAdd');
 await sleep(300);
+await preview('02-new-song');
+ok('the player belongs to audio and metadata precedes lyrics', await p.evaluate(() => {
+  const source = document.getElementById('inAudio').closest('.field');
+  const metadata = document.getElementById('inTitle').closest('.field');
+  const lyrics = document.getElementById('inLyrics').closest('.field');
+  return source.contains(document.getElementById('newAudioPreview')) &&
+    !!(metadata.compareDocumentPosition(lyrics) & Node.DOCUMENT_POSITION_FOLLOWING);
+}));
+ok('advanced controls preserve the existing build defaults', await p.evaluate(() =>
+  document.getElementById('selModel').value === 'small' && document.getElementById('chkSep').checked &&
+  document.getElementById('selModel').closest('details')?.classList.contains('build-advanced')));
+await p.click('.build-advanced > summary');
 for (const [w, h] of SIZES){
   await p.setViewport({width: w, height: h});
   await sleep(300);
@@ -210,6 +243,73 @@ await p.waitForSelector('.card', {timeout:20000});
 await p.click('.card');
 await p.waitForSelector('#scrEdit:not(.hide)', {timeout:20000});
 await sleep(800);
+await preview('03-editor-review');
+const darkChrome = await p.evaluate(() => {
+  const luminance = css => {
+    const rgb = css.match(/[\d.]+/g).slice(0,3).map(Number).map(v => {
+      const s=v/255; return s<=.04045 ? s/12.92 : ((s+.055)/1.055)**2.4;
+    });
+    return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;
+  };
+  return {
+    surfaces:['#scrEdit','#scrEdit > header','.workspace-bar','.side','.timeline','#btnText','footer']
+      .map(sel=>luminance(getComputedStyle(document.querySelector(sel)).backgroundColor)),
+    captionContrast:(luminance(getComputedStyle(document.querySelector('.workspace-heading p')).color)+.05)/
+      (luminance(getComputedStyle(document.querySelector('.workspace-bar')).backgroundColor)+.05)
+  };
+});
+ok('editor surfaces keep the original low-brightness dark palette',
+   darkChrome.surfaces.every(value=>value<.012), darkChrome.surfaces.map(value=>value.toFixed(3)).join(', '));
+ok('secondary labels remain readable on the darker panels',darkChrome.captionContrast>=4.5,
+   darkChrome.captionContrast.toFixed(1)+':1');
+ok('the summary folds its actual contents, without placeholder text',
+   await p.$eval('.review-summary', e => !!e.querySelector('#sum') && !/^null$/m.test(e.innerText)));
+ok('command groups contain real controls without null placeholders',
+   await p.$$eval('.command-buttons', els => els.length === 4 && els.every(el =>
+     el.children.length > 0 && ![...el.childNodes].some(node => node.nodeType === 3 && node.textContent.trim()))));
+ok('everyday edits are available without opening an inspector',
+   await p.evaluate(() => ['btnAddLine','btnDelLine','btnSplit','btnJoin','btnRhythm','btnPasteLine','btnPaste'].every(id =>
+     document.getElementById(id).closest('.tlhead') && document.getElementById(id).getBoundingClientRect().height > 0)));
+for (const pane of ['line','look','project']){
+  if (pane !== 'line') await p.click(pane === 'look' ? '#btnWorkspaceLook' : '#btnWorkspaceProject');
+  ok(pane + ' section is available without hiding the timeline',
+     await p.$eval('#inspector-' + pane, e=>!e.classList.contains('hide')) &&
+     await p.$eval('#tlwrap', e=>e.getBoundingClientRect().height > 50));
+  const clashes = await collisions('#inspector-' + pane + ' .inspector-controls');
+  ok(pane + ' inspector controls do not overlap', clashes.length === 0, clashes.join('; '));
+  await preview('04-editor-' + pane);
+}
+await p.click('#btnWorkspaceClose');
+
+// Exercise the full transport layout as it appears with a separated vocal.
+// The fixture can contain only a mix; this is a presentation check, not fake audio.
+const voiceWasHidden = await p.$eval('#grpVoice', el=>el.classList.contains('hide'));
+await p.$eval('#grpVoice', el=>el.classList.remove('hide'));
+await p.$eval('#rVoice', el=>{el.value='42';el.dispatchEvent(new Event('input',{bubbles:true}));});
+await p.hover('#rVoice');
+async function wheelVoice(deltaY, shift=false){
+  if (shift) await p.keyboard.down('Shift');
+  try { await p.mouse.wheel({deltaY}); await sleep(100); }
+  finally { if (shift) await p.keyboard.up('Shift'); }
+  return p.$eval('#rVoice', el=>Number(el.value));
+}
+ok('wheel up raises vocal monitoring by 5%', await wheelVoice(-100) === 47);
+ok('wheel down lowers vocal monitoring by 5%', await wheelVoice(100) === 42);
+ok('Shift + wheel raises vocal monitoring by 1%', await wheelVoice(-100,true) === 43);
+ok('Shift + wheel lowers vocal monitoring by 1%', await wheelVoice(100,true) === 42);
+await p.$eval('#rVoice', el=>{el.value='99';el.dispatchEvent(new Event('input',{bubbles:true}));});
+ok('wheel cannot raise vocal monitoring above 100%', await wheelVoice(-100) === 100);
+await p.$eval('#rVoice', el=>{el.value='1';el.dispatchEvent(new Event('input',{bubbles:true}));});
+ok('wheel cannot lower vocal monitoring below 0%', await wheelVoice(100) === 0);
+ok('browser zoom and horizontal scrolling are not intercepted', await p.$eval('#rVoice', el=>{
+  return [{deltaY:-100,ctrlKey:true},{deltaY:-100,metaKey:true},{deltaX:100,deltaY:1}].every(options=>{
+    const event=new WheelEvent('wheel',{bubbles:true,cancelable:true,...options});
+    el.dispatchEvent(event);
+    return !event.defaultPrevented && el.value==='0';
+  });
+}));
+await p.$eval('#rVoice', el=>{el.value='42';el.dispatchEvent(new Event('input',{bubbles:true}));});
+await preview('06-editor-audio-controls');
 
 for (const [w, h] of SIZES){
   await p.setViewport({width: w, height: h});
@@ -220,6 +320,21 @@ for (const [w, h] of SIZES){
   const head = await collisions('#scrEdit > header');
   ok(`${w}×${h}: the top bar does not lie on itself`, head.length === 0, head.join('; '));
 
+  ok(`${w}×${h}: line properties and review coexist without tabs`,
+     await p.evaluate(() => !document.querySelector('.inspector-tabs') &&
+       ['inspector-line','inspector-check'].every(id=>!document.getElementById(id).closest('details') &&
+         document.getElementById(id).getBoundingClientRect().height > 0)));
+  const entry = await p.$$eval('.destination', els => els.map(el => {
+    const r=el.getBoundingClientRect();
+    return {width:r.width,height:r.height,font:parseFloat(getComputedStyle(el.querySelector('b')).fontSize),
+      inside:r.left>=0 && r.right<=innerWidth && r.top>=0 && r.bottom<=innerHeight};
+  }));
+  ok(`${w}×${h}: appearance and project have prominent, readable entry points`,
+    entry.length===2 && entry.every(e=>e.width>=140 && e.height>=50 && e.font>=14 && e.inside),
+    JSON.stringify(entry));
+  const labels = await p.$$eval('.command-buttons button', els=>els.map(el=>parseFloat(getComputedStyle(el).fontSize)));
+  ok(`${w}×${h}: editing commands use readable labels`, labels.every(n=>n>=13));
+
   const tools = await collisions('.tlhead');
   ok(`${w}×${h}: the toolbar does not lie on itself`, tools.length === 0, tools.join('; '));
 
@@ -227,6 +342,7 @@ for (const [w, h] of SIZES){
   ok(`${w}×${h}: the side panel keeps off the timeline`, over === 0, over + 'px²');
 
   // the caption inside a swatch pair must not run into the swatches
+  await p.click('#btnWorkspaceLook');
   const pick = await p.$$eval('.pick', els => els.map(el => {
     const b = el.querySelector('b'), i = el.querySelector('.sw');
     if (!b || !i) return 0;
@@ -234,6 +350,8 @@ for (const [w, h] of SIZES){
   }));
   ok(`${w}×${h}: the colour captions keep off the swatches`,
      pick.every(v => v <= 0.5), JSON.stringify(pick.map(v => Math.round(v))));
+  await p.click('#btnWorkspaceClose');
+  await p.evaluate(() => document.querySelector('.probs').scrollIntoView({block:'nearest'}));
 
   // The Check list must keep visible room whatever the summary holds: it used
   // to be squeezed to nothing and read as “the scrolling is broken”.
@@ -253,7 +371,19 @@ for (const [w, h] of SIZES){
 
   const tiny = await tinyControls('#scrEdit');
   ok(`${w}×${h}: nothing is squeezed to a sliver`, tiny.length === 0, tiny.join('; '));
+  const transport = await p.evaluate(()=>{
+    const pitch=document.getElementById('grpPitch').getBoundingClientRect();
+    const voice=document.getElementById('grpVoice').getBoundingClientRect();
+    const slider=document.getElementById('rVoice').getBoundingClientRect();
+    return {pitchTop:pitch.top,voiceTop:voice.top,pitchHeight:pitch.height,voiceHeight:voice.height,
+      sliderWidth:slider.width,sliderHeight:slider.height};
+  });
+  ok(`${w}×${h}: vocal monitoring matches the key control and has a usable slider`,
+    Math.abs(transport.pitchTop-transport.voiceTop)<1 &&
+    Math.abs(transport.pitchHeight-transport.voiceHeight)<1 && transport.voiceHeight>=56 &&
+    transport.sliderWidth>=128 && transport.sliderHeight>=32,JSON.stringify(transport));
 }
+await p.$eval('#grpVoice',(el,hidden)=>el.classList.toggle('hide',hidden),voiceWasHidden);
 
 console.log('\n--- background survives entering and leaving a project ---');
 await p.setViewport({width: 1366, height: 820});

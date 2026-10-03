@@ -88,8 +88,8 @@ ok('the “Check” panel is in English',
 console.log('\n--- switching in place ---');
 $("btnLang").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(600);
-ok('the labels turned Russian', /Дорожка/.test(doc.querySelector('.tlhead').textContent),
-   doc.querySelector('.tlhead').textContent.slice(0,40));
+ok('the labels turned Russian', /Дорожка/.test(doc.querySelector('.timeline-title').textContent),
+   doc.querySelector('.timeline-title').textContent.slice(0,40));
 ok('the keyboard hint too', /Пробел/.test($("hint").textContent),
    $("hint").textContent.slice(0,40));
 ok('the summary too', /Длина|Строк/.test($("sum").textContent), $("sum").textContent.slice(0,50));
@@ -101,8 +101,8 @@ ok('the page language attribute was updated', doc.documentElement.lang === "ru")
 console.log('\n--- and back ---');
 $("btnLang").dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(600);
-ok('English again', /Timeline/.test(doc.querySelector('.tlhead').textContent),
-   doc.querySelector('.tlhead').textContent.slice(0,40));
+ok('English again', /Timeline/.test(doc.querySelector('.timeline-title').textContent),
+   doc.querySelector('.timeline-title').textContent.slice(0,40));
 
 ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 console.log(fail ? '\nFAILED: '+fail : '\nAll checks passed');

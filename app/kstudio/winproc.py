@@ -39,12 +39,46 @@ def hidden_kwargs(values: Dict[str, Any] | None = None) -> Dict[str, Any]:
 
 def run(args, **kwargs):
     """subprocess.run for a command-line helper, hidden on Windows."""
-    return subprocess.run(args, **hidden_kwargs(kwargs))
+    from . import jobcontrol
+    if jobcontrol.current() is None:
+        return subprocess.run(args, **hidden_kwargs(kwargs))
+    values = dict(kwargs)
+    timeout = values.pop('timeout', None)
+    check = values.pop('check', False)
+    data = values.pop('input', None)
+    if data is not None:
+        if values.get('stdin') is not None:
+            raise ValueError('stdin and input arguments may not both be used')
+        values['stdin'] = subprocess.PIPE
+    if values.pop('capture_output', False):
+        if values.get('stdout') is not None or values.get('stderr') is not None:
+            raise ValueError('stdout and stderr may not be used with capture_output')
+        values['stdout'] = values['stderr'] = subprocess.PIPE
+    with Popen(args, **values) as child:
+        try:
+            out, err = child.communicate(data, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            child.kill()
+            child.communicate()
+            raise
+        except BaseException:
+            child.kill()
+            child.wait()
+            raise
+        jobcontrol.checkpoint()
+        result = subprocess.CompletedProcess(args, child.returncode, out, err)
+        if check:
+            result.check_returncode()
+        return result
 
 
 def Popen(args, **kwargs):
     """subprocess.Popen for a command-line helper, hidden on Windows."""
-    return subprocess.Popen(args, **hidden_kwargs(kwargs))
+    from . import jobcontrol
+    jobcontrol.checkpoint()
+    child = subprocess.Popen(args, **hidden_kwargs(kwargs))
+    jobcontrol.register_child(child)
+    return child
 
 
 def install_frozen_policy() -> None:

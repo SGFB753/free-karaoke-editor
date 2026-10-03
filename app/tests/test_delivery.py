@@ -43,6 +43,7 @@ def run(args, **kw):
 
 
 def main():
+    check_update_notes()
     check_remove_backing()
     print("Launchers and file names")
     # The root holds only the everyday things: install, open, read.
@@ -97,10 +98,12 @@ def main():
     # songs, the code.
     root_items = sorted(n for n in os.listdir(HOME)
                         if not n.startswith(".") and n not in
-                        ("node_modules", "__pycache__", "build", "dist"))
+                        ("node_modules", "__pycache__", "build", "dist", "docs", "image.png"))
     # ``output`` is the intentionally separate home for finished renders; it
     # may already exist in a working checkout even though it starts empty in a
-    # fresh clone.
+    # fresh clone. Design/developer documentation in docs/ is not part of the
+    # end-user release folder and is checked separately from its small layout.
+    # image.png is a local bug-report attachment, not a shipped application file.
     check("no more than 12 names in the root", len(root_items) <= 12,
           f"{len(root_items)}: " + ", ".join(root_items))
     check("the history of changes is in plain sight",
@@ -729,6 +732,31 @@ def rms(path, a, b, freq):
         im += v * math.sin(2 * math.pi * freq * i / sr)
     n = max(i1 - i0, 1)
     return math.hypot(re_, im) / n
+
+
+def check_update_notes():
+    import io
+    from unittest.mock import patch
+    from kstudio import update as UP
+    changelog = "## Unreleased\nFuture\n## 4.50.0\nLatest\n## 4.49.7\nIntermediate\n## 4.49.6\nInstalled\n"
+    seen = []
+    def response(request, **kwargs):
+        seen.append(request.full_url)
+        return io.BytesIO(changelog.encode("utf-8"))
+    with patch.object(UP, "repository", return_value="owner/repo"), \
+            patch.object(UP.urllib.request, "urlopen", side_effect=response):
+        ru = UP.release_notes("v4.50.0", "ru", current="4.49.6")
+        en = UP.release_notes("v4.50.0", "en", current="4.49.6")
+        check("Russian updates read the Russian changelog at the release tag",
+              seen[0].endswith("/v4.50.0/CHANGELOG.ru.md"), seen[0])
+        check("English updates read the English changelog at the release tag",
+              seen[1].endswith("/v4.50.0/CHANGELOG.md"), seen[1])
+        check("update notes include skipped versions but not installed or unreleased work",
+              "Latest" in ru and "Intermediate" in ru
+              and "Installed" not in ru and "Future" not in ru and ru == en)
+        count = len(seen)
+        check("an invalid update tag never becomes a remote URL",
+              UP.release_notes("../../main", "ru") == "" and len(seen) == count)
 
 
 if __name__ == "__main__":

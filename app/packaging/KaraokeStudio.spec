@@ -18,14 +18,27 @@ datas = [
 ]
 binaries = []
 hiddenimports = []
+with_qwen = os.environ.get("KARAOKE_WITH_QWEN") == "1"
 
 # These libraries discover plugins, model descriptions or data files at
 # runtime.  PyInstaller cannot see those dynamic imports by reading studio.py.
-for package in ("demucs", "stable_whisper", "whisper", "yt_dlp", "imageio_ffmpeg"):
+for package in ("demucs", "stable_whisper", "whisper", "yt_dlp", "imageio_ffmpeg",
+                "pytubefix", "nodejs_wheel"):
     d, b, h = collect_all(package)
     datas += d
     binaries += b
     hiddenimports += h
+
+# An explicit optional build avoids shipping a developer's extra ML runtime by
+# accident. Include the tokenizer dictionaries needed by the official wrapper.
+if with_qwen:
+    for package in ("qwen_asr", "nagisa", "soynlp"):
+        d, b, h = collect_all(package, filter_submodules=lambda name: ".cli" not in name)
+        datas += d
+        binaries += b
+        hiddenimports += h
+    for distribution in ("qwen-asr", "transformers", "accelerate", "nagisa", "soynlp"):
+        datas += copy_metadata(distribution)
 
 for distribution in ("demucs", "stable-ts", "openai-whisper", "yt-dlp",
                      "soundfile", "imageio-ffmpeg"):
@@ -48,6 +61,11 @@ hiddenimports += collect_submodules("PIL")
 # the explicit environment flag prevents a populated CI/developer cache from
 # accidentally making every ordinary ZIP a gigabyte larger.
 if os.environ.get("KARAOKE_BUNDLE_MODELS") == "1":
+    if with_qwen:
+        model_cache = os.getenv("XDG_CACHE_HOME", os.path.join(os.path.expanduser("~"), ".cache"))
+        qwen_cache = os.path.join(model_cache, "karaoke-studio", "qwen3-forcedaligner-0.6b")
+        if os.path.isfile(os.path.join(qwen_cache, "model.safetensors")):
+            datas.append((qwen_cache, os.path.join("models", "karaoke-studio", "qwen3-forcedaligner-0.6b")))
     whisper_cache = os.path.join(os.path.expanduser("~"), ".cache", "whisper")
     small_model = os.path.join(whisper_cache, "small.pt")
     if os.path.isfile(small_model):
@@ -73,7 +91,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["tkinter", "matplotlib.tests", "numpy.tests"],
+    excludes=["tkinter", "matplotlib.tests", "numpy.tests"] + ([] if with_qwen else ["qwen_asr"]),
     noarchive=False,
 )
 

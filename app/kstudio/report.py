@@ -173,7 +173,7 @@ def human_time(sec: float) -> str:
 
 def build(audio_path: str, lyrics, duration: float, envelope: List[float],
           hop: float, *, model: str = "small", separate: bool = True,
-          whisper: bool = True, language: str = "auto") -> Dict:
+          whisper: bool = True, language: str = "auto", engine: str = "auto") -> Dict:
     """Put the whole report together. Nothing heavy is computed here."""
     from . import lang as LG
     from . import sysinfo
@@ -250,7 +250,15 @@ def build(audio_path: str, lyrics, duration: float, envelope: List[float],
             f"размечает песню под тот язык, что ему дали, поэтому возьмите "
             f"«определить по тексту» или выберите «{LG.label(looks)}» руками."))
 
-    need = sysinfo.NEED_DEMUCS if separate else sysinfo.NEED_WHISPER.get(model, 2.2)
+    need = (max(sysinfo.NEED_QWEN, sysinfo.NEED_DEMUCS if separate else 0.0)
+            if engine == "qwen" else sysinfo.NEED_DEMUCS if separate else sysinfo.NEED_WHISPER.get(model, 2.2))
+    if engine == "qwen":
+        from . import qwen as QW
+        if code not in QW.LANGUAGES:
+            notes.append(tr(f"Qwen does not support {LG.label(code)}; choose Whisper.",
+                            f"Qwen не поддерживает язык «{LG.label(code)}»; выберите Whisper."))
+        notes.append(tr("Qwen alignment is experimental for singing; inspect the word timings, especially repeats and backing vocals.",
+                        "Разметка Qwen на пении экспериментальная; проверьте тайминги слов, особенно повторы и бэки."))
     free = sysinfo.available_gb()
     if free is not None and free < need:
         notes.append(tr(
@@ -269,8 +277,9 @@ def build(audio_path: str, lyrics, duration: float, envelope: List[float],
         "text": stats,
         "language": {"code": code, "name": LG.label(code),
                      "auto": language in ("", "auto", None)},
-        "plan": {"separate": separate, "whisper": whisper, "model": model,
-                 **estimate(duration, model, separate, whisper)},
+        "plan": {"separate": separate, "whisper": whisper and engine != "qwen",
+                 "model": "qwen3-forcedaligner-0.6b" if engine == "qwen" else model, "engine": engine,
+                 **estimate(duration, model, separate, whisper or engine == "qwen")},
         "notes": notes,
     }
 
@@ -306,9 +315,12 @@ def as_text(rep: Dict) -> str:
     steps = []
     if plan["separate"]:
         steps.append(tr("instrumental", "минусовка"))
-    steps.append(tr("Whisper timing (" + plan["model"] + ")",
-                    "разметка Whisper (" + plan["model"] + ")") if plan["whisper"]
-                 else tr("timing by loudness", "разметка по энергии"))
+    if plan.get("engine") == "qwen":
+        steps.append(tr("Qwen timing (experimental)", "разметка Qwen (экспериментальная)"))
+    else:
+        steps.append(tr("Whisper timing (" + plan["model"] + ")",
+                        "разметка Whisper (" + plan["model"] + ")") if plan["whisper"]
+                     else tr("timing by loudness", "разметка по энергии"))
     out.append(tr(f"  Plan       {', '.join(steps)}", f"  Сделаю     {', '.join(steps)}"))
     out.append(tr(f"  Takes      {human_time(plan['seconds'])} (very roughly)",
                   f"  Займёт     {human_time(plan['seconds'])} (очень грубо)"))

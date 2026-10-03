@@ -77,13 +77,26 @@ jobs:
           # Libraries and ffmpeg stay self-contained. Model weights download
           # once on first use and then live in the user's cache; carrying them
           # in every GitHub release only makes uploads slower and less reliable.
-          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\app\packaging\build-windows.ps1 -Repository '${{ github.repository }}' -SkipTests
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\app\packaging\build-windows.ps1 -Repository '${{ github.repository }}' -WithQwen -SkipTests
       - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         shell: pwsh
         run: |
+          $version = $env:TAG.TrimStart('v')
+          $sections = foreach ($file in @('CHANGELOG.ru.md', 'CHANGELOG.md')) {
+            $log = Get-Content -LiteralPath $file -Raw -Encoding utf8
+            $pattern = '(?ms)^## ' + [regex]::Escape($version) + '\r?\n(.*?)(?=^## |\z)'
+            $match = [regex]::Match($log, $pattern)
+            if (-not $match.Success) { throw "Release notes missing in $file" }
+            $match.Groups[1].Value.Trim()
+          }
+          ($sections -join "`n`n---`n`n") | Set-Content -LiteralPath release-notes.md -Encoding utf8
           gh release view $env:TAG 2>$null
-          if ($LASTEXITCODE -ne 0) { gh release create $env:TAG --title $env:TAG --generate-notes }
+          if ($LASTEXITCODE -ne 0) { gh release create $env:TAG --title $env:TAG --draft --notes-file release-notes.md }
+          if ($LASTEXITCODE -ne 0) { throw 'Release creation failed.' }
           gh release upload $env:TAG dist\KaraokeStudio-windows-x64.zip dist\KaraokeStudio-windows-x64.zip.sha256 --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed.' }
+          gh release edit $env:TAG --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }

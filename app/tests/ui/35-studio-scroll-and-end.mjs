@@ -85,6 +85,16 @@ ok('we wound past the last line', sec2 > lastEnd,
 const nothing = await cur();
 ok('the highlight is gone — nothing is left hanging', nothing < 0,
    nothing >= 0 ? `line ${nothing+1} is lit` : '');
+const finalPosition=await p.evaluate(()=>{
+  const stage=document.querySelector('#stage').getBoundingClientRect();
+  const all=[...document.querySelectorAll('#scroll .ln')];
+  const first=all[0].getBoundingClientRect(),last=all.at(-1).getBoundingClientRect();
+  return {lastCenter:(last.top+last.bottom)/2,stageCenter:(stage.top+stage.bottom)/2,
+    firstCenter:(first.top+first.bottom)/2};
+});
+ok('after singing ends the preview stays on the last line, not the first',
+  Math.abs(finalPosition.lastCenter-finalPosition.stageCenter)<5 &&
+  finalPosition.firstCenter<finalPosition.lastCenter-20,JSON.stringify(finalPosition));
 
 console.log('\n--- the minimap: the whole song in one strip ---');
 {

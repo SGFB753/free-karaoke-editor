@@ -2070,9 +2070,10 @@ def align_anchored(lyrics: Lyrics, audio_path: str, duration: float,
 def align(lyrics: Lyrics, audio_path: str, duration: float, engine: str = "auto",
           model_name: str = "medium", language: str = "ru",
           device: Optional[str] = None, log: Log = _noop,
-          isolated: bool = False, skip=None) -> tuple:
+          isolated: bool = False, skip=None, fallback_audio=None) -> tuple:
     lyrics, used = _align_main(lyrics, audio_path, duration, engine, model_name,
-                               language, device, log, isolated=isolated, skip=skip)
+                               language, device, log, isolated=isolated, skip=skip,
+                               fallback_audio=fallback_audio)
     if used == "whisper" and any(ln.backing for ln in lyrics.lines):
         align_backing_audio(lyrics, audio_path, duration, model_name, device, log,
                             skip=skip)
@@ -2179,8 +2180,13 @@ def align_backing_audio(lyrics, audio_path, duration, model_name, device=None,
 def _align_main(lyrics: Lyrics, audio_path: str, duration: float, engine: str = "auto",
           model_name: str = "medium", language: str = "ru",
           device: Optional[str] = None, log: Log = _noop,
-          isolated: bool = False, skip=None) -> tuple:
+          isolated: bool = False, skip=None, fallback_audio=None) -> tuple:
     """Returns (lyrics, engine_used)."""
+    if engine == "qwen":
+        from .qwen import align_qwen
+        return align_qwen(lyrics, audio_path, duration, language, device, log,
+                          isolated=isolated, skip=skip, fallback_audio=fallback_audio,
+                          guide_model=model_name if not model_name.startswith('qwen') else 'small'), "qwen"
     timed = sum(1 for ln in lyrics.lines if ln.start is not None)
     # A tail split from a timed LRC line has no independent timestamp.
     # It must not turn an otherwise complete LRC into dozens of anchored

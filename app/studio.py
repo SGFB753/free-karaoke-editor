@@ -29,6 +29,7 @@ import threading
 import time
 import traceback
 import uuid
+from contextlib import nullcontext
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -73,6 +74,8 @@ from kstudio import fetch as FE            # noqa: E402
 from kstudio import findlyrics as FL       # noqa: E402
 from kstudio import lang as LG            # noqa: E402
 from kstudio import project as P           # noqa: E402
+from kstudio import jobcontrol as JC
+from kstudio import preferences as PREF
 from kstudio import separate as S          # noqa: E402
 from kstudio import transcribe as TR        # noqa: E402
 from kstudio import update as UP            # noqa: E402
@@ -96,6 +99,7 @@ if os.name == "nt" and not os.environ.get("KARAOKE_PROJECTS"):
 PROJECTS = P.projects_root()
 JOBS: dict = {}
 JOBS_LOCK = threading.Lock()
+JOB_CONTROLS: dict = {}
 PENDING_UPDATES: dict = {}
 DESKTOP_SESSION = False
 DESKTOP_WINDOW_PROC = None
@@ -164,23 +168,41 @@ def save_error(text: str) -> str:
         return ""
 
 
-def start_job(title: str, fn) -> str:
+def start_job(title: str, fn, *, cancellable=False) -> str:
     jid = uuid.uuid4().hex[:12]
     with JOBS_LOCK:
         JOBS[jid] = {"id": jid, "title": title, "log": [], "done": False,
                      "ok": False, "result": None, "error": None, "started": time.time()}
 
+    control = JC.Control() if cancellable else None
+    if control:
+        with JOBS_LOCK:
+            JOB_CONTROLS[jid] = control
+            JOBS[jid]['cancellable'] = True
+
     def log(msg: str):
+        JC.checkpoint()
         with JOBS_LOCK:
             JOBS[jid]["log"].append(str(msg))
             del JOBS[jid]["log"][:-200]
 
     def run():
         try:
-            res = fn(log)
+            with JC.scope(control) if control else nullcontext():
+                res = fn(log)
             with JOBS_LOCK:
                 JOBS[jid].update(done=True, ok=True, result=res)
+        except JC.Cancelled:
+            with JOBS_LOCK:
+                JOBS[jid].update(done=True, ok=False, cancelled=True,
+                                 cancellable=False)
+                JOBS[jid]['log'].append(tr('Cancelled. Existing timing was not replaced.',
+                                          'Отменено. Существующая разметка не заменена.'))
         except Exception as e:
+            if control and control.event.is_set():
+                with JOBS_LOCK:
+                    JOBS[jid].update(done=True, ok=False, cancelled=True, cancellable=False)
+                return
             from kstudio import sysinfo
             if sysinfo.is_memory_error(e):
                 msg = sysinfo.memory_advice(sysinfo.NEED_DEMUCS, sysinfo.available_gb())
@@ -196,7 +218,8 @@ def start_job(title: str, fn) -> str:
                 log(tr(f"The whole error is written to {where}",
                        f"Ошибка целиком записана в {where}"))
             with JOBS_LOCK:
-                JOBS[jid].update(done=True, ok=False, error=msg.splitlines()[0])
+                JOBS[jid].update(done=True, ok=False, error=msg.splitlines()[0],
+                                 cookiesRequired=isinstance(e, FE.BrowserRequired))
 
     threading.Thread(target=run, daemon=True).start()
     return jid
@@ -307,6 +330,7 @@ def discard_staged(path: str) -> None:
 
 
 def capabilities() -> dict:
+    from kstudio import qwen as QW, models as M
     have_ts = True
     try:
         import stable_whisper  # noqa: F401
@@ -324,6 +348,7 @@ def capabilities() -> dict:
         ff = False
     from kstudio import sysinfo
     return {"ffmpeg": ff, "whisper": have_ts, "demucs": S.available(),
+            "qwen": QW.available(), "qwenModel": M.qwen_ready(),
             "pillow": have_pil, "version": __version__,
             "updates": UP.supported(),
             "desktopSession": DESKTOP_SESSION,
@@ -411,7 +436,7 @@ def make_report(audio: str, lyrics_path: str, opts: dict) -> dict:
         return REP.build(audio, lyr, dur, env, hop,
                          model=opts.get("model", "small"),
                          separate=bool(opts.get("separate", True)) and S.available(),
-                         whisper=whisper,
+                         whisper=whisper, engine=opts.get("align", "auto"),
                          language=opts.get("lang", "auto"))
     finally:
         import shutil
@@ -570,6 +595,8 @@ class Handler(BaseHTTPRequestHandler):
 
             if path == "/api/state":
                 return self._json({"projects": P.list_all(PROJECTS),
+                                   "timingEngine": PREF.timing_engine(PROJECTS),
+                                   "downloadBrowser": FE.saved_browser(os.path.join(PROJECTS, '.download-browser.json')),
                                    "uiLangs": extra_langs(),
                                    "caps": capabilities(),
                                    "projectsDir": PROJECTS,
@@ -598,6 +625,14 @@ class Handler(BaseHTTPRequestHandler):
                     window_link_closed(self.server)
                 return
 
+            if path == "/api/update/notes":
+                try:
+                    notes = UP.release_notes(q.get("tag", [""])[0], i18n.lang())
+                    return self._json({"notes": notes})
+                except Exception:
+                    # A missing changelog must not prevent installing an update.
+                    return self._json({"notes": ""})
+
             if path == "/api/update":
                 try:
                     return self._json(UP.public(UP.latest()))
@@ -608,6 +643,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/job":
                 with JOBS_LOCK:
                     job = JOBS.get(q.get("id", [""])[0])
+                    if job:
+                        job = dict(job)
+                        control = JOB_CONTROLS.get(job['id'])
+                        job['cancellable'] = bool(control and not control.committing and not job['done'])
                     return self._json(job or {"error": tr("no such task", "нет такой задачи")})
 
             if path == "/api/messages":
@@ -736,6 +775,34 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/upload":
                 return self._upload(q)
             body = self._body()
+            if path in ('/api/fetch', '/api/fetch/browser', '/api/preferences/timing'):
+                # Browser-session access must not be triggered by a foreign
+                # web page posting a form to the local Studio service.
+                origin = self.headers.get('Origin')
+                foreign = origin and (urlparse(origin).scheme != 'http' or
+                                      urlparse(origin).netloc != self.headers.get('Host'))
+                if (foreign or self.headers.get('Sec-Fetch-Site') == 'cross-site' or
+                        self.headers.get('Content-Type', '').split(';')[0].strip() != 'application/json'):
+                    return self._err(403, tr('Browser-session requests must originate in Studio.',
+                                            'Запросы сессии браузера разрешены только из студии.'))
+
+            if path == '/api/preferences/timing':
+                engine = body.get('engine')
+                if engine not in PREF.ENGINES:
+                    return self._err(400, 'Unsupported timing engine')
+                PREF.save_timing_engine(PROJECTS, engine)
+                return self._json({'engine': engine})
+
+            if path == '/api/job/cancel':
+                with JOBS_LOCK:
+                    job = JOBS.get(body.get('id'))
+                    control = JOB_CONTROLS.get(body.get('id'))
+                    if not job or not control:
+                        return self._err(400, tr('This task cannot be cancelled.', 'Эту задачу нельзя отменить.'))
+                    accepted = not job['done'] and control.cancel()
+                    if accepted:
+                        job['cancelling'] = True
+                return self._json({'accepted': bool(accepted)})
 
             if path == "/api/audio/info":
                 audio = body.get("path", "")
@@ -761,7 +828,7 @@ class Handler(BaseHTTPRequestHandler):
 
             if path == "/api/models/open-folder":
                 from kstudio import models as M
-                folder = M.whisper_dir()
+                folder = M.qwen_dir() if body.get("engine") == "qwen" else M.whisper_dir()
                 try:
                     os.makedirs(folder, exist_ok=True)
                     reveal(folder)
@@ -823,8 +890,16 @@ class Handler(BaseHTTPRequestHandler):
                     return self._err(400, FE.how_to_install())
                 jid = start_job(tr("Taking the sound from the link",
                                    "Достаю звук по ссылке"),
-                                lambda log: FE.download(url, staging_dir(), log))
+                                lambda log: FE.download(url, staging_dir(), log,
+                                    embedded=embedded_youtube_download if DESKTOP_NATIVE_WINDOW is not None else None))
                 return self._json({"job": jid})
+
+            if path == '/api/fetch/browser':
+                browser = body.get('browser')
+                if browser is not None and browser not in FE.BROWSERS:
+                    return self._err(400, 'Unsupported browser')
+                FE.save_browser(os.path.join(PROJECTS, '.download-browser.json'), browser)
+                return self._json({'browser': browser})
 
             if path == "/api/lyrics/find":
                 # A suggestion, not an answer: the words are shown to be read
@@ -877,6 +952,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"job": jid})
 
             if path == "/api/new":
+                if body.get("align") == "qwen":
+                    from kstudio import qwen as QW
+                    if not QW.available():
+                        return self._err(400, tr("Qwen is not installed in this build.",
+                                                 "Qwen не установлен в этой сборке."))
                 audio, lyrics = body.get("audio", ""), body.get("lyrics", "")
                 for f in (audio, lyrics):
                     if not os.path.isfile(f):
@@ -949,7 +1029,7 @@ class Handler(BaseHTTPRequestHandler):
                         discard_staged(src)
                     return os.path.basename(folder)
 
-                jid = start_job(tr("Building the song", "Собираю песню"), build_project)
+                jid = start_job(tr("Building the song", "Собираю песню"), build_project, cancellable=True)
                 return self._json({"job": jid})
 
             m = re.match(r"^/api/project/([^/]+)/timings$", path)
@@ -1140,14 +1220,14 @@ class Handler(BaseHTTPRequestHandler):
                 folder = project_dir(m.group(1))
                 jid = start_job(tr("Timing a few lines again",
                                    "Размечаю несколько строк заново"),
-                                lambda log: realign_part(folder, body, log))
+                                lambda log: realign_part(folder, body, log), cancellable=True)
                 return self._json({"job": jid})
 
             m = re.match(r"^/api/project/([^/]+)/realign$", path)
             if m:
                 folder = project_dir(m.group(1))
                 jid = start_job(tr("Recomputing the timing", "Пересчитываю разметку"),
-                                lambda log: realign(folder, body, log))
+                                lambda log: realign(folder, body, log), cancellable=True)
                 return self._json({"job": jid})
 
             m = re.match(r"^/api/project/([^/]+)/export$", path)
@@ -1221,14 +1301,21 @@ def browse(path: str, kind: str) -> dict:
             "dirs": dirs, "files": files, "drives": drives}
 
 
-def timing_audio(folder: str, data: dict) -> tuple:
-    """The complete recording used for re-timing, plus whether it is isolated.
+def timing_audio(folder: str, data: dict, engine=None) -> tuple:
+    """Engine-specific re-timing source, plus whether it is isolated.
 
     Demucs stems are playback material.  They are not a reliable transcript
     source: a separator can lose quiet speech or processed vocals.  Prefer the
     original file, then a mix kept by older/non-separated projects.  A vocal
     stem is only the last-resort fallback for a project whose source moved.
+    Qwen is the exception: it prefers the vocal stem, and can retry suspicious
+    phrases against the complete original. An explicit engine choice wins
+    over the engine saved in the project.
     """
+    if (engine or data.get("engine")) == "qwen":
+        vocal = vocal_timing_audio(folder, data)
+        if vocal:
+            return vocal, True
     source = data.get("source_audio") or ""
     if source and os.path.isfile(source):
         return source, False
@@ -1287,7 +1374,9 @@ def realign_part(folder: str, opts: dict, log) -> dict:
         raise ValueError(tr("the chosen lines could not be read back as text",
                             "выбранные строки не удалось прочитать обратно как текст"))
 
-    audio, isolated = timing_audio(folder, data)
+    chosen_engine = opts.get("align", "qwen" if data.get("engine") == "qwen" else "auto")
+    audio, isolated = timing_audio(folder, data, chosen_engine)
+    original = timing_audio(folder, data, "auto")[0] if isolated and chosen_engine == "qwen" else None
     AU.ensure_on_path()
     model = (opts.get("model") or data.get("model") or "small")
     log(tr(f"Timing lines {a + 1}–{b + 1} again, inside {A.mmss(lo)}–{A.mmss(hi)}, "
@@ -1303,9 +1392,10 @@ def realign_part(folder: str, opts: dict, log) -> dict:
         outside.append((hi, dur))
     outside += A.spans(opts.get("noText") if opts.get("noText") is not None
                        else (data.get("noText") or ""), dur)
-    piece, engine = A.align(piece, audio, dur, opts.get("align", "auto"), model,
+    piece, engine = A.align(piece, audio, dur,
+                            chosen_engine, model,
                             opts.get("lang", "auto"), None, log,
-                            isolated=isolated, skip=outside)
+                            isolated=isolated, skip=outside, fallback_audio=original)
     onset_audio = vocal_timing_audio(folder, data)
     if onset_audio and engine == "whisper" and not piece.fixed_line_starts:
         A.refine_leading_silence(piece, onset_audio, log=log)
@@ -1333,6 +1423,13 @@ def realign_part(folder: str, opts: dict, log) -> dict:
 
 
 def realign(folder: str, opts: dict, log) -> dict:
+    # Rebuilt source text is temporary until timing succeeds. Cancelling must
+    # not change any file in the existing project, including auxiliary lyrics.
+    with tempfile.TemporaryDirectory(prefix="karaoke_realign_") as scratch:
+        return _realign(folder, opts, log, scratch)
+
+
+def _realign(folder: str, opts: dict, log, scratch: str) -> dict:
     """Recompute the timing — for instance once stable-ts has been installed.
     The stems are already in the project, so Demucs is not run again."""
     from kstudio import align as A
@@ -1378,7 +1475,7 @@ def realign(folder: str, opts: dict, log) -> dict:
         if not kept:
             raise ValueError(tr("removing backing vocals would leave no lyrics",
                                 "после удаления бэк-вокала текст останется пустым"))
-        src = os.path.join(folder, "lyrics-without-backing.txt")
+        src = os.path.join(scratch, "lyrics-without-backing.txt")
         tmp = src + ".tmp"
         with open(tmp, "w", encoding="utf-8", newline="\n") as f:
             f.write("\n".join(out) + "\n")
@@ -1427,7 +1524,9 @@ def realign(folder: str, opts: dict, log) -> dict:
         raise ValueError(tr("the lyrics file has no lines at all",
                             "в файле с текстом не нашлось ни одной строки"))
 
-    audio, isolated = timing_audio(folder, data)
+    chosen_engine = opts.get("align", "qwen" if data.get("engine") == "qwen" else "auto")
+    audio, isolated = timing_audio(folder, data, chosen_engine)
+    original = timing_audio(folder, data, "auto")[0] if isolated and chosen_engine == "qwen" else None
     AU.ensure_on_path()
     holes = A.spans(opts.get("noText") or "", data["duration"]) + \
         A.spans(getattr(lyr, "skips", []), data["duration"])
@@ -1462,10 +1561,10 @@ def realign(folder: str, opts: dict, log) -> dict:
     model = (opts.get("model") or data.get("model") or "small")
     log(tr(f"Model: {model}", f"Модель: {model}"))
     lyr, engine = A.align(lyr, audio, data["duration"],
-                          opts.get("align", "auto"), model,
+                          chosen_engine, model,
                           opts.get("lang", "auto"), None, log,
                           isolated=isolated,
-                          skip=holes)
+                          skip=holes, fallback_audio=original)
     onset_audio = vocal_timing_audio(folder, data)
     if onset_audio and engine == "whisper" and not lyr.fixed_line_starts:
         A.refine_leading_silence(lyr, onset_audio, log=log)
@@ -1485,7 +1584,8 @@ def realign(folder: str, opts: dict, log) -> dict:
     data["stripBacking"] = strip_backing
     data["noText"] = ", ".join(f"{a:.1f}-{b:.1f}" for a, b in holes)
     data["keepSpans"] = P.keep_spans(data)
-    data["model"] = model
+    data["model"] = "qwen3-forcedaligner-0.6b" if engine == "qwen" else model
+    JC.commit()
     if fresh:
         data["source_lyrics"] = P.store_source(folder, src, "lyrics")
         discard_staged(src)
@@ -2513,6 +2613,11 @@ def set_windows_app_identity() -> bool:
     return WA.set_process_identity()
 
 
+def embedded_youtube_download(url, dest_dir, log):
+    from kstudio.embedded_youtube import download
+    return download(url, dest_dir, log)
+
+
 def run_desktop_window(server, url: str, force_browser: bool = False) -> None:
     """Serve the Studio inside its own Windows WebView2 application window.
 
@@ -2544,6 +2649,8 @@ def run_desktop_window(server, url: str, force_browser: bool = False) -> None:
 
             def close_when_server_stops():
                 worker.join()
+                from kstudio.embedded_youtube import close as close_youtube
+                close_youtube()
                 current = DESKTOP_NATIVE_WINDOW
                 if current is not None:
                     try:
@@ -2581,6 +2688,8 @@ def run_desktop_window(server, url: str, force_browser: bool = False) -> None:
             server.shutdown()
         worker.join(timeout=5)
     finally:
+        from kstudio.embedded_youtube import close as close_youtube
+        close_youtube()
         DESKTOP_NATIVE_WINDOW = None
         if worker.is_alive():
             server.shutdown()
@@ -2706,6 +2815,9 @@ def main(argv=None) -> int:
                 except Exception:
                     continue
             return 1
+    if args[:1] == ["--internal-youtube"]:
+        from kstudio.youtube import main as youtube_main
+        return youtube_main(args[1:])
     if args[:1] == ["--internal-package-smoke"]:
         try:
             if os.name == "nt":

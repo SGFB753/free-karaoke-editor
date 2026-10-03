@@ -73,6 +73,7 @@
      top, clipped by width. Only the width changes, so the browser does not
      redraw the text every frame and the highlight does not flicker. */
   .ln .w{position:relative; display:inline-block; white-space:pre}
+  .ln .wgroup{display:inline-block; white-space:nowrap}
   .ln .w .hl{
     position:absolute; left:0; top:0; width:0; overflow:hidden; white-space:pre;
     color:var(--accent); pointer-events:none;
@@ -506,9 +507,17 @@ function build(){
     const el = document.createElement("div");
     el.className = "ln" + (ln.backing ? " back" : "") + voiceClass(ln)
       + (ln.keep ? " keep" : "");
+    let wordHost = el;
     ln.words.forEach((w, j) => {
       // a syllable reads on to the word before it: no space between them
       const nxt = ln.words[j + 1];
+      if (!w.g || !j){
+        wordHost = el;
+        if (nxt && nxt.g){
+          wordHost = document.createElement("span"); wordHost.className = "wgroup";
+          el.appendChild(wordHost);
+        }
+      }
       const shown = cleanPunctuation(w.w);
       const noGap = nxt && /^[,.;:!?…»\)\]\}]/.test(cleanPunctuation(nxt.w));
       const txt = shown + (nxt && !nxt.g && !noGap ? " " : "");
@@ -519,7 +528,7 @@ function build(){
       hl.textContent = txt;
       sp.appendChild(hl);
       sp.appendChild(document.createTextNode(txt));
-      el.appendChild(sp);
+      wordHost.appendChild(sp);
     });
     el.addEventListener("click", () => {
       // in tap mode a click chooses WHICH line to carry on tapping from
@@ -538,7 +547,7 @@ function build(){
     }
     scroll.appendChild(el);
     // The “original sings” tag is not a word, there is nothing to highlight.
-    const spans = [...el.children].filter(e => e.classList.contains("w"));
+    const spans = [...el.querySelectorAll(".w")];
     lineEls.push({el, pips, dots: [...pips.children], spans,
                   hls: spans.map(s => s.firstChild)});
   });

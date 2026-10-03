@@ -3,6 +3,7 @@
 // in the editor before: trimming an edge only moves the outermost word, and a
 // line wholly inside a hole could not be trimmed at all.
 import puppeteer from 'puppeteer';
+import {useWorkspaceNavigation} from '../helpers/workspace-navigation.mjs';
 
 const API = process.env.KARAOKE_API;
 let fail = 0;
@@ -32,6 +33,7 @@ await save(bent);
 
 const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disable-dev-shm-usage']});
 const p = await b.newPage();
+useWorkspaceNavigation(p);
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('dialog', d => d.accept());
 await p.setViewport({width:1366, height:900});

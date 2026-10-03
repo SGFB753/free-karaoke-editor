@@ -51,6 +51,37 @@ def whisper_all() -> Dict[str, bool]:
             ("tiny", "base", "small", "medium", "large-v3-turbo", "large-v3")}
 
 
+QWEN_MODEL = "Qwen/Qwen3-ForcedAligner-0.6B"
+QWEN_REVISION = "c7cbfc2048c462b0d63a45797104fc9db3ad62b7"
+
+
+def qwen_dir() -> str:
+    """A separate, inspectable cache; never overwrite Whisper's weights."""
+    default = os.path.join(os.path.expanduser("~"), ".cache")
+    return os.path.join(os.getenv("XDG_CACHE_HOME", default), "karaoke-studio",
+                        "qwen3-forcedaligner-0.6b")
+
+
+def qwen_ready() -> bool:
+    import json
+    folder = qwen_dir()
+    try:
+        if not all(os.path.isfile(os.path.join(folder, name)) and
+                   os.path.getsize(os.path.join(folder, name)) > 0 for name in
+                   ("config.json", "preprocessor_config.json", "tokenizer_config.json",
+                    "vocab.json", "merges.txt")):
+            return False
+        single = os.path.join(folder, "model.safetensors")
+        if os.path.isfile(single):
+            return os.path.getsize(single) > _MIN_BYTES
+        with open(os.path.join(folder, "model.safetensors.index.json"), encoding="utf-8") as f:
+            shards = set(json.load(f)["weight_map"].values())
+        return bool(shards) and all(os.path.getsize(os.path.join(folder, name)) > _MIN_BYTES
+                                   for name in shards)
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+
+
 def load_note(name: str) -> str:
     """A log line based on what is really on disk, not on a guess."""
     size = size_label(name)

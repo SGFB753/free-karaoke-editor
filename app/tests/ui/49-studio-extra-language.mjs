@@ -61,12 +61,12 @@ try {
   // An empty value and a missing key — we take English, not emptiness.
   doc.querySelectorAll('.card')[0].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
   await sleep(1400);
-  const heads = [...doc.querySelectorAll('.side h3')].map(e => e.textContent.trim());
+  const heads = [...doc.querySelectorAll('.side h2, .side h3, .review-summary > summary')].map(e => e.textContent.trim());
   ok('an empty translation falls back to English', heads.includes('Summary'), heads.join(' | '));
-  ok('the translated key is in place', heads.includes('Check XX'), heads.join(' | '));
+  ok('the translated key is in place', /Timeline XX/.test(doc.querySelector('.timeline-title').textContent));
   ok('and keys missing from the file are not empty either',
-     /Timeline XX/.test(doc.querySelector('.tlhead').textContent),
-     doc.querySelector('.tlhead').textContent.slice(0,40));
+     /Check these timings/.test(doc.querySelector('.review-card').textContent),
+     doc.querySelector('.review-card').textContent.slice(0,40));
   ok('no JS errors', w.__errs.length===0, w.__errs.slice(0,2).join(' | '));
 } finally {
   fs.unlinkSync(file);

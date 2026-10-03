@@ -89,8 +89,9 @@ ok('the look was saved', Array.isArray(d.theme) && d.theme[0] === '#101820',
 
 console.log('\n--- a span the original sings ---');
 ok('the button is there and switched off', !$("btnKeep").classList.contains('on'));
-ok('Original stands at the right edge of the toolbar',
-   $("btnKeep") === $("btnKeep").parentElement.lastElementChild);
+ok('Original and singer are together in the always-open line properties',
+   $("btnKeep").closest('[data-pane]')?.dataset.pane === 'line'
+   && $("btnKeep").parentElement.contains($("btnVoice")) && !$("btnVoice").closest('details'));
 ok('wordless marks keep their sound without a redundant checkbox',
    !$("chkKeepMarks"));
 // Put the playhead inside that line with the voice slider at zero.  The click

@@ -33,6 +33,9 @@ ok('it names the way of writing it in the lyrics file too',
    /\[/.test(hint) && /3:10/.test(hint), hint.slice(-60));
 
 console.log('\n--- a song built with the first two phrases marked ---');
+await p.click('.build-advanced > summary');
+ok('the advanced settings really open under the cursor',
+  await p.$eval('.build-advanced', e => e.open));
 // The test song sings at 2.0-4.6, 5.0-7.6, 8.0-10.6, 11.0-13.6, 16.0-18.6,
 // 19.0-21.6. Marked to 0:08, nothing may be laid on the first two.
 await p.$eval('#inAudio', (e, v) => { e.value = v; e.dispatchEvent(new Event('input', {bubbles:true})); },
@@ -66,6 +69,7 @@ if (built){
      await p.$eval('#edNoText', e => e.value));
 
   console.log('\n--- and the labels keep off the colour swatches ---');
+  await p.click('#btnWorkspaceLook');
   // In a narrow window the caption used to be squeezed into the swatches next
   // to it and printed over them.
   for (const width of [1366, 1100, 900]){

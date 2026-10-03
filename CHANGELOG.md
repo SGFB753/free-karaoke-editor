@@ -7,6 +7,70 @@ commits themselves are one click away in the history.
 
 ---
 
+## 5.0.0
+
+### Interface
+
+- Reworked the library, new-song form and editor, retaining the dark palette,
+  editing capabilities and keyboard shortcuts.
+- The right-hand panel provides selected lyrics, line properties and timing
+  review. Enter or leaving the field saves edits; Escape cancels the draft.
+- Main commands are grouped above the timeline. Dedicated buttons open
+  appearance, lyrics and audio settings. Exports are in the header;
+  the installed version appears on the main screens.
+- The interface adapts to window size: commands wrap, properties move below
+  the editor in narrow windows, and short windows allow vertical scrolling.
+  The countdown does not cover lyrics.
+- The new-song form places playback beside the source and song metadata
+  before lyrics. Technical parameters and manual pauses are in advanced settings.
+- Timing-engine descriptions explain each mode. Qwen distinguishes the size
+  of downloaded weights from its approximate RAM guideline.
+- The last selected timing engine is remembered across application launches.
+- Enlarged the Listen to vocals slider. Mouse-wheel steps are 5%, or 1% with
+  Shift; this setting does not change exported audio.
+- Improved dropdown readability. Lyrics-search cards stay within the form,
+  with action buttons below the text in narrow windows.
+- Editing lyrics or undoing edits refreshes timeline word labels even when
+  the word count is unchanged. Zoomed-out word and letter chips do not shift
+  beyond their actual timing boundaries.
+- After the lyrics finish, the preview stays on the last line.
+
+### Timing and held notes
+
+- Initial timing and project re-timing can be cancelled. Existing timing
+  is preserved; cancelling new-song timing returns to the selected inputs
+  and options. An in-flight model operation may take time to finish.
+- Added experimental Qwen3-ForcedAligner-0.6B for aligning supplied lyrics
+  to vocals. It requires additional dependencies and separate weights;
+  it does not automatically replace Whisper.
+- Qwen re-checks suspect phrases, including severely compressed words,
+  within bounded excerpts of the vocal stem and original recording.
+  Healthy phrases are not redistributed; unresolved warnings appear in the log.
+  Backing vocals and search-window boundaries in long songs still need review.
+- Qwen recovers sustained vocal endings from the vocal stem without crossing
+  pauses. Same-voice phrase tails stop at the next onset; different voices,
+  backing vocals and manual anchors are preserved.
+- Double-click a word to hold a selected letter, optionally ending at the
+  playhead. Spelling stays joined; saving, undo, rhythm copying and video
+  export are supported.
+
+### Link downloads
+
+- Added automatic YouTube download recovery: after the main downloader fails,
+  Studio tries an alternative built-in downloader and, in the native desktop
+  window, its own private YouTube session.
+- If YouTube requires verification, Studio shows its page and then resumes
+  downloading automatically. No installed browser or manual file transfer
+  is needed. Closing the window stops verification; the session is not retained
+  across launches. YouTube restrictions may still prevent downloading.
+
+### Updates
+
+- Before installation, changes since the installed version appear in the
+  interface language: CHANGELOG.ru.md for Russian, CHANGELOG.md for English.
+- Notes are retrieved from the release tag. Installation remains available
+  if the notes cannot be downloaded.
+
 ## 4.49.6
 
 Adjacent word timings within one line no longer overlap after automatic

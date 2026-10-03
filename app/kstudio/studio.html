@@ -14,6 +14,10 @@
     --bg:#0a0b14; --bg2:#141830; --panel:rgba(255,255,255,.06); --line:rgba(255,255,255,.12);
     --dim:#5d6480; --text:#e8ebf5; --muted:#8b93b0;
     --accent:#4de1ff; --accent-2:#ff8ad1; --accent2:#ffcc4d; --bad:#ff7a7a; --ok:#7ee08a;
+    /* Editor chrome stays dark independently of the song's export colours. */
+    --ui-bg:#0a0b14; --ui-header:#0d0e17; --ui-surface:#11121c;
+    --ui-control:#181925; --ui-hover:#222432; --ui-field:#090a12;
+    --ui-line:rgba(255,255,255,.10); --ui-edge:rgba(255,255,255,.18);
   }
   *{box-sizing:border-box; margin:0; padding:0}
   html,body{height:100%}
@@ -33,6 +37,9 @@
     padding:7px 10px}
   input:focus,select:focus,textarea:focus{outline:2px solid rgba(77,225,255,.5);
     outline-offset:-1px}
+  /* Native Windows popups do not inherit the translucent field background. */
+  select{color-scheme:dark}
+  select option,select optgroup{background:#181925; color:#e8ebf5}
   textarea{width:100%; resize:vertical; line-height:1.6; user-select:text;
     font-family:inherit; min-height:120px}
   .muted{color:var(--muted)}
@@ -101,10 +108,13 @@
   body.marking #blocks, body.marking #words{pointer-events:none}
   /* Lyrics found by the name of the song: a suggestion to read, not an answer.
      Each one says where it came from and how many lines it has. */
-  .found{display:grid; gap:8px}
+  .found{display:grid; grid-template-columns:minmax(0,1fr); min-width:0; gap:8px;
+    container-type:inline-size}
   .found .one{display:flex; align-items:center; gap:12px; padding:10px 12px;
     border:1px solid var(--line); border-radius:10px; background:rgba(0,0,0,.22)}
   .found .one .t{flex:1; min-width:0}
+  .found .one{min-width:0; max-width:100%}
+  .found .one .t b{overflow-wrap:anywhere}
   .found .one .acts{display:flex; flex:0 0 auto; flex-direction:column; gap:6px;
     align-items:stretch}
   .found .one .acts button{white-space:nowrap}
@@ -163,6 +173,11 @@
   .found .one .t span{font-size:0.7812rem; color:var(--muted)}
   .found .one .first{font-size:0.7812rem; color:var(--muted); font-style:italic;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%}
+  @container (max-width:480px){
+    .found .one{flex-direction:column; align-items:stretch}
+    .found .one .acts{flex-direction:row; flex-wrap:wrap; align-self:stretch}
+    .found .one .acts button{white-space:normal; min-width:0; max-width:100%}
+  }
   .hint{font-size:0.8438rem; color:var(--muted); line-height:1.6; margin-top:6px}
   .hint.warnish{color:var(--accent2)}
   /* The report before building: the song, the text, what to expect. */
@@ -182,6 +197,15 @@
   /* ---------- file browser ---------- */
   .modal{position:fixed; inset:0; background:rgba(4,6,14,.72); display:grid;
     place-items:center; z-index:60}
+  .ln .wgroup{display:inline-block; white-space:nowrap}
+  .letterbox{width:min(480px,92vw); padding:22px; background:var(--panel,#11131d);
+    border:1px solid var(--line); border-radius:14px}
+  .letterbox h3{margin:0 0 12px}
+  .letterbox p{color:var(--muted); line-height:1.5}
+  .letterchoices{display:flex; flex-wrap:wrap; gap:6px; margin:16px 0}
+  .letterchoices button{min-width:36px; font-size:1.25rem}
+  .letterchoices button[aria-pressed="true"]{background:var(--accent); color:#07131a}
+  .letteractions{display:flex; justify-content:flex-end; gap:8px; margin-top:18px}
   .browser{width:min(720px,92vw); height:min(70vh,620px); background:#12162a;
     border:1px solid var(--line); border-radius:14px; display:flex; flex-direction:column}
   .browser .top{display:flex; gap:8px; align-items:center; padding:12px;
@@ -564,6 +588,270 @@
   .saved.ok{color:var(--ok)}
   .saved.busy{color:var(--accent2)}
   .saved.bad{color:var(--bad)}
+  /* Shared library/build surfaces. The editor below has its own declarative shell. */
+  :root{--surface:rgba(23,27,43,.92); --surface-hover:rgba(255,255,255,.08)}
+  button{border-radius:8px; background:rgba(255,255,255,.035); font-weight:500;
+    padding:9px 12px; transition:background .12s,border-color .12s}
+  button:hover{background:var(--surface-hover); border-color:rgba(255,255,255,.24)}
+  button:focus-visible, [tabindex]:focus-visible{outline:2px solid var(--accent); outline-offset:3px}
+  button.pri{box-shadow:0 3px 14px rgba(77,225,255,.10)}
+  button:disabled{opacity:.32; box-shadow:none}
+  header{padding:14px 22px; gap:12px; background:rgba(10,11,20,.65); min-height:64px}
+  header h1{font-size:1rem; font-weight:650; letter-spacing:-.02em}
+  header h1#edTitle{max-width:50ch; flex:0 1 auto; min-width:0}
+  .app-version{font:500 .6875rem ui-monospace,Consolas,monospace; color:var(--muted);
+    border:1px solid var(--line); border-radius:6px; padding:4px 7px; white-space:nowrap; flex:none}
+  #scrEdit > header{flex-wrap:wrap}
+  #scrEdit > header .saved{white-space:nowrap}
+  .library-intro{width:100%; max-width:1060px; padding:22px 0 28px}
+  .library-intro h2{font-size:1.75rem; letter-spacing:-.04em; margin-bottom:9px}
+  .library-intro p{color:var(--muted); line-height:1.6; max-width:60ch}
+  #scrList .list{padding:22px 36px 40px}
+  .cards{max-width:1060px; gap:14px; grid-template-columns:1fr}
+  .card{min-height:100px; padding:20px; border-radius:14px;
+    background:linear-gradient(140deg,rgba(255,255,255,.045),rgba(255,255,255,.015));
+    transition:background .15s,border-color .15s}
+  .card:hover{border-color:rgba(77,225,255,.35); background:rgba(77,225,255,.045)}
+  .card:only-child{grid-column:1 / -1}
+  .card::before{content:"♪"; display:grid; place-items:center; flex:none; width:44px; height:52px;
+    border-radius:10px; background:rgba(77,225,255,.09); color:var(--accent); font-size:1.4rem}
+  .card .t b{font-size:1rem; margin-bottom:7px}
+  .card .badge{border:0; background:rgba(255,255,255,.045); font-variant-numeric:tabular-nums}
+  .form{max-width:780px; padding:16px 0 32px; gap:16px}
+  .new-intro{color:var(--muted); padding:4px 2px 10px; font-size:.8125rem; letter-spacing:.03em}
+  #scrNew .form > .field{padding:20px 22px; border:1px solid var(--line); border-radius:14px;
+    background:rgba(255,255,255,.025); gap:12px}
+  #scrNew .field > label{color:var(--text); font-weight:650; font-size:.9375rem}
+  #scrNew label[data-step]::before{content:attr(data-step); display:inline-grid; place-items:center;
+    width:24px; height:24px; border-radius:7px; margin-right:10px; background:rgba(77,225,255,.10);
+    color:var(--accent); font: .75rem ui-monospace,Consolas,monospace}
+  .build-advanced{border-top:1px solid var(--line); margin-top:6px; padding-top:12px}
+  .build-advanced > summary{font-size:.8125rem; color:var(--muted); cursor:pointer; padding:4px 0 8px}
+  .build-advanced > select{margin:8px 0; width:100%; min-width:0}
+  .build-advanced > .field{margin-top:16px; padding-top:12px; border-top:1px solid var(--line)}
+  #scrNew .build-actions{flex:none; padding:10px 24px; border-top:1px solid var(--line);
+    background:var(--bg2)}
+  #scrNew .build-actions > div{max-width:780px; margin:auto}
+  #btnBuild{width:100%; justify-content:center; padding:14px}
+  input,select,textarea{border-radius:8px; background:rgba(0,0,0,.20)}
+  .pickrow input{min-width:0}
+  .pickrow button{flex:none}
+  /* Editor shell: three distinct surfaces, not a flat wall of controls. */
+  #scrEdit{background:var(--ui-bg)}
+  #scrEdit > header{min-height:calc(54px * var(--editor-scale, 1)); padding:calc(10px * var(--editor-scale, 1)) calc(20px * var(--editor-scale, 1)); background:var(--ui-header)}
+  #scrEdit > header h1{font-size:calc(15px * var(--editor-scale, 1))}
+  .workspace-bar{display:flex; align-items:center; justify-content:space-between; gap:calc(20px * var(--editor-scale, 1));
+    padding:calc(12px * var(--editor-scale, 1)) calc(20px * var(--editor-scale, 1)); border-bottom:calc(1px * var(--editor-scale, 1)) solid var(--ui-line); background:var(--ui-surface); flex:none}
+  .workspace-heading{display:flex; align-items:center; gap:calc(12px * var(--editor-scale, 1)); min-width:0}
+  .workspace-dot{height:calc(10px * var(--editor-scale, 1)); width:calc(10px * var(--editor-scale, 1)); border-radius:50%; background:var(--accent); flex:none}
+  .workspace-heading h2{font-size:calc(18px * var(--editor-scale, 1)); font-weight:650; letter-spacing:-.02em}
+  .workspace-heading p{font-size:calc(13px * var(--editor-scale, 1)); color:var(--muted); margin-top:calc(4px * var(--editor-scale, 1))}
+  .workspace-destinations{display:flex; gap:calc(10px * var(--editor-scale, 1)); flex:none}
+  .destination{min-width:140px; background:var(--ui-control); border:calc(1px * var(--editor-scale, 1)) solid var(--ui-edge); padding:calc(10px * var(--editor-scale, 1)) calc(14px * var(--editor-scale, 1));
+    gap:calc(12px * var(--editor-scale, 1)); min-height:calc(56px * var(--editor-scale, 1)); text-align:left; border-radius:calc(10px * var(--editor-scale, 1))}
+  .destination svg{color:#8ac3ce; flex:none}
+  .destination b{display:block; font-size:calc(14px * var(--editor-scale, 1)); font-weight:600}
+  .destination small{display:block; font-size:calc(12px * var(--editor-scale, 1)); color:var(--muted); margin-top:calc(4px * var(--editor-scale, 1))}
+  .destination:hover{background:var(--ui-hover); border-color:rgba(77,225,255,.3)}
+  .edit{gap:0; background:var(--ui-bg)}
+  .editor-workspace{display:flex; flex:1; min-height:0; overflow:hidden}
+  .editing-area{display:flex; flex-direction:column; flex:1; min-width:0; min-height:0}
+  .preview-area{flex:1; display:flex; flex-direction:column; min-width:0; min-height:0; padding:calc(14px * var(--editor-scale, 1)) calc(16px * var(--editor-scale, 1))}
+  .preview-caption{display:flex; align-items:center; justify-content:space-between; gap:calc(12px * var(--editor-scale, 1));
+    font-size:calc(13px * var(--editor-scale, 1)); color:var(--muted); flex:none; margin-bottom:calc(10px * var(--editor-scale, 1))}
+  .preview-caption button{font-size:calc(13px * var(--editor-scale, 1)); min-height:calc(32px * var(--editor-scale, 1)); padding:calc(6px * var(--editor-scale, 1)) calc(12px * var(--editor-scale, 1))}
+  .stagewrap{margin:0; border:calc(1px * var(--editor-scale, 1)) solid var(--ui-line); border-radius:calc(12px * var(--editor-scale, 1)); background:rgba(0,0,0,.12); min-height:0;
+    container-type:inline-size}
+  /* Size lyrics against their own preview, not the window including inspector. */
+  .ln{font-size:clamp(calc(26px * var(--editor-scale, 1)),2.8cqw,calc(40px * var(--editor-scale, 1)))}
+  .ln.back{font-size:clamp(calc(20px * var(--editor-scale, 1)),2.1cqw,calc(30px * var(--editor-scale, 1)))}
+  .side{width:calc(350px * var(--editor-scale, 1)); flex:none; padding:0; background:var(--ui-surface); min-height:0; overflow:auto;
+    scrollbar-gutter:stable; display:block; border-left:calc(1px * var(--editor-scale, 1)) solid var(--ui-line)}
+  .inspector-pane{padding:calc(16px * var(--editor-scale, 1)); border-bottom:calc(1px * var(--editor-scale, 1)) solid var(--ui-line)}
+  .section-heading{display:flex; flex-direction:column; gap:calc(6px * var(--editor-scale, 1)); margin-bottom:calc(12px * var(--editor-scale, 1))}
+  .section-heading h2,.settings-drawer h2{font-size:calc(16px * var(--editor-scale, 1)); font-weight:650; letter-spacing:-.02em}
+  #selNote{font-size:calc(12px * var(--editor-scale, 1)); color:#80d9ed; font-variant-numeric:tabular-nums}
+  .editor-label{display:block; font-size:calc(12px * var(--editor-scale, 1)); color:#a5adc5; margin-bottom:calc(7px * var(--editor-scale, 1))}
+  #inlineLineText{min-height:calc(62px * var(--editor-scale, 1)); height:calc(66px * var(--editor-scale, 1)); resize:vertical; max-height:calc(140px * var(--editor-scale, 1));
+    background:var(--ui-field); border-color:var(--ui-edge); padding:calc(9px * var(--editor-scale, 1)) calc(11px * var(--editor-scale, 1)); font-size:calc(14px * var(--editor-scale, 1)); line-height:1.45}
+  #inlineLineText:disabled{color:var(--muted); background:var(--ui-bg)}
+  .line-edit-actions{display:flex; align-items:center; gap:calc(10px * var(--editor-scale, 1)); margin:calc(8px * var(--editor-scale, 1)) 0 calc(14px * var(--editor-scale, 1))}
+  .line-edit-actions > span{flex:1; color:var(--muted); font-size:calc(11px * var(--editor-scale, 1)); line-height:1.4}
+  .line-edit-actions button{font-size:calc(12px * var(--editor-scale, 1)); padding:calc(7px * var(--editor-scale, 1)) calc(10px * var(--editor-scale, 1)); min-height:calc(32px * var(--editor-scale, 1))}
+  .inspector-group{padding-top:calc(14px * var(--editor-scale, 1)); border-top:calc(1px * var(--editor-scale, 1)) solid #303a4b}
+  .inspector-group + .inspector-group{margin-top:calc(20px * var(--editor-scale, 1))}
+  .inspector-group h3{font-size:calc(13px * var(--editor-scale, 1)); color:#bac0d3; font-weight:600; margin:0 0 calc(10px * var(--editor-scale, 1)); padding:0;
+    text-transform:none; letter-spacing:0}
+  .inspector-controls{display:flex; flex-wrap:wrap; gap:calc(7px * var(--editor-scale, 1)); align-items:center}
+  .inspector-controls > button{flex:1 1 44%; min-width:0; justify-content:center;
+    font-size:calc(13px * var(--editor-scale, 1)); min-height:calc(36px * var(--editor-scale, 1)); white-space:normal; line-height:1.3; padding:calc(8px * var(--editor-scale, 1)) calc(10px * var(--editor-scale, 1))}
+  .inspector-controls .pick{width:100%; border:0; padding:calc(10px * var(--editor-scale, 1)) 0; display:flex; align-items:center; gap:calc(12px * var(--editor-scale, 1))}
+  .inspector-controls .pick b{flex:1; font-size:calc(13px * var(--editor-scale, 1)); white-space:normal; max-width:calc(190px * var(--editor-scale, 1))}
+  .inspector-controls .darkknob,.inspector-controls .softkeep{width:100%; border:0; padding:calc(10px * var(--editor-scale, 1)) 0; gap:calc(8px * var(--editor-scale, 1)); flex-wrap:wrap}
+  .inspector-controls input[type=range]{flex:1; min-width:0; width:auto}
+  .inspector-controls .notext{width:100%; min-width:0; font-size:calc(13px * var(--editor-scale, 1))}
+  .panel-description{font-size:calc(13px * var(--editor-scale, 1)); color:var(--muted); line-height:1.5; margin:calc(8px * var(--editor-scale, 1)) 0 calc(18px * var(--editor-scale, 1))}
+  .settings-drawer .inspector-pane{border:0}
+  .drawer-heading{padding:calc(14px * var(--editor-scale, 1)) calc(16px * var(--editor-scale, 1)) 0}
+  .drawer-heading button{font-size:calc(13px * var(--editor-scale, 1)); min-height:calc(36px * var(--editor-scale, 1))}
+  .side.settings-open > .selection-card,.side.settings-open > .review-card{display:none}
+  .review-card{padding-top:calc(16px * var(--editor-scale, 1))}
+  .side .probs{padding:0; min-height:calc(60px * var(--editor-scale, 1)); max-height:calc(180px * var(--editor-scale, 1)); overflow:auto}
+  .prob{background:var(--ui-control); border:calc(1px * var(--editor-scale, 1)) solid var(--ui-line); padding:calc(12px * var(--editor-scale, 1)); margin-bottom:calc(8px * var(--editor-scale, 1)); border-radius:calc(9px * var(--editor-scale, 1))}
+  .prob b{font-size:calc(13px * var(--editor-scale, 1))}
+  .prob span{font-size:calc(12px * var(--editor-scale, 1)); line-height:1.55}
+  .review-summary{margin-top:calc(14px * var(--editor-scale, 1)); border-top:calc(1px * var(--editor-scale, 1)) solid var(--ui-line)}
+  .review-summary > summary{font-size:calc(13px * var(--editor-scale, 1)); padding:calc(12px * var(--editor-scale, 1)) 0 calc(2px * var(--editor-scale, 1)); color:var(--muted); cursor:pointer}
+  .sum{padding:calc(10px * var(--editor-scale, 1)) 0 0}
+  .sum .c{border-radius:calc(8px * var(--editor-scale, 1)); background:var(--ui-control)}
+  .timeline{background:var(--ui-surface); border-top:calc(1px * var(--editor-scale, 1)) solid var(--ui-edge); container-type:inline-size}
+  .timeline-heading{display:flex; align-items:center; justify-content:space-between; gap:calc(16px * var(--editor-scale, 1)); padding:calc(10px * var(--editor-scale, 1)) calc(18px * var(--editor-scale, 1))}
+  .timeline-title{display:flex; align-items:center; gap:calc(12px * var(--editor-scale, 1))}
+  .timeline-title h2{font-size:calc(15px * var(--editor-scale, 1)); font-weight:650}
+  #zoomNote{font:calc(12px * var(--editor-scale, 1)) ui-monospace,Consolas,monospace; color:var(--muted)}
+  .timeline-view{display:flex; gap:calc(6px * var(--editor-scale, 1)); align-items:center; flex-wrap:wrap}
+  .timeline-view button{font-size:calc(12px * var(--editor-scale, 1)); min-height:calc(30px * var(--editor-scale, 1)); padding:calc(5px * var(--editor-scale, 1)) calc(10px * var(--editor-scale, 1))}
+  .mmap{padding:0 calc(18px * var(--editor-scale, 1)) calc(8px * var(--editor-scale, 1))}
+  .mmap canvas{height:calc(16px * var(--editor-scale, 1)); background:var(--ui-field)}
+  .tlhead{padding:0 calc(18px * var(--editor-scale, 1)); display:block}
+  .timeline-primary{display:flex; gap:calc(10px * var(--editor-scale, 1)); align-items:center; flex-wrap:wrap; padding:0 0 calc(10px * var(--editor-scale, 1))}
+  .timeline-primary button{font-size:calc(13px * var(--editor-scale, 1)); min-height:calc(36px * var(--editor-scale, 1)); padding:calc(8px * var(--editor-scale, 1)) calc(12px * var(--editor-scale, 1))}
+  .timeline-primary .chk{font-size:calc(12px * var(--editor-scale, 1)); color:#a5adc5; margin-right:auto}
+  .timeline-commandbar{display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:calc(12px * var(--editor-scale, 1));
+    padding:calc(10px * var(--editor-scale, 1)) 0; border-top:calc(1px * var(--editor-scale, 1)) solid var(--ui-line)}
+  .command-group{flex:1 1 auto; min-width:0; max-width:100%}
+  .command-group + .command-group{border-left:calc(1px * var(--editor-scale, 1)) solid var(--ui-edge); padding-left:calc(12px * var(--editor-scale, 1))}
+  .command-label{display:block; font-size:calc(13px * var(--editor-scale, 1)); color:#a5adc5; font-weight:600; margin-bottom:calc(7px * var(--editor-scale, 1))}
+  .command-buttons{display:flex; flex-wrap:wrap; gap:calc(5px * var(--editor-scale, 1))}
+  .command-buttons button{flex:1 1 auto; font-size:calc(15px * var(--editor-scale, 1)); min-height:calc(34px * var(--editor-scale, 1)); padding:calc(7px * var(--editor-scale, 1)) calc(10px * var(--editor-scale, 1)); border-color:var(--ui-edge); background:var(--ui-control)}
+  .command-buttons button:hover{background:var(--ui-hover)}
+  .command-buttons button.on{background:rgba(77,225,255,.12); border-color:rgba(77,225,255,.35); color:#bff2ff}
+  .command-buttons button:disabled{background:var(--ui-surface); opacity:.5}
+  .preview-caption,.preview-caption button,.inspector-group h3,
+  .inspector-controls > button,.timeline-view button,.timeline-primary button,
+  footer #grpPitch,footer #grpVoice{font-size:calc(15px * var(--editor-scale, 1))}
+  .editor-label,#selNote,.prob b,.prob span,.review-summary > summary,
+  .timeline-primary .chk{font-size:calc(14px * var(--editor-scale, 1))}
+  #inlineLineText{font-size:calc(16px * var(--editor-scale, 1))}
+  .howto{padding:0 calc(18px * var(--editor-scale, 1)) calc(7px * var(--editor-scale, 1)); font-size:calc(11px * var(--editor-scale, 1)); color:var(--muted)}
+  .tlwrap{border-top:calc(1px * var(--editor-scale, 1)) solid var(--ui-line); background:var(--ui-field)}
+  footer{background:var(--ui-header); padding:calc(9px * var(--editor-scale, 1)) calc(18px * var(--editor-scale, 1)); gap:calc(10px * var(--editor-scale, 1))}
+  footer #btnPlay{width:calc(46px * var(--editor-scale, 1)); height:calc(42px * var(--editor-scale, 1)); justify-content:center; border-radius:calc(10px * var(--editor-scale, 1))}
+  footer .tm{font:calc(13px * var(--editor-scale, 1)) ui-monospace,Consolas,monospace}
+  footer .knob{border:calc(1px * var(--editor-scale, 1)) solid var(--ui-line); background:var(--ui-control); padding:calc(7px * var(--editor-scale, 1)) calc(10px * var(--editor-scale, 1)); font-size:calc(12px * var(--editor-scale, 1))}
+  footer #grpPitch,footer #grpVoice{min-height:calc(56px * var(--editor-scale, 1)); align-self:stretch; font-size:calc(13px * var(--editor-scale, 1))}
+  #grpVoice > span{white-space:nowrap}
+  #rVoice{width:clamp(calc(128px * var(--editor-scale, 1)),12vw,calc(180px * var(--editor-scale, 1))); height:calc(32px * var(--editor-scale, 1))}
+  #rVoice::-webkit-slider-runnable-track{height:calc(5px * var(--editor-scale, 1))}
+  #rVoice::-webkit-slider-thumb{width:calc(17px * var(--editor-scale, 1)); height:calc(17px * var(--editor-scale, 1)); margin-top:-calc(6px * var(--editor-scale, 1))}
+  #rVoice::-moz-range-track{height:calc(5px * var(--editor-scale, 1))}
+  #rVoice::-moz-range-thumb{width:calc(17px * var(--editor-scale, 1)); height:calc(17px * var(--editor-scale, 1))}
+  #hint{display:none}
+  .browser,.expbox,.stillbox{border-radius:calc(16px * var(--editor-scale, 1)); background:var(--bg2);
+    box-shadow:0 calc(20px * var(--editor-scale, 1)) calc(70px * var(--editor-scale, 1)) rgba(0,0,0,.45)}
+  .browser .head,.browser .foot{padding:calc(14px * var(--editor-scale, 1)) calc(18px * var(--editor-scale, 1))}
+  .menu{border-radius:calc(10px * var(--editor-scale, 1)); padding:calc(6px * var(--editor-scale, 1)); box-shadow:0 calc(12px * var(--editor-scale, 1)) calc(32px * var(--editor-scale, 1)) rgba(0,0,0,.45)}
+  .menu button{border-color:transparent; border-radius:calc(6px * var(--editor-scale, 1))}
+  .madefile{border-radius:0; background:rgba(126,224,138,.06); padding:calc(10px * var(--editor-scale, 1)) calc(18px * var(--editor-scale, 1))}
+  .updatebox{width:min(calc(680px * var(--editor-scale, 1)),94vw); max-height:86vh; display:flex; flex-direction:column;
+    gap:calc(14px * var(--editor-scale, 1)); background:var(--bg2); border:calc(1px * var(--editor-scale, 1)) solid var(--line); border-radius:calc(16px * var(--editor-scale, 1));
+    padding:calc(24px * var(--editor-scale, 1)); box-shadow:0 calc(20px * var(--editor-scale, 1)) calc(70px * var(--editor-scale, 1)) rgba(0,0,0,.45)}
+  .updatebox h2{font-size:1.125rem}
+  .updatebox h3{font-size:.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:.08em}
+  .updatebox p{white-space:pre-line; line-height:1.6; font-size:.8125rem; color:var(--muted)}
+  .updatebox pre{overflow:auto; min-height:calc(100px * var(--editor-scale, 1)); white-space:pre-wrap; overflow-wrap:anywhere;
+    font:inherit; font-size:.8125rem; line-height:1.7; padding:calc(16px * var(--editor-scale, 1)); border:calc(1px * var(--editor-scale, 1)) solid var(--line);
+    border-radius:calc(10px * var(--editor-scale, 1)); background:rgba(0,0,0,.15); user-select:text}
+  .updatebox .row{display:flex; gap:calc(10px * var(--editor-scale, 1)); justify-content:flex-end; flex:none; flex-wrap:wrap}
+  @media (max-width:1200px){
+    .side{width:calc(290px * var(--editor-scale, 1))}
+    header{padding:calc(12px * var(--editor-scale, 1)) calc(16px * var(--editor-scale, 1))}
+    header h1#edTitle{max-width:34ch}
+    .cards{grid-template-columns:1fr}
+    #hint{display:none}
+  }
+  @media (max-width:900px){
+    .side{width:calc(290px * var(--editor-scale, 1))}
+    .inspector-pane{padding-left:calc(10px * var(--editor-scale, 1)); padding-right:calc(10px * var(--editor-scale, 1))}
+    #scrList > header{flex-wrap:wrap}
+    .app-version{margin-left:auto}
+    .pickrow{flex-wrap:wrap}
+    .pickrow input{flex-basis:100%}
+    #scrList .list{padding:calc(12px * var(--editor-scale, 1)) calc(20px * var(--editor-scale, 1))}
+  }
+  @media (max-height:850px){
+    .workspace-heading p,.destination small{display:none}
+    .workspace-bar{padding-top:calc(8px * var(--editor-scale, 1)); padding-bottom:calc(8px * var(--editor-scale, 1))}
+    .destination{min-height:calc(50px * var(--editor-scale, 1)); padding-top:calc(8px * var(--editor-scale, 1)); padding-bottom:calc(8px * var(--editor-scale, 1))}
+    .timeline-heading{padding-top:calc(6px * var(--editor-scale, 1)); padding-bottom:calc(6px * var(--editor-scale, 1))}
+    .timeline-commandbar{padding-top:calc(6px * var(--editor-scale, 1)); padding-bottom:calc(6px * var(--editor-scale, 1)); row-gap:calc(8px * var(--editor-scale, 1))}
+    .command-label{margin-bottom:calc(4px * var(--editor-scale, 1))}
+    .command-buttons button{min-height:calc(30px * var(--editor-scale, 1)); padding:calc(5px * var(--editor-scale, 1)) calc(8px * var(--editor-scale, 1)); font-size:calc(13px * var(--editor-scale, 1))}
+  }
+  @media (max-height:720px){
+    header{min-height:calc(50px * var(--editor-scale, 1)); padding-top:calc(9px * var(--editor-scale, 1)); padding-bottom:calc(9px * var(--editor-scale, 1))}
+    .workspace-bar{padding-top:calc(9px * var(--editor-scale, 1)); padding-bottom:calc(9px * var(--editor-scale, 1))}
+    .workspace-heading p{display:none}
+    .timeline-heading{padding-top:calc(6px * var(--editor-scale, 1)); padding-bottom:calc(6px * var(--editor-scale, 1))}
+    footer{padding:calc(7px * var(--editor-scale, 1)) calc(14px * var(--editor-scale, 1))}
+  }
+  @media (max-height:660px){
+    .review-summary{min-height:calc(26px * var(--editor-scale, 1))}
+    .review-summary summary{padding:calc(7px * var(--editor-scale, 1)) calc(14px * var(--editor-scale, 1)); font-size:.625rem}
+  }
+  @media (max-width:1050px){
+    .workspace-bar{gap:calc(12px * var(--editor-scale, 1)); padding-left:calc(16px * var(--editor-scale, 1)); padding-right:calc(16px * var(--editor-scale, 1))}
+    .workspace-heading p{display:none}
+    .workspace-heading h2{font-size:calc(16px * var(--editor-scale, 1))}
+    .destination{padding:calc(8px * var(--editor-scale, 1)) calc(10px * var(--editor-scale, 1)); gap:calc(9px * var(--editor-scale, 1))}
+    .destination small{max-width:calc(145px * var(--editor-scale, 1))}
+  }
+  /* Reserve real layout space for the countdown, even in short previews. */
+  .stagewrap{flex-direction:column}
+  .quiet-all{position:static; display:inline-flex; margin:6px 0 0 6px; max-width:100%}
+  .stage{min-height:0}
+  .stagewrap .wait{position:relative; left:auto; top:auto; transform:none; order:-1;
+    flex:none; width:max-content; max-width:calc(100% - 16px); margin:8px auto;
+    gap:8px; padding:7px 12px; box-sizing:border-box}
+  .stagewrap .wait .rail{width:clamp(35px,7vw,130px)}
+  @media (max-width:1500px){
+    .side{width:clamp(240px,24vw,300px)}
+    .preview-area{padding:10px}
+    .preview-caption{margin-bottom:6px}
+    .inspector-pane{padding:12px}
+  }
+  @container (max-width:1100px){
+    .timeline-commandbar{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px}
+    .command-group + .command-group{border-left:0; padding-left:0}
+  }
+  @container (max-width:580px){
+    .timeline-commandbar{grid-template-columns:minmax(0,1fr)}
+  }
+  /* Below desktop working height, scroll instead of crushing the preview. */
+  @media (max-height:720px){
+    #scrEdit{overflow-y:auto}
+    .editor-workspace{flex:none; min-height:560px}
+    .editing-area{min-height:560px}
+    #scrEdit footer{position:sticky; bottom:0; z-index:10}
+  }
+  @media (max-width:900px){
+    #scrEdit{overflow-y:auto}
+    #scrEdit > header{flex-wrap:wrap; gap:8px}
+    #scrEdit #edTitle{flex:1; min-width:120px; max-width:100%}
+    .workspace-bar{flex-wrap:wrap; padding:8px 12px}
+    .workspace-heading p,.destination small{display:none}
+    .workspace-destinations{flex-wrap:wrap; width:100%}
+    .destination{flex:1; min-height:50px; padding:8px}
+    .editor-workspace{flex:none; flex-direction:column; overflow:visible}
+    .editing-area{flex:none; min-height:640px}
+    .preview-area{min-height:260px}
+    .side{width:100%; overflow:visible; border-left:0; border-top:1px solid var(--ui-line)}
+    #scrEdit footer{position:sticky; bottom:0; z-index:10; flex-wrap:wrap; padding:7px 10px}
+    #scrEdit footer .sp{display:none}
+    footer #grpPitch,footer #grpVoice{min-height:56px; font-size:13px; padding:5px}
+    #rVoice{width:128px}
+    .wait .txt{max-width:45vw}
+  }
 </style>
 </head>
 <body>
@@ -652,8 +940,9 @@
         <label data-t="langAlign">Language and timing</label>
         <div class="opts">
           <select id="selAlign">
-            <option value="auto" data-t="alignExact">Accurate (Whisper), if available</option>
-            <option value="energy" data-t="alignFast">Fast, without a neural net</option>
+            <option value="auto" data-t="alignExact" data-tt="alignExplainWhisper">Accurate (Whisper), if available</option>
+            <option value="qwen" data-t="alignQwen" data-tt="alignExplainQwen">Qwen word timing (experimental)</option>
+            <option value="energy" data-t="alignFast" data-tt="alignExplainFast">Fast, without a neural net</option>
           </select>
           <select id="selLang" data-tt="langTitle" title="Language of the lyrics"></select>
           <select id="selModel">
@@ -674,7 +963,9 @@
             </select>
           </label>
         </div>
+        <div class="hint" id="alignExplain" role="status"></div>
         <div class="hint" id="modelNote"></div>
+        <div class="hint hide" id="qwenNote"></div>
         <div class="opts" style="margin-top:7px">
           <button id="btnModelFolder" data-t="openModelFolder">Open model folder</button>
           <span class="hint" data-t="modelDeleteHint">Delete an unused .pt file there to free space; it will download again when selected.</span>
@@ -697,37 +988,28 @@
       </div>
       <div class="warn" id="newWarn"></div>
       <div class="report hide" id="report"></div>
-      <div><button class="pri" id="btnBuild" data-t="build">Build</button></div>
     </div>
   </div>
+  <div class="build-actions"><div><button class="pri" id="btnBuild" data-t="build">Build</button></div></div>
 </div>
 
 <!-- ============ progress ============ -->
 <div class="screen hide" id="scrJob">
   <header><div class="spin"></div><h1 id="jobTitle" data-t="working">Working…</h1>
-    <div class="sp"></div><button id="btnJobBack" class="hide" data-t="toList">← To the list</button></header>
+    <div class="sp"></div><button id="btnJobCancel" class="hide" data-t="cancel">Cancel</button><button id="btnJobBack" class="hide" data-t="toList">← To the list</button></header>
   <div class="list"><div class="form"><div class="joblog" id="jobLog"></div></div></div>
 </div>
 
 <!-- ============ editor ============ -->
 <div class="screen hide" id="scrEdit">
-  <header>
+<header>
     <button id="btnBack" data-t="songs">← Songs</button>
     <h1 id="edTitle" data-tt="nameHint" tabindex="0" role="button">—</h1>
     <span class="saved on ok" id="savedNote" data-t="savedNote">saved</span>
     <div class="sp"></div>
-    <button id="btnLyrics" data-tt="lyricsHint" data-t="otherLyrics"
-            title="Choose a different lyrics file or paste the text, then time the song to it">⇄ Other lyrics</button>
-    <button id="btnTrack" data-tt="trackHint" data-t="ownTrack"
-            title="Use the artist's real instrumental instead of the separated one">♪ My instrumental</button>
-    <button id="btnRealignPart" data-tt="realignPartHint" data-t="realignPart"
-            title="Time the selected lines again, and leave the rest of the song alone">↻ These lines</button>
-    <button id="btnRealign" data-tt="realignHint" data-t="realign"
-            title="Re-read the same lyrics file from disk and time it again — if you edited it">↻ Re-time</button>
     <button id="btnExportHtml" data-t="exportHtml">Standalone HTML</button>
     <button id="btnExportMp4" data-t="exportMp4">MP4 video</button>
-    <button id="btnExportMp3" data-t="exportMp3" data-tt="mp3Hint"
-            title="Export the same karaoke backing used by the video at 320 kbit/s">MP3 320</button>
+    <button id="btnExportMp3" data-t="exportMp3" data-tt="mp3Hint" title="Export the same karaoke backing used by the video at 320 kbit/s">MP3 320</button>
     <div class="moreexp">
       <button id="btnExportMore" data-tt="moreExpHint" title="Other formats">⇪</button>
       <div class="menu hide" id="expMenu">
@@ -737,9 +1019,12 @@
       </div>
     </div>
   </header>
-
-  <div class="edit">
-    <div class="stagewrap">
+<div class="workspace-bar"><div class="workspace-heading"><span class="workspace-dot"></span><div><h2 data-t="studioEditor"></h2><p data-t="studioEditorHint"></p></div></div>
+<div class="workspace-destinations">
+<button id="btnWorkspaceLook" class="destination" aria-controls="inspector-look" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1-4 1 1 0 0 1 1-2h2a4 4 0 0 0 4-4 9 9 0 0 0-9-8Z"></path><circle cx="7" cy="10" r="1"></circle><circle cx="10" cy="7" r="1"></circle></svg><span><b data-t="studioLook"></b><small data-t="studioLookHint"></small></span></button>
+<button id="btnWorkspaceProject" class="destination" aria-controls="inspector-project" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 7h16M4 17h16"></path><rect x="7" y="4" width="4" height="6" rx="1"></rect><rect x="14" y="14" width="4" height="6" rx="1"></rect></svg><span><b data-t="studioProject"></b><small data-t="studioProjectHint"></small></span></button>
+</div></div>
+<div class="editor-workspace"><div class="editing-area"><div class="preview-area"><div class="preview-caption"><span data-t="workspacePreview"></span><button id="btnStill" data-tt="stillHint" data-t="showFrame" title="Show what the video will look like at this moment">▣ Frame</button></div><div class="stagewrap">
       <div class="stage" id="stage"><div class="scroll" id="scroll"></div></div>
       <div class="wait hide" id="wait">
         <span class="ttl" id="waitTtl">Intro</span>
@@ -747,26 +1032,12 @@
         <span class="txt" id="waitTxt"></span>
         <div class="rail"><div class="fill" id="waitFill"></div></div>
       </div>
-    </div>
-    <div class="side">
-      <h3 data-t="summary">Summary</h3>
-      <div class="sum" id="sum"></div>
-      <h3 data-t="check">Check</h3>
-      <div class="probs" id="probs"></div>
-    </div>
-  </div>
-
-  <!-- Where the finished file landed. Without this it has to be hunted for. -->
-  <div class="madefile hide" id="madeRow">
+    </div></div><div class="madefile hide" id="madeRow">
     <span class="ic">✓</span>
     <span class="path" id="madePath"></span>
     <button id="btnReveal" data-t="openFolder">Open folder</button>
     <button id="btnMadeHide" data-tt="hide" title="Hide">✕</button>
-  </div>
-
-  <!-- A frame of the clip as it will be. Rendering a file to see whether a
-       line sits right takes minutes; this takes a moment. -->
-  <div class="stillbox hide" id="stillBox">
+  </div><div class="stillbox hide" id="stillBox">
     <img id="stillImg" alt="">
     <div class="row">
       <span id="stillAt"></span>
@@ -776,114 +1047,55 @@
       <button id="stillOpening" data-t="showOpening">Opening</button>
       <button id="stillHide" data-tt="hide" title="Hide">✕</button>
     </div>
-  </div>
-
-  <div class="timeline">
-    <!-- The whole song in one strip: marks, kept lines, quiet stretches, the
-         window now on screen. On an eight-minute song the wheel is a hike;
-         one click here is a step. -->
-    <div class="mmap"><canvas id="mmap"></canvas></div>
-    <div class="tlhead">
-      <span data-t="timeline">Timeline</span>
-      <button id="btnZoomOut">−</button><button id="btnZoomIn">＋</button>
-      <button id="btnFit" data-tt="fitHint" data-t="fitLine"
-              title="Zoom so the selected line fills the timeline">⤢ Fit the line</button>
-      <!-- The frame belongs with the timeline: it shows the clip at the very
-           place the playhead stands. -->
-      <button id="btnStill" data-tt="stillHint" data-t="showFrame"
-              title="Show what the video will look like at this moment">▣ Frame</button>
-      <span id="zoomNote">15 s</span>
-      <span class="sp" style="flex:1"></span>
-      <span id="selNote" data-t="noLine">no line selected</span>
-      <button id="btnHere" class="pri" title="Enter" data-t="lineStartsHere">⌖ Line starts here</button>
-      <label class="chk"><input type="checkbox" id="chkRest"> <span data-t="andRest">and all after it</span></label>
-      <button id="btnText" data-tt="textHint" data-t="lineText"
-              title="Fix the words of the selected line (or double-click it)">✎ Line text</button>
-      <button id="btnUndo" data-tt="undoHint" data-t="undo"
-              title="Undo the last change (Ctrl+Z)" disabled>↶ Undo</button>
-      <button id="btnRedo" data-tt="redoHint" data-t="redo"
-              title="Redo the last undone change (Ctrl+Y)" disabled>↷ Redo</button>
-      <button id="btnSelectAll" data-tt="selectAllHint" data-t="selectAll"
-              title="Select every line (Ctrl+A); Ctrl-click lines to remove them">☑ All lines</button>
-      <button id="btnAddLine" data-tt="addLineHint" data-t="addLine"
-              title="Insert a line after the selected one — if it was missing from the lyrics">＋ line</button>
-      <button id="btnSplit" data-tt="splitHint" data-t="splitLine"
-              title="Cut the line under the playhead at the nearest word boundary">⤸ Split</button>
-      <button id="btnJoin" data-tt="joinHint" data-t="joinLine"
-              title="Join the selected line with the one after it">⤹ Join</button>
-      <button id="btnDelLine" data-tt="delLineHint" data-t="delLine"
-              title="Delete the selected line from the lyrics">－ line</button>
-      <button id="btnVoice" data-tt="voiceHint"
-              title="Second voice for the selected line: another singer or another way of singing. Painted in the second colour">◑ Voice 1</button>
-      <button id="btnBacking" data-tt="backingHint" data-t="backing"
-              title="Mark selected lines as backing vocals without changing their words or singer">Backing</button>
-      <button id="btnRhythm" data-tt="rhythmHint" data-t="copyRhythm"
-              title="Copy the selected line — its words and its rhythm (Ctrl+C)">⧉ Copy</button>
-      <button id="btnPasteLine" data-tt="pasteLineHint" data-t="pasteLine" disabled
-              title="Put the copied line in place of the selected one (Ctrl+Shift+V)">⧉ Paste line</button>
-      <button id="btnPaste" data-tt="pasteHint" disabled
-              title="Paste the copied rhythm into the selected line (Ctrl+V)">⧉ Paste rhythm</button>
-      <button id="btnEven" data-tt="evenHint" data-t="evenWords"
-              title="Re-lay the words of the selected lines by syllables — the edges stay">≡ Even words</button>
-      <button id="btnLock" data-tt="lockHint" data-t="lockLine"
-              title="Leave this line alone when the timing is redone">🔒 Lock</button>
-      <span class="pick" data-tt="colorsHint"
-            title="What the singing is lit with: first colour is the main voice, second is the second voice">
-        <b data-t="voices">voices</b>
-        <button class="sw" data-for="col1" data-tt="voice1" title="Main voice"></button>
-        <button class="sw" data-for="col2" data-tt="voice2" title="Second voice"></button>
-        <input type="color" id="col1" class="hidcol" value="#4de1ff"><input
-               type="color" id="col2" class="hidcol" value="#ff8ad1"></span>
-      <span class="pick" data-tt="themeHint"
-            title="Page look: background and text colour. If the text blends into the background, the program fixes it">
-        <b data-t="bgText">background and text</b>
-        <button class="sw" data-for="colBg" data-tt="bg" title="Background"></button>
-        <button class="sw" data-for="colTx" data-tt="textColor" title="Text colour"></button>
-        <input type="color" id="colBg" class="hidcol" value="#0a0b14"><input
-               type="color" id="colTx" class="hidcol" value="#e8ebf5"></span>
-      <button id="btnCover" data-tt="coverPickHint" data-t="coverBtn"
-              title="A picture — or a frame from the clip itself — behind the lyrics, blurred">⛰ Cover</button>
-      <button id="btnCoverOff" class="hide" data-tt="coverOffHint" title="Back to the plain background">⛰✕</button>
-      <span class="darkknob hide" id="grpCoverDark" data-tt="coverDarkHint"
-            title="How dark the cover backdrop is: darker reads better, lighter shows more of the picture">
-        <b>🌗</b><input type="range" id="rCoverDark" min="0" max="95" step="1"
-        value="66"><input type="number" id="nCoverDark" min="0" max="95"
-        step="1" value="66"><b>%</b></span>
-      <button id="btnClipBg" data-tt="backdropHint" data-t="backdropBtn"
-              title="A clip behind the lyrics: a file or a link, blurred to a slow field of colour">🎞 Clip behind</button>
-      <button id="btnClipBgOff" class="hide" data-tt="backdropOffHint" title="Back to the still backdrop">🎞✕</button>
-      <button id="btnLoop" data-tt="loopHint" data-t="loop"
-              title="Play the selected line over and over">↻ Loop</button>
-      <button id="btnSnap" data-tt="snapHint" data-t="snapAll"
-              title="Move every line to the nearest moment singing starts">Snap all to the vocal</button>
-      <button id="btnClip" data-tt="clipHint" data-t="clipMarks"
-              title="Cut the line spans back out of the marked stretches">↹ Trim by the marks</button>
-      <button id="btnMark" data-tt="markHint" data-t="markMode"
-              title="Mark on the waveform the stretches that hold no words">✂ No words here</button>
-      <input id="edNoText" class="notext" data-tp="noTextPh" data-tt="noTextLabel"
-             placeholder="0:00-0:42, 3:10-3:50 — an intro, a vocalise, a solo">
-      <span id="grpKeepSoft" class="softkeep hide" data-tt="softKeepHint"
-            title="Use the familiar 35% guide level, or set one level for every quiet-original line in this project">
-        <label><input type="checkbox" id="chkSoftCustom">
-          <span data-t="softCustom">own level</span></label>
-        <input type="range" id="rSoftLevel" min="5" max="80" step="1" value="35" disabled>
-        <b id="vSoftLevel">35%</b>
-      </span>
-      <button id="btnKeep" data-tt="keepHint" data-t="keep"
-              title="Keep the original voice on this line: backing vocals, speech, a bit that matters to the story. You are not meant to sing it">♪ Original</button>
-    </div>
-    <div class="howto"><span data-t="howtoShort"></span>
-      <i class="q" data-tt="howtoMore">?</i></div>
-    <div class="tlwrap" id="tlwrap">
+  </div><div class="timeline"><div class="timeline-heading"><div class="timeline-title"><h2 data-t="timeline"></h2><span id="zoomNote">15 s</span></div><div class="timeline-view"><button id="btnZoomOut">−</button><button id="btnZoomIn">＋</button><button id="btnFit" data-tt="fitHint" data-t="fitLine" title="Zoom so the selected line fills the timeline">⤢ Fit the line</button><button id="btnUndo" data-tt="undoHint" data-t="undo" title="Undo the last change (Ctrl+Z)" disabled="">↶ Undo</button><button id="btnRedo" data-tt="redoHint" data-t="redo" title="Redo the last undone change (Ctrl+Y)" disabled="">↷ Redo</button></div></div>
+<div class="mmap"><canvas id="mmap"></canvas></div><div class="tlhead">
+<div class="timeline-primary"><button id="btnHere" class="pri" title="Enter" data-t="lineStartsHere">⌖ Line starts here</button><label class="chk"><input type="checkbox" id="chkRest"> <span data-t="andRest">and all after it</span></label><button id="btnLoop" data-tt="loopHint" data-t="loop" title="Play the selected line over and over">↻ Loop</button><button id="btnMark" data-tt="markHint" data-t="markMode" title="Mark on the waveform the stretches that hold no words">✂ No words here</button></div>
+<div class="timeline-commandbar"><div class="command-group"><span class="command-label" data-t="studioEditTools"></span><div class="command-buttons"><button id="btnText" data-tt="textHint" data-t="lineText" title="Fix the words of the selected line (or double-click it)">✎ Line text</button>
+<button id="btnSplit" data-tt="splitHint" data-t="splitLine" title="Cut the line under the playhead at the nearest word boundary">⤸ Split</button>
+<button id="btnJoin" data-tt="joinHint" data-t="joinLine" title="Join the selected line with the one after it">⤹ Join</button></div></div><div class="command-group"><span class="command-label" data-t="studioClipboard"></span><div class="command-buttons"><button id="btnRhythm" data-tt="rhythmHint" data-t="copyRhythm" title="Copy the selected line — its words and its rhythm (Ctrl+C)">⧉ Copy</button>
+<button id="btnPasteLine" data-tt="pasteLineHint" data-t="pasteLine" disabled="" title="Put the copied line in place of the selected one (Ctrl+Shift+V)">⧉ Paste line</button>
+<button id="btnPaste" data-tt="pasteHint" disabled="" title="Paste the copied rhythm into the selected line (Ctrl+V)">⧉ Paste rhythm</button></div></div><div class="command-group"><span class="command-label" data-t="workspaceStructure"></span><div class="command-buttons"><button id="btnAddLine" data-tt="addLineHint" data-t="addLine" title="Insert a line after the selected one — if it was missing from the lyrics">＋ line</button>
+<button id="btnDelLine" data-tt="delLineHint" data-t="delLine" title="Delete the selected line from the lyrics">－ line</button>
+<button id="btnSelectAll" data-tt="selectAllHint" data-t="selectAll" title="Select every line (Ctrl+A); Ctrl-click lines to remove them">☑ All lines</button></div></div><div class="command-group"><span class="command-label" data-t="workspaceTiming"></span><div class="command-buttons"><button id="btnEven" data-tt="evenHint" data-t="evenWords" title="Re-lay the words of the selected lines by syllables — the edges stay">≡ Even words</button>
+<button id="btnLock" data-tt="lockHint" data-t="lockLine" title="Leave this line alone when the timing is redone">🔒 Lock</button>
+<button id="btnRealignPart" data-tt="realignPartHint" data-t="realignPart" title="Time the selected lines again, and leave the rest of the song alone">↻ These lines</button></div></div></div></div>
+<div class="howto"><span data-t="howtoShort"></span><i class="q" data-tt="howtoMore">?</i></div><div class="tlwrap" id="tlwrap">
       <canvas id="wave"></canvas>
       <div class="tlnext hide" id="tlnext"></div>
       <div class="tlscroll" id="tlscroll"><div class="blocks" id="blocks"></div>
         <div class="words" id="words"></div></div>
       <div class="play-head" id="phead"></div>
-    </div>
-  </div>
+    </div></div></div><aside class="side">
+<section class="selection-card inspector-pane" id="inspector-line" data-pane="line">
+<div class="section-heading"><h2 data-t="studioSelection"></h2><span id="selNote" data-t="noLine"></span></div>
+<label class="editor-label" for="inlineLineText" data-t="studioLineText"></label><textarea id="inlineLineText" rows="2" disabled="" data-tp="studioPickHint"></textarea>
+<div class="line-edit-actions"><span id="inlineTextHint" data-t="studioTextHint"></span><button id="btnApplyLineText" disabled="" data-t="studioApplyText"></button></div>
+<div class="inspector-group"><h3 data-t="studioLineSound"></h3><div class="inspector-controls"><button id="btnVoice" data-tt="voiceHint" title="Second voice for the selected line: another singer or another way of singing. Painted in the second colour">◑ Voice 1</button><button id="btnBacking" data-tt="backingHint" data-t="backing" title="Mark selected lines as backing vocals without changing their words or singer">Backing</button><button id="btnKeep" data-tt="keepHint" data-t="keep" title="Keep the original voice on this line: backing vocals, speech, a bit that matters to the story. You are not meant to sing it">♪ Original</button><span id="grpKeepSoft" class="softkeep hide" data-tt="softKeepHint" title="Use the familiar 35% guide level, or set one level for every quiet-original line in this project">
+        <label><input type="checkbox" id="chkSoftCustom">
+          <span data-t="softCustom">own level</span></label>
+        <input type="range" id="rSoftLevel" min="5" max="80" step="1" value="35" disabled="">
+        <b id="vSoftLevel">35%</b>
+      </span></div></div></section>
+<section class="review-card inspector-pane" id="inspector-check" data-pane="check"><div class="section-heading"><h2 data-t="studioReview"></h2></div><div class="probs" id="probs"></div><details class="review-summary"><summary data-t="summary"></summary><div class="sum" id="sum"></div></details></section>
+<div class="settings-drawer hide" id="workspaceDrawer"><div class="drawer-heading"><button id="btnWorkspaceClose" data-t="studioBackEdit"></button></div>
+<section class="inspector-pane hide" id="inspector-look" data-pane="look"><h2 data-t="studioLook"></h2><p class="panel-description" data-t="studioLookHint"></p>
+<div class="inspector-group"><h3 data-t="workspaceColors"></h3><div class="inspector-controls"><span class="pick" data-tt="colorsHint" title="What the singing is lit with: first colour is the main voice, second is the second voice">
+        <b data-t="voices">voices</b>
+        <button class="sw" data-for="col1" data-tt="voice1" title="Main voice"></button>
+        <button class="sw" data-for="col2" data-tt="voice2" title="Second voice"></button>
+        <input type="color" id="col1" class="hidcol" value="#4de1ff"><input type="color" id="col2" class="hidcol" value="#ff8ad1"></span>
+<span class="pick" data-tt="themeHint" title="Page look: background and text colour. If the text blends into the background, the program fixes it">
+        <b data-t="bgText">background and text</b>
+        <button class="sw" data-for="colBg" data-tt="bg" title="Background"></button>
+        <button class="sw" data-for="colTx" data-tt="textColor" title="Text colour"></button>
+        <input type="color" id="colBg" class="hidcol" value="#0a0b14"><input type="color" id="colTx" class="hidcol" value="#e8ebf5"></span></div></div>
+<div class="inspector-group"><h3 data-t="workspaceBackdrop"></h3><div class="inspector-controls"><button id="btnCover" data-tt="coverPickHint" data-t="coverBtn" title="A picture — or a frame from the clip itself — behind the lyrics, blurred">⛰ Cover</button><button id="btnCoverOff" class="hide" data-tt="coverOffHint" title="Back to the plain background">⛰✕</button><span class="darkknob hide" id="grpCoverDark" data-tt="coverDarkHint" title="How dark the cover backdrop is: darker reads better, lighter shows more of the picture">
+        <b>🌗</b><input type="range" id="rCoverDark" min="0" max="95" step="1" value="66"><input type="number" id="nCoverDark" min="0" max="95" step="1" value="66"><b>%</b></span><button id="btnClipBg" data-tt="backdropHint" data-t="backdropBtn" title="A clip behind the lyrics: a file or a link, blurred to a slow field of colour">🎞 Clip behind</button><button id="btnClipBgOff" class="hide" data-tt="backdropOffHint" title="Back to the still backdrop">🎞✕</button></div></div></section>
+<section class="inspector-pane hide" id="inspector-project" data-pane="project"><h2 data-t="studioProject"></h2><p class="panel-description" data-t="studioProjectHint"></p>
+<div class="inspector-group"><h3 data-t="workspaceSources"></h3><div class="inspector-controls"><button id="btnLyrics" data-tt="lyricsHint" data-t="otherLyrics" title="Choose a different lyrics file or paste the text, then time the song to it">⇄ Other lyrics</button><button id="btnTrack" data-tt="trackHint" data-t="ownTrack" title="Use the artist's real instrumental instead of the separated one">♪ My instrumental</button><button id="btnRealign" data-tt="realignHint" data-t="realign" title="Re-read the same lyrics file from disk and time it again — if you edited it">↻ Re-time</button></div></div>
+<div class="inspector-group"><h3 data-t="workspaceMarks"></h3><p class="panel-description" data-t="studioMarksHint"></p><div class="inspector-controls"><input id="edNoText" class="notext" data-tp="noTextPh" data-tt="noTextLabel" placeholder="0:00-0:42, 3:10-3:50 — an intro, a vocalise, a solo"><button id="btnClip" data-tt="clipHint" data-t="clipMarks" title="Cut the line spans back out of the marked stretches">↹ Trim by the marks</button><button id="btnSnap" data-tt="snapHint" data-t="snapAll" title="Move every line to the nearest moment singing starts">Snap all to the vocal</button></div></div></section></div></aside></div>
 
-  <footer>
+<footer>
     <!-- The play button and the clock hold the left edge, the voice knob the
          right one; the hint floats between. A row bunched in one corner reads
          as clutter — spread to the edges it reads as a control bar. -->
@@ -893,15 +1105,13 @@
     <span class="sp" style="flex:1"></span>
     <span class="muted" id="hint" style="font-size:0.75rem"></span>
     <span class="sp" style="flex:1"></span>
-    <div class="knob" id="grpPitch" data-tt="pitchHint"
-         title="Transpose by semitones without changing tempo or lyric timing">
+    <div class="knob" id="grpPitch" data-tt="pitchHint" title="Transpose by semitones without changing tempo or lyric timing">
       <span data-t="pitch">Key</span>
       <button id="btnPitchDown" data-tt="pitchDown" title="One semitone down">−1</button>
-      <button id="btnPitchReset" data-tt="pitchReset" title="Original key"
-              style="min-width:42px"><span id="vPitch">0</span></button>
+      <button id="btnPitchReset" data-tt="pitchReset" title="Original key" style="min-width:42px"><span id="vPitch">0</span></button>
       <button id="btnPitchUp" data-tt="pitchUp" title="One semitone up">+1</button>
     </div>
-    <div class="knob" id="grpVoice"><span data-t="voice">Voice</span>
+    <div class="knob" id="grpVoice" data-tt="workspaceMonitorHint"><span data-t="workspaceAudio">Monitor vocals</span>
       <input type="range" id="rVoice" min="0" max="100" value="0">
       <span id="vVoice" style="min-width:34px;text-align:right">0%</span></div>
   </footer>
@@ -909,6 +1119,17 @@
 
 <!-- ============ file browser ============ -->
 <!-- ============ MP4 export: quality is a choice, not a constant ============ -->
+<div class="modal hide" id="letterDlg" role="dialog" aria-modal="true" aria-labelledby="letterTitle">
+  <div class="letterbox">
+    <h3 id="letterTitle" data-t="letterTitle">Hold a letter</h3>
+    <p data-t="letterHint">Pick a letter. Its timing becomes a separate block; the spelling stays unchanged.</p>
+    <div class="letterchoices" id="letterChoices" role="group" aria-labelledby="letterTitle"></div>
+    <label><input id="letterToCursor" type="checkbox"> <span id="letterCursorLabel"></span></label>
+    <p id="letterRangeNote"></p>
+    <div class="letteractions"><button id="letterCancel" data-t="cancel">Cancel</button>
+      <button id="letterApply" class="primary" data-t="letterApply">Apply</button></div>
+  </div>
+</div>
 <div class="modal hide" id="expDlg">
   <div class="expbox">
     <h3 data-t="expTitle">The video file</h3>
@@ -986,6 +1207,16 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="modal hide" id="updateDlg" role="dialog" aria-modal="true" aria-labelledby="updateTitle">
+  <div class="updatebox">
+    <h2 id="updateTitle"></h2>
+    <p id="updateDescription"></p>
+    <h3 data-t="updateChanges">What's new</h3>
+    <pre id="updateNotes" tabindex="0"></pre>
+    <div class="row"><button id="btnUpdateCancel" data-t="cancel">Cancel</button>
+      <button class="pri" id="btnUpdateInstall" data-t="updateInstall">Download and install</button></div>
+  </div>
+</div>
 <script>window.KARAOKE_UI_LANG = "__UI_LANG__";</script>
 <script src="/ui.js"></script>
 <script>

@@ -3,16 +3,49 @@
 (function(){
 "use strict";
 const $ = id => document.getElementById(id);
+// Keep desktop control density stable. Larger windows primarily gain workspace;
+// readability grows gently, capped at 12.5%, rather than with resolution.
+// CSS dimensions remain actual screen pixels, so timeline pointer arithmetic
+// needs no zoom/transform coordinate conversion.
+function scaleWorkspace(){
+  const room = Math.min(innerWidth / 1920, innerHeight / 1000);
+  const scale = Math.max(1, Math.min(1.125, 1 + (room - 1) * .375));
+  document.documentElement.style.setProperty('--editor-scale', scale);
+  document.documentElement.style.fontSize = scale > 1
+    ? 18.064 * scale + 'px' : '';
+}
+scaleWorkspace();
+window.addEventListener('resize', scaleWorkspace);
 
 /* ================= labels =================
    The markup is written in English; here live the Russian translation and
    everything assembled on the fly. The key is the same in both dictionaries. */
 const STR = {
   en: {
+    workspaceLine: "Lines", workspaceLook: "Appearance", workspaceProject: "Song", workspaceCheck: "Review",
+    workspaceTools: "Line tools", workspaceExport: "Other formats", workspacePreview: "Lyrics preview",
+    workspaceLibrary: "Your songs", workspaceLibraryHint: "Create, edit and export karaoke — all your projects in one place.",
+    workspaceTiming: "Timing", workspaceStructure: "Structure", workspaceVoices: "Singer & playback",
+    workspaceColors: "Colours", workspaceBackdrop: "Backdrop", workspaceSources: "Sources & re-timing",
+    workspaceMarks: "Wordless stretches", workspaceAudio: "Monitor vocals", workspaceBuildHint: "Audio → Lyrics → Timing → Ready",
+    workspaceMonitorHint: "Vocal volume for listening while editing. Wheel: 5%; Shift + wheel: 1%. This slider does not change the exported video.",
+    workspaceAdvanced: "Advanced timing settings",
+    studioEditor: "Timing & lyrics", studioEditorHint: "Select a line, listen and adjust it on the timeline.",
+    studioLook: "Colours & backdrop", studioLookHint: "Voices, cover and video",
+    studioProject: "Lyrics & audio", studioProjectHint: "Sources, pauses and re-timing",
+    studioSelection: "Selected line", studioLineText: "Lyrics — edit here",
+    studioPickHint: "Select a line in the preview or timeline to edit its words.",
+    studioTextHint: "Enter or leave this field to save · Esc to cancel",
+    studioAnchorHint: "These words belong to the focused line; properties apply to the selection.",
+    studioApplyText: "Apply", studioLineSound: "Singer & original audio", studioReview: "Check these timings",
+    studioBackEdit: "← Back to editing", studioEditTools: "Edit lines", studioClipboard: "Words & rhythm",
+    studioMarksHint: "Mark pauses by dragging on the waveform, or type ranges here. Trimming changes line edges.",
     appTitle: "Karaoke Studio", addSong: "＋ Add a song",
     updateCheck: "Check for updates", updateNone: "You have the latest version",
     updateAvailable: v => `Update to ${v}`,
     updateAsk: v => `Download and install Karaoke Studio ${v}?\n\nThe program will restart. Songs and settings stay in place.`,
+    updateChanges: "What's new", updateInstall: "Download and install", updateNotesLoading: "Loading release notes…",
+    updateNotesMissing: "Release notes could not be loaded. You can still install the update.",
     updateDownloading: "Downloading the update", updateRestart: "Restarting with the new version…",
     emptyTtl: "Nothing here yet",
     emptyBody: 'Press “Add a song” and point to two files: the song itself and ' +
@@ -28,6 +61,16 @@ const STR = {
     lyricsPh: "txt — one line of the song per line of the file",
     langAlign: "Language and timing",
     alignExact: "Accurate (Whisper), if available",
+    alignQwen: "Qwen word timing (experimental)",
+    alignExplainWhisper: "Whisper matches your supplied lyrics to the audio to time words. If unavailable or unsuccessful, Studio falls back to approximate loudness-based timing.",
+    alignExplainQwen: "Qwen matches your supplied lyrics to vocals, rather than transcribing new text. Experimental for songs: check the resulting timings. Supply the recording with vocals, not an instrumental.",
+    alignExplainFast: "No neural model: timing is estimated from loudness and syllable counts. Fast and lightweight, but not suitable when precise word timings are needed.",
+    qwenMemoryHint: "Weights: about 1.8 GB on disk. CPU memory guideline: about 6 GB of free RAM, not a fixed minimum or a VRAM requirement; usage depends on audio-window length.",
+    qwenMissing: "Qwen is not installed in this build. Install app/requirements-qwen.txt into the app's Python environment.",
+    qwenUnavailable: "not installed",
+    qwenHint: "Qwen3-ForcedAligner-0.6B · aligns the supplied lyrics, not transcription. Experimental for singing; check the result. Long songs use approximate search-window boundaries. Backing vocals still need checking.",
+    qwenFolderOpened: "The Qwen model folder is open",
+    qwenDeleteHint: "Qwen weights are in a separate folder (about 1.8 GB). Delete the weights there to free space; they download again when needed.",
     alignFast: "Fast, without a neural net",
     langTitle: "Language of the lyrics", instrumental: "Instrumental",
     build: "Build", working: "Working…", toList: "← To the list", songs: "← Songs",
@@ -91,7 +134,7 @@ const STR = {
     pitchDown: "One semitone down", pitchUp: "One semitone up",
     pitchReset: "Original key", pitchBusy: "Changing the key…",
     pitchChanged: n => n ? `Key: ${n > 0 ? "+" : ""}${n} semitones` : "Original key",
-    cancel: "Cancel", dropBig: "Drop the files here",
+    cancel: "Cancel", cancelledJob: "Timing cancelled", cancellingJob: "Cancelling…", dropBig: "Drop the files here",
     dropSub: "the song and the lyrics — or one at a time",
     langUi: "Interface language",
     langMissing: code => `No translation file for “${code}” yet`,
@@ -155,7 +198,13 @@ const STR = {
     lookingAt: "Looking at what this song is…",
     badFiles: "Could not make sense of the files: ",
     allGood: "Nothing suspicious.<br>The lines sit where the singing is.",
-    wordHint: w => `“${w}”: drag the middle to move, the edges to stretch`,
+    wordHint: w => `“${w}”: drag to move/stretch; double-click to hold a letter`,
+    letterTitle: "Hold a letter",
+    letterHint: "Pick a letter. Its timing becomes a separate block; the spelling stays unchanged. Drag the block's edges to adjust it further.",
+    letterCursor: t => `End at the playhead (${t})`,
+    letterRange: "The playhead must be inside the song, after this word's start and before the next word.",
+    letterApply: "Apply",
+    letterShort: "Lengthen this word first: there is not enough room for separate letter timing.",
     wordAt: (w, t) => `word “${w}”: ${t}`,
     wordSpan: (w, a, b, d) => `word “${w}”: ${a} … ${b} (${d} s)`,
     lineEndAt: (n, t) => `line ${n}: end ${t}`,
@@ -472,10 +521,30 @@ const STR = {
     lineNo: (n, t) => "line " + n + ": " + t,
   },
   ru: {
+    workspaceLine: "Строки", workspaceLook: "Оформление", workspaceProject: "Песня", workspaceCheck: "Проверка",
+    workspaceTools: "Инструменты строк", workspaceExport: "Другие форматы", workspacePreview: "Предпросмотр текста",
+    workspaceLibrary: "Мои песни", workspaceLibraryHint: "Создавайте, редактируйте и экспортируйте караоке — все проекты в одном месте.",
+    workspaceTiming: "Разметка", workspaceStructure: "Структура", workspaceVoices: "Исполнитель и пение",
+    workspaceColors: "Цвета", workspaceBackdrop: "Фон", workspaceSources: "Источники и переразметка",
+    workspaceMarks: "Участки без текста", workspaceAudio: "Слушать вокал", workspaceBuildHint: "Аудио → Текст → Разметка → Готово",
+    workspaceMonitorHint: "Громкость вокала для прослушивания при правке текста. Колесико: 5%; Shift + колесико: 1%. Этот ползунок не меняет громкость в готовом видео.",
+    workspaceAdvanced: "Дополнительные настройки разметки",
+    studioEditor: "Текст и разметка", studioEditorHint: "Выбери строку, прослушай и поправь её на дорожке.",
+    studioLook: "Цвета и фон", studioLookHint: "Голоса, обложка и видео",
+    studioProject: "Текст и аудио", studioProjectHint: "Источники, паузы и переразметка",
+    studioSelection: "Выбранная строка", studioLineText: "Текст — можно исправить здесь",
+    studioPickHint: "Выбери строку в предпросмотре или на дорожке, чтобы исправить слова.",
+    studioTextHint: "Enter или выход из поля — сохранить · Esc — отменить",
+    studioAnchorHint: "Текст относится к текущей строке; свойства — ко всем выделенным.",
+    studioApplyText: "Применить", studioLineSound: "Исполнитель и оригинальный звук", studioReview: "Проверить разметку",
+    studioBackEdit: "← Вернуться к правке", studioEditTools: "Правка строк", studioClipboard: "Текст и ритм",
+    studioMarksHint: "Отмечай паузы на волне или введи диапазоны здесь. Обрезка меняет границы строк.",
     appTitle: "Караоке-студия", addSong: "＋ Добавить песню",
     updateCheck: "Проверить обновления", updateNone: "У вас последняя версия",
     updateAvailable: v => `Обновить до ${v}`,
     updateAsk: v => `Скачать и установить Karaoke Studio ${v}?\n\nПрограмма перезапустится. Песни и настройки останутся на месте.`,
+    updateChanges: "Что нового", updateInstall: "Скачать и установить", updateNotesLoading: "Загружаю список изменений…",
+    updateNotesMissing: "Не удалось загрузить список изменений. Обновление всё равно можно установить.",
     updateDownloading: "Скачиваю обновление", updateRestart: "Перезапускаюсь в новой версии…",
     emptyTtl: "Здесь пока пусто",
     emptyBody: 'Нажмите «Добавить песню» и укажите два файла: саму песню и ' +
@@ -491,6 +560,16 @@ const STR = {
     lyricsPh: "txt — одна строка песни на строку файла",
     langAlign: "Язык и разметка",
     alignExact: "Точно (Whisper), если доступен",
+    alignQwen: "Тайминги Qwen (экспериментально)",
+    alignExplainWhisper: "Whisper сопоставляет загруженный текст со звуком и размечает слова. Если модель недоступна или не справилась, студия перейдёт к приблизительной разметке по громкости.",
+    alignExplainQwen: "Qwen привязывает загруженный текст к вокалу, а не распознаёт новый текст. На песнях пока эксперимент: проверьте тайминги. Нужен исходник с голосом, не минусовка.",
+    alignExplainFast: "Без нейросети: время оценивается по громкости и числу слогов. Быстро и без тяжёлой модели, но для точных таймингов слов не подходит.",
+    qwenMemoryHint: "Веса: около 1,8 ГБ на диске. Для CPU ориентир — около 6 ГБ свободной оперативной памяти, не строгий минимум и не требование к видеопамяти; расход зависит от длины обрабатываемого фрагмента.",
+    qwenMissing: "Qwen не установлен в этой сборке. Установите app/requirements-qwen.txt в Python-окружение программы.",
+    qwenUnavailable: "не установлен",
+    qwenHint: "Qwen3-ForcedAligner-0.6B · размечает загруженный текст, не распознаёт его заново. На пении пока эксперимент: проверьте результат. В длинных песнях границы поисковых окон приблизительные. Бэки тоже нужно проверить.",
+    qwenFolderOpened: "Папка модели Qwen открыта",
+    qwenDeleteHint: "Веса Qwen хранятся в отдельной папке (около 1,8 ГБ). Для освобождения места удалите их оттуда; при необходимости они скачаются снова.",
     alignFast: "Быстро, без нейросети",
     langTitle: "Язык текста песни", instrumental: "Минусовка",
     build: "Собрать", working: "Работаю…", toList: "← К списку", songs: "← Песни",
@@ -553,7 +632,7 @@ const STR = {
     pitchDown: "На полутон ниже", pitchUp: "На полутон выше",
     pitchReset: "Исходная тональность", pitchBusy: "Меняю тональность…",
     pitchChanged: n => n ? `Тональность: ${n > 0 ? "+" : ""}${n} полутонов` : "Исходная тональность",
-    cancel: "Отмена", dropBig: "Отпустите файлы здесь",
+    cancel: "Отмена", cancelledJob: "Разметка отменена", cancellingJob: "Отменяю…", dropBig: "Отпустите файлы здесь",
     dropSub: "песня и текст — или каждый по отдельности",
     langUi: "Язык надписей",
     langMissing: code => `Для «${code}» перевода пока нет`,
@@ -617,7 +696,13 @@ const STR = {
     lookingAt: "Смотрю, что за песня…",
     badFiles: "Не вышло разобрать файлы: ",
     allGood: "Ничего подозрительного.<br>Строки стоят там, где поётся.",
-    wordHint: w => `«${w}»: за середину — подвинуть, за края — растянуть`,
+    wordHint: w => `«${w}»: за середину — подвинуть, за края — растянуть; двойной щелчок — тянуть букву`,
+    letterTitle: "Растянуть букву",
+    letterHint: "Выберите букву. Её тайминг станет отдельным блоком, написание слова не изменится. Затем можно двигать края блока на дорожке.",
+    letterCursor: t => `Закончить на курсоре (${t})`,
+    letterRange: "Курсор должен стоять в пределах песни, после начала слова и перед следующим словом.",
+    letterApply: "Применить",
+    letterShort: "Сначала увеличьте длительность слова: для отдельных таймингов букв не хватает места.",
     wordAt: (w, t) => `слово «${w}»: ${t}`,
     wordSpan: (w, a, b, d) => `слово «${w}»: ${a} … ${b} (${d} с)`,
     lineEndAt: (n, t) => `строка ${n}: конец ${t}`,
@@ -996,7 +1081,106 @@ async function api(path, body){
   if (j && j.error) throw new Error(j.error);
   return j;
 }
-// Labels are put in place before the list is drawn for the first time.
+// The editor shell is declarative HTML, not a runtime re-parenting of a legacy toolbar.
+// Initialise its interactions; library/build conveniences use the same shared state.
+function setupWorkspace(){
+  $("btnWorkspaceLook").addEventListener("click", () => showInspector("look"));
+  $("btnWorkspaceProject").addEventListener("click", () => showInspector("project"));
+  $("btnWorkspaceClose").addEventListener("click", closeWorkspaceSettings);
+  new MutationObserver(refreshInlineText).observe($("selNote"),
+    {childList:true, subtree:true, characterData:true});
+  $("inlineLineText").addEventListener("input", () => {
+    inlineTextDirty = true; $("btnApplyLineText").disabled = false;
+  });
+  $("inlineLineText").addEventListener("blur", saveInlineText);
+  $("inlineLineText").addEventListener("keydown", e => {
+    e.stopPropagation();
+    // Keep native undo for an unsaved draft; after applying, undo the project edit.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !inlineTextDirty){
+      const key = e.key.toLowerCase();
+      if (e.code === "KeyZ" || key === "z"){
+        e.preventDefault(); e.shiftKey ? redo() : undo(); return;
+      }
+      if (e.code === "KeyY" || key === "y"){
+        e.preventDefault(); redo(); return;
+      }
+    }
+    if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); saveInlineText(); }
+    if (e.key === "Escape"){ e.preventDefault(); inlineTextDirty=false; refreshInlineText(); }
+  });
+  $("btnApplyLineText").addEventListener("click", saveInlineText);
+  // Audio monitoring and exports have their own persistent areas.
+  const menu = $("expMenu");
+  menu.prepend($("btnExportHtml"), $("btnExportMp3"));
+  $("btnExportMore").dataset.t = "workspaceExport";
+  $("btnExportMp4").classList.add("pri");
+  document.querySelectorAll(".screen > header").forEach(header => {
+    const version = document.createElement("span"); version.className = "app-version";
+    version.textContent = "Karaoke Studio"; header.append(version);
+  });
+  const intro = document.createElement("div"); intro.className = "library-intro";
+  intro.innerHTML = '<h2 data-t="workspaceLibrary"></h2><p data-t="workspaceLibraryHint"></p>';
+  $("cards").before(intro);
+  const newIntro = document.createElement("p"); newIntro.className = "new-intro";
+  newIntro.dataset.t = "workspaceBuildHint";
+  document.querySelector("#scrNew .form").prepend(newIntro);
+  const sourceField = $("inAudio").closest(".field");
+  const lyricsField = $("inLyrics").closest(".field");
+  const timingField = $("selAlign").closest(".field");
+  sourceField.append($("newAudioPreview"));
+  lyricsField.before($("inTitle").closest(".field"));
+  [sourceField, lyricsField, timingField].forEach((field, i) => {
+    field.querySelector(":scope > label").dataset.step = String(i + 1);
+  });
+  const advanced = document.createElement("details"); advanced.className = "build-advanced";
+  const advancedTitle = document.createElement("summary"); advancedTitle.dataset.t = "workspaceAdvanced";
+  advanced.append(advancedTitle, $("selModel"), $("modelNote"), $("btnModelFolder").parentElement,
+    $("inNoText").closest(".field"));
+  timingField.append(advanced);
+}
+function showInspector(key){
+  if (key !== "look" && key !== "project"){ closeWorkspaceSettings(); return; }
+  $("workspaceDrawer").classList.remove("hide");
+  document.querySelector("#scrEdit .side").classList.add("settings-open");
+  for (const name of ["look", "project"]){
+    $("inspector-" + name).classList.toggle("hide", name !== key);
+    const button = $(name === "look" ? "btnWorkspaceLook" : "btnWorkspaceProject");
+    button.classList.toggle("on", name === key);
+    button.setAttribute("aria-expanded", String(name === key));
+  }
+  document.querySelector("#scrEdit .side").scrollTop = 0;
+}
+function closeWorkspaceSettings(){
+  $("workspaceDrawer").classList.add("hide");
+  document.querySelector("#scrEdit .side").classList.remove("settings-open");
+  for (const name of ["look", "project"]){
+    $("inspector-" + name).classList.add("hide");
+    const button = $(name === "look" ? "btnWorkspaceLook" : "btnWorkspaceProject");
+    button.classList.remove("on"); button.setAttribute("aria-expanded", "false");
+  }
+}
+let inlineTextLine = -1, inlineTextDirty = false;
+function refreshInlineText(){
+  if (inlineTextDirty && inlineTextLine === sel) return;
+  inlineTextLine = sel; inlineTextDirty = false;
+  const line = sel >= 0 ? lines[sel] : null;
+  $("inlineLineText").value = line ? line.text : "";
+  $("inlineLineText").disabled = !line || !!line.lock;
+  $("btnApplyLineText").disabled = true;
+  $("inlineTextHint").textContent = marked.size > 1 ? T.studioAnchorHint : T.studioTextHint;
+}
+function saveInlineText(){
+  if (!inlineTextDirty || inlineTextLine < 0 || !lines[inlineTextLine]) return;
+  const index = inlineTextLine, text = $("inlineLineText").value;
+  inlineTextDirty = false;
+  snap("");
+  const changed = retext(index, text);
+  if (!changed){ past.pop(); refreshHistory(); refreshInlineText(); return; }
+  buildLines(); makeBlocks();
+  if (sel >= 0) selectLine(sel, false, "keep");
+  touched(); refreshInlineText();
+}
+setupWorkspace();
 applyLang();
 function labelLang(){
   // The button shows the language it switches TO — clearer than the current one.
@@ -1040,7 +1224,7 @@ function screen(name){
 }
 
 /* ================= song list ================= */
-let caps = {}, lastData = null, libraryDir = "";
+let caps = {}, lastData = null, libraryDir = "", preferredTimingEngine = null;
 let updateInfo = null, updateChecked = false;
 let desktopLifetime = null;
 function keepDesktopProcessWithThisWindow(){
@@ -1070,7 +1254,34 @@ async function checkUpdate(silent=false){
 }
 $('btnUpdate').addEventListener('click', async () => {
   if (!updateInfo || !updateInfo.available) return checkUpdate(false);
-  if (!confirm(T.updateAsk(updateInfo.version))) return;
+  const info = updateInfo;
+  $("updateTitle").textContent = T.updateAvailable(info.version);
+  $("updateDescription").textContent = T.updateAsk(info.version);
+  $("updateNotes").textContent = T.updateNotesLoading;
+  $("updateDlg").classList.remove("hide");
+  $("btnUpdateCancel").focus();
+  try {
+    const notes = await api('/api/update/notes?tag=' + encodeURIComponent(info.tag || 'v' + info.version));
+    $("updateNotes").textContent = notes.notes || T.updateNotesMissing;
+  } catch(e){ $("updateNotes").textContent = T.updateNotesMissing; }
+});
+function closeUpdate(){ $("updateDlg").classList.add("hide"); $("btnUpdate").focus(); }
+$("btnUpdateCancel").addEventListener("click", closeUpdate);
+$("updateDlg").addEventListener("click", e => {
+  if (e.target === $("updateDlg")) closeUpdate();
+});
+document.addEventListener("keydown", e => {
+  if ($("updateDlg").classList.contains("hide")) return;
+  if (e.key === "Escape"){ e.preventDefault(); closeUpdate(); }
+  if (e.key === "Tab"){
+    const ring = [$("updateNotes"), $("btnUpdateCancel"), $("btnUpdateInstall")];
+    const at = ring.indexOf(document.activeElement);
+    e.preventDefault(); ring[(at + (e.shiftKey ? 2 : 1)) % ring.length].focus();
+  }
+  e.stopImmediatePropagation();
+}, true);
+$("btnUpdateInstall").addEventListener("click", async () => {
+  $("updateDlg").classList.add("hide");
   try{
     const started = await api('/api/update/download', {});
     watchJob(started.job, T.updateDownloading, async ready => {
@@ -1091,6 +1302,11 @@ $('btnUpdate').addEventListener('click', async () => {
 async function loadList(){
   const st = await api("/api/state");
   caps = st.caps;
+  preferredTimingEngine = st.timingEngine || null;
+  document.querySelectorAll(".app-version").forEach(el => {
+    el.textContent = caps.version ? "v" + caps.version : "Karaoke Studio";
+    el.title = "Karaoke Studio " + (caps.version || "");
+  });
   libraryDir = st.libraryDir || st.projectsDir || "";
   $("btnLibrary").title = libraryDir;
   keepDesktopProcessWithThisWindow();
@@ -1154,8 +1370,25 @@ function markModels(){
                                           : T.modelGet)
                   + (heavy(o.value) ? T.modelHeavy : "");
   });
+  const qwen = $("selAlign").querySelector('[value="qwen"]');
+  qwen.disabled = !caps.qwen;
+  qwen.textContent = T.alignQwen + (!caps.qwen ? " · " + T.qwenUnavailable : "");
 }
 function modelNote(){
+  const engine = $("selAlign").value;
+  $("alignExplain").textContent = engine === "qwen" ? T.alignExplainQwen :
+    engine === "energy" ? T.alignExplainFast : T.alignExplainWhisper;
+  const qwen = $("selAlign").value === "qwen";
+  $("selModel").classList.toggle("hide", qwen);
+  $("modelNote").classList.toggle("hide", qwen);
+  $("qwenNote").classList.toggle("hide", !qwen);
+  const deleteHint = document.querySelector('[data-t="modelDeleteHint"]');
+  if (deleteHint) deleteHint.textContent = qwen ? T.qwenDeleteHint : T.modelDeleteHint;
+  if (qwen){
+    $("qwenNote").textContent = !caps.qwen ? T.qwenMissing : T.qwenHint + " " +
+      (caps.qwenModel ? T.noteReady : T.noteDownload) + " " + T.qwenMemoryHint;
+    return;
+  }
   const v = $("selModel").value, have = (caps.models || {})[v];
   const slow = $("selAlign").value !== "energy";
   const need = heavy(v);
@@ -1242,7 +1475,7 @@ function drawReport(r){
   ];
   const steps = [];
   if (p.separate) steps.push(T.planSep);
-  steps.push(p.whisper ? T.planWhisper(p.model) : T.planEnergy);
+  steps.push(p.engine === "qwen" ? T.alignQwen : p.whisper ? T.planWhisper(p.model) : T.planEnergy);
   const where = q.length
     ? '<div class="plan">' + T.quietAt +
       q.slice(0,4).map(x => fmt(x.start) + "–" + fmt(x.end)).join(", ") +
@@ -1304,11 +1537,20 @@ $("inLyrics").addEventListener("input", () => {
 
 $("selLang").addEventListener("change", modelNote);
 $("selModel").addEventListener("change", modelNote);
-$("selAlign").addEventListener("change", modelNote);
+let timingPreferenceSave = Promise.resolve();
+$("selAlign").addEventListener("change", () => {
+  modelNote();
+  const engine = $("selAlign").value;
+  preferredTimingEngine = engine;
+  // Serialize rapid changes so an older request cannot win on disk.
+  timingPreferenceSave = timingPreferenceSave.catch(() => {}).then(() =>
+    api("/api/preferences/timing", {engine})).catch(e => toast(e.message));
+});
 $("btnModelFolder").addEventListener("click", async () => {
   try{
-    await api("/api/models/open-folder", {});
-    toast(T.modelFolderOpened);
+    const qwen = $("selAlign").value === "qwen";
+    await api("/api/models/open-folder", {engine: qwen ? "qwen" : "whisper"});
+    toast(qwen ? T.qwenFolderOpened : T.modelFolderOpened);
   }catch(e){ toast(e.message); }
 });
 
@@ -1353,9 +1595,11 @@ $("brUp").addEventListener("click", () => showDir($("brBody").dataset.parent));
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   const top = !$("browser").classList.contains("hide") ? $("browser")
+            : !$("letterDlg").classList.contains("hide") ? $("letterDlg")
             : !$("expDlg").classList.contains("hide") ? $("expDlg") : null;
   if (!top) return;
-  top.classList.add("hide");
+  if (top === $("letterDlg")) closeLetterDialog();
+  else top.classList.add("hide");
   e.preventDefault();
   e.stopImmediatePropagation();
 }, true);
@@ -1745,7 +1989,9 @@ function resetNewSongForm(){
   $("taLyrics").value = "";
   const defModel = [...$("selModel").options].find(o => o.defaultSelected);
   if (defModel) $("selModel").value = defModel.value;
-  $("selAlign").value = caps.whisper ? "auto" : "energy";
+  const savedEngine = preferredTimingEngine;
+  $("selAlign").value = savedEngine === "qwen" && caps.qwen ? "qwen" :
+    savedEngine === "energy" ? "energy" : caps.whisper ? "auto" : "energy";
   $("selLang").value = "auto";
   $("chkSep").checked = !!caps.demucs;
   $("chkFine").checked = false;
@@ -1790,12 +2036,13 @@ function followJob(jid, onLine){
       if (log.length && onLine) onLine(log[log.length - 1]);
       if (!j.done && !j.error) return setTimeout(tick, 600);
       if (j.done && j.ok) resolve(j.result);
-      else reject(new Error(j.error || T.jobFail));
+      else reject(Object.assign(new Error(j.error || T.jobFail), {cookiesRequired:!!j.cookiesRequired}));
     };
     tick();
   });
 }
 async function takeLink(){
+  if ($('btnFetch').disabled) return;
   const url = $("inLink").value.trim();
   if (!url) return note("linkNote", T.linkNeedUrl, true);
   const btn = $("btnFetch");
@@ -2047,26 +2294,35 @@ $("btnBuild").addEventListener("click", async () => {
       // Kept for older servers which do not know backgroundMode yet.
       coverBg: !!(cover && ($("grpCover").classList.contains("hide")
         || $("selBackground").value === "cover"))});
-    watchJob(j.job, T.jobBuild, id => openProject(id));
+    watchJob(j.job, T.jobBuild, id => openProject(id), ()=>screen('scrNew'), true);
   }catch(e){ toast(e.message); }
 });
 
 let jobBack = loadList;
-function watchJob(jid, title, onDone, onBack=loadList){
+let watchedJob = null;
+function watchJob(jid, title, onDone, onBack=loadList, cancellable=false){
+  watchedJob = jid;
   jobBack = onBack;
   $("jobTitle").textContent = title;
   $("jobLog").textContent = "";
   $("btnJobBack").classList.add("hide");
+  $('btnJobCancel').classList.toggle('hide', !cancellable);
+  $('btnJobCancel').disabled = false;
+  $('btnJobCancel').textContent = T.cancel;
   screen("scrJob");
   const tick = async () => {
     let j;
     // A failed job used to leave this screen spinning with no way back: its
     // “error” came through api() as a thrown request, and the tick stopped.
     try { j = await jobState(jid); } catch(e){ return setTimeout(tick, 900); }
+    if (watchedJob !== jid) return;
+    $('btnJobCancel').classList.toggle('hide', !cancellable || !j.cancellable || j.done);
+    $('btnJobCancel').disabled = !!j.cancelling;
     $("jobLog").textContent = (j.log||[]).join("\n");
     $("jobLog").scrollTop = 1e9;
     if (!j.done && !j.error) return setTimeout(tick, 600);
-    if (j.done && j.ok) onDone(j.result);
+    if (j.cancelled){ watchedJob = null; onBack(); toast(T.cancelledJob); }
+    else if (j.done && j.ok) onDone(j.result);
     else {
       $("jobTitle").textContent = T.jobFail;
       $("btnJobBack").classList.remove("hide");
@@ -2075,6 +2331,14 @@ function watchJob(jid, title, onDone, onBack=loadList){
   tick();
 }
 $("btnJobBack").addEventListener("click", () => jobBack());
+$('btnJobCancel').addEventListener('click', async()=>{
+  if (!watchedJob) return;
+  $('btnJobCancel').disabled = true;
+  try {
+    const result = await api('/api/job/cancel', {id:watchedJob});
+    if (result.accepted) $('jobTitle').textContent = T.cancellingJob;
+  } catch(e){ $('btnJobCancel').disabled = false; toast(e.message); }
+});
 $("btnBack").addEventListener("click", async () => {
   stop(); await flush();            // leave only once the edit is written
   loadList();
@@ -2187,6 +2451,13 @@ function setVoice(v){ voiceLevel = clamp(v,0,1);
   $("vVoice").textContent = Math.round(voiceLevel*100)+"%"; }
 $("btnPlay").addEventListener("click", () => playing ? stop() : play());
 $("rVoice").addEventListener("input", e => setVoice(e.target.value/100));
+$("grpVoice").addEventListener("wheel", e => {
+  if (!e.deltaY || Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.ctrlKey || e.metaKey || $("rVoice").disabled) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const step = e.shiftKey ? 1 : 5;
+  setVoice((Math.round(voiceLevel * 100) - Math.sign(e.deltaY) * step) / 100);
+}, {passive: false});
 
 function refreshPitch(){
   $("vPitch").textContent = pitch > 0 ? "+" + pitch : String(pitch);
@@ -2231,6 +2502,8 @@ let pid=null, data=null, lines=[], envelope=[], envHop=0.02, onsets=[];
 let sel=-1, curLine=-1, curDuo=-1, loopSel=false, saveT=0;
 
 async function openProject(id){
+  closeWorkspaceSettings();
+  document.querySelector("#scrEdit .side").scrollTop = 0;
   pid = id;
   data = await api("/api/project/"+encodeURIComponent(id));
   softKeepDraft = data.softKeepLevel == null
@@ -2248,6 +2521,8 @@ async function openProject(id){
   onsets = findOnsets();
   figureDoubt();
   sel = -1; curLine = -2; waOffset = 0; playing = false;
+  $("selNote").textContent = T.noLine;
+  refreshVoice(); refreshBacking(); refreshRhythm();
   songName = data.title || "";
   songArtist = data.artist || "";
   showName();
@@ -2308,17 +2583,25 @@ function buildLines(){
     const el=document.createElement("div");
     el.className = "ln" + (ln.backing ? " back" : "") + voiceClass(ln)
       + (ln.keep ? " keep" : "");
+    let wordHost = el;
     ln.words.forEach((w,j) => {
       // a syllable reads on to the word before it — the mark that split it
       // is a timing device, never a letter
       const after = ln.words[j+1];
+      if (!w.g || !j){
+        wordHost = el;
+        if (after && after.g){
+          wordHost = document.createElement("span"); wordHost.className = "wgroup";
+          el.appendChild(wordHost);
+        }
+      }
       const shown = cleanPunctuation(w.w);
       const noGap = after && /^[,.;:!?…»\)\]\}]/.test(cleanPunctuation(after.w));
       const txt = shown + (after && !after.g && !noGap ? " " : "");
       const sp=document.createElement("span"); sp.className="w";
       const hl=document.createElement("span"); hl.className="hl"; hl.textContent=txt;
       sp.appendChild(hl); sp.appendChild(document.createTextNode(txt));
-      el.appendChild(sp);
+      wordHost.appendChild(sp);
     });
     el.addEventListener("click", e => {
       if (skipClick){ skipClick = false; return; }   // that was the end of a drag
@@ -2328,7 +2611,7 @@ function buildLines(){
     el.addEventListener("dblclick", () => editText(i));
     box.appendChild(el);
     // the “original sings” tag is not a word, there is nothing to highlight
-    lineEls.push({el, hls:[...el.children].filter(e=>e.className==="w")
+    lineEls.push({el, hls:[...el.querySelectorAll(".w")]
                                           .map(s=>s.firstChild)});
     if (ln.keep) markKeep(i);
   });
@@ -2417,6 +2700,7 @@ window.addEventListener("pointerup", e => {
 });
 
 function selectLine(i, jump, mode){
+  saveInlineText();
   const prev = sel, was = sel;
   sel = clamp(i, 0, lines.length-1);
   if (mode === "add"){                       // Ctrl — add or remove one
@@ -2447,6 +2731,7 @@ function selectLine(i, jump, mode){
   layoutBlock(sel);
   makeWords();                       // the word row always belongs to the selected line
   refreshVoice(); refreshBacking(); refreshKeep(); refreshRhythm();
+  refreshInlineText();
 }
 function selectAllLines(){
   if (!lines.length) return;
@@ -2484,7 +2769,7 @@ function centerLine(i){
   // Before a line is chosen, show the first one: the text padding is set in
   // fractions of the WINDOW while the stage is shorter, so without centring the
   // text ends up at the bottom edge or past it.
-  if (i < 0) i = 0;
+  if (i < 0) i = Math.max(0, latestStartedLine(mediaTime()));
   if (!lineEls[i]) return;
   const el=lineEls[i].el;
   scrollY = el.offsetTop + el.offsetHeight/2 - $("stage").clientHeight/2;
@@ -2896,7 +3181,7 @@ function toggleLock(){
     lines[i].lock = to;
     if (blockEls[i]) blockEls[i].classList.toggle("lock", to);
   });
-  touched();
+  touched(); refreshInlineText();
   toast(to ? T.lockedN(idx.length) : T.unlockedN(idx.length));
 }
 $("btnLock").addEventListener("click", toggleLock);
@@ -2926,12 +3211,12 @@ $("btnRealignPart").addEventListener("click", async () => {
   await flush();
   try{
     const j = await api("/api/project/" + encodeURIComponent(pid) + "/realign-part",
-      {from: a, to: b, align: caps.whisper ? "auto" : "energy", lang: langOf(),
+      {from: a, to: b, align: data.engine === "qwen" ? "qwen" : caps.whisper ? "auto" : "energy", lang: langOf(),
        noText: ($("edNoText").value || "").trim()});
     watchJob(j.job, T.realignPart, r => {
       openProject(pid);
       toast(T.realignPartDone((r && r.lines) || 0));
-    });
+    }, ()=>openProject(pid), true);
   }catch(e){ toast(e.message); }
 });
 
@@ -3051,12 +3336,15 @@ function cutLines(){
 }
 function applyRhythm(i, item){
   const ln = lines[i];
-  if (ln.words.length !== item.words.length) return false;
-  item.words.forEach((c, j) => {
-    ln.words[j].t = ln.start + c.dt;
-    ln.words[j].d = c.d;
-    if (c.g !== undefined) ln.words[j].g = c.g;
-  });
+  if (ln.text.trim() === item.text.trim()){
+    ln.words = item.words.map(c => ({w:c.w,s:c.s,g:c.g,t:ln.start + c.dt,d:c.d}));
+  } else {
+    const source = wordGroups(item.words,"dt"), target = wordGroups(ln.words);
+    if (source.length !== target.length) return false;
+    // Letter positions have no meaning in a different written word. Copy
+    // its whole-word rhythm, not a glue flag that would delete a space.
+    ln.words = target.map((w,j) => ({w:w.w,s:syllables(w.w),t:ln.start + source[j].dt,d:source[j].d}));
+  }
   const last = ln.words[ln.words.length - 1];
   ln.end = ln.start + item.len;
   if (last) ln.end = Math.max(ln.end, last.t + last.d);
@@ -3078,12 +3366,14 @@ function pasteRhythm(){
     if (one || positional.text.trim() === lines[list[k]].text.trim()) return positional;
     return clip.items.find(c => c.text.trim() === lines[list[k]].text.trim()) || positional;
   };
-  const bad = list.filter((i, k) => lines[i].words.length !== src(k).words.length);
+  const bad = list.filter((i, k) => lines[i].text.trim() !== src(k).text.trim()
+    && wordGroups(lines[i].words).length !== wordGroups(src(k).words,"dt").length);
   if (bad.length === list.length)
-    return toast(T.rhythmMismatch(src(0).words.length, lines[sel].words.length));
+    return toast(T.rhythmMismatch(wordGroups(src(0).words,"dt").length, wordGroups(lines[sel].words).length));
   snap("");
   let done = 0;
   list.forEach((i, k) => { if (applyRhythm(i, src(k))) done++; });
+  buildLines(); makeBlocks();
   selectLine(sel, false);
   layoutBlocks(); makeWords(); curLine = -2; touched();
   toast(done > 1 ? T.rhythmPastedN(done) : T.rhythmPasted);
@@ -3103,7 +3393,7 @@ function duplicateLine(){
   const copy = {
     text: cur.text, section: null, backing: cur.backing,
     voice: cur.voice, keep: cur.keep, start, end: start + span * k,
-    words: cur.words.map(w => ({w: w.w, s: w.s,
+    words: cur.words.map(w => ({w: w.w, s: w.s, g:w.g,
                                 t: start + (w.t - cur.start) * k,
                                 d: Math.max(w.d * k, MIN_W)})),
   };
@@ -3223,7 +3513,7 @@ function drawSummary(data){
     if (q.length > 12) d.append(T.andMore(q.length - 12));
     if (q.some(x => !markedAlready(x))){
       const all = document.createElement("button");
-      all.className = "words";
+      all.className = "quiet-all";
       all.textContent = T.quietTakeAll;
       all.addEventListener("click", () => takeQuiet(q));
       d.append(all);
@@ -3529,6 +3819,105 @@ function showNextHint(){
    Singing inside a line is uneven: a pause, a stretched word, a patter. The
    syllable layout knows nothing of that, so every word can be moved on its own. */
 const wordEls = [];
+// Timing parts (letters/syllables) remain one written word. All text edits
+// and rhythm copies must reason about logical words, not timeline chips.
+function wordGroups(words, timeKey="t"){
+  const groups = [];
+  words.forEach((w, index) => {
+    if (!w.g || !groups.length) groups.push({parts:[], first:index});
+    groups[groups.length - 1].parts.push(w);
+  });
+  return groups.map(group => {
+    const first = group.parts[0], last = group.parts[group.parts.length - 1];
+    return {...first, ...group, w:group.parts.map(w => w.w).join(""),
+      d:last[timeKey] + last.d - first[timeKey]};
+  });
+}
+function graphemes(text){
+  return typeof Intl.Segmenter === "function"
+    ? [...new Intl.Segmenter(undefined, {granularity:"grapheme"}).segment(text)].map(s => s.segment)
+    : Array.from(text);
+}
+let letterEdit = null;
+function closeLetterDialog(){
+  $("letterDlg").classList.add("hide");
+  if (letterEdit && wordEls[letterEdit.group.first]) wordEls[letterEdit.group.first].focus();
+  letterEdit = null;
+}
+function openLetterDialog(j){
+  if (sel < 0) return;
+  const ln = lines[sel];
+  if (ln.lock) return toast(T.lineLocked);
+  const group = wordGroups(ln.words).find(g => j >= g.first && j < g.first + g.parts.length);
+  if (!group) return;
+  const chars = graphemes(group.w), cursor = mediaTime();
+  const next = ln.words[group.first + group.parts.length];
+  letterEdit = {line:sel, ln, group, chars, chosen:0, cursor};
+  chars.forEach((c, k) => { if (/\p{L}|\p{N}/u.test(c)) letterEdit.chosen = k; });
+  chars.forEach((c, k) => { if (/[аеёиоуыэюяaeiouy]/i.test(c)) letterEdit.chosen = k; });
+  const canEnd = cursor > group.t + MIN_W * 3 && cursor <= dur && (!next || cursor <= next.t);
+  $("letterToCursor").disabled = !canEnd;
+  $("letterToCursor").checked = canEnd && cursor > group.t + group.d;
+  $("letterCursorLabel").textContent = T.letterCursor(fmtMs(cursor));
+  $("letterRangeNote").textContent = canEnd ? "" : T.letterRange;
+  const box = $("letterChoices"); box.replaceChildren();
+  chars.forEach((c, k) => {
+    const button = document.createElement("button"); button.textContent = c;
+    button.disabled = !/\p{L}|\p{N}/u.test(c);
+    button.setAttribute("aria-pressed", String(k === letterEdit.chosen));
+    button.addEventListener("click", () => {
+      letterEdit.chosen = k;
+      [...box.children].forEach((el, at) => el.setAttribute("aria-pressed",String(at === k)));
+    });
+    box.appendChild(button);
+  });
+  $("letterDlg").classList.remove("hide");
+  const active = box.children[letterEdit.chosen];
+  (active && !active.disabled ? active : $("letterCancel")).focus();
+}
+$("letterCancel").addEventListener("click", closeLetterDialog);
+$("letterDlg").addEventListener("keydown", e => {
+  if (e.key === "Tab"){
+    const ring = [...$("letterDlg").querySelectorAll("button:not(:disabled),input:not(:disabled)")];
+    const at = ring.indexOf(document.activeElement);
+    if ((e.shiftKey && at <= 0) || (!e.shiftKey && at === ring.length - 1)){
+      e.preventDefault(); (e.shiftKey ? ring[ring.length - 1] : ring[0]).focus();
+    }
+  }
+  e.stopPropagation();
+});
+$("letterApply").addEventListener("click", () => {
+  const edit = letterEdit;
+  if (!edit || lines[edit.line] !== edit.ln || edit.ln.lock) return closeLetterDialog();
+  const {group, chars, chosen} = edit;
+  const hasSuffix = chars.slice(chosen + 1).some(c => /\p{L}|\p{N}/u.test(c));
+  const pieces = [chars.slice(0, chosen).join(""), chars[chosen] + (!hasSuffix ? chars.slice(chosen + 1).join("") : ""),
+    hasSuffix ? chars.slice(chosen + 1).join("") : ""].filter(Boolean);
+  const end = $("letterToCursor").checked ? edit.cursor : group.t + group.d;
+  const span = end - group.t;
+  if (span < MIN_W * pieces.length) return toast(T.letterShort);
+  const before = chosen > 0 ? Math.min(.12, span / pieces.length) : 0;
+  const after = hasSuffix ? Math.min(.12, span / pieces.length) : 0;
+  let at = group.t;
+  const parts = pieces.map((text, k) => {
+    const length = (chosen > 0 && k === 0) ? before
+      : (hasSuffix && k === pieces.length - 1) ? after : span - before - after;
+    const part = {w:text,t:at,d:length,s:syllables(text)};
+    if (k) part.g = true;
+    at += length;
+    return part;
+  });
+  snap("");
+  edit.ln.words.splice(group.first, group.parts.length, ...parts);
+  edit.ln.end = Math.max(edit.ln.end, end);
+  const index = edit.line;
+  closeLetterDialog();
+  buildLines(); makeBlocks(); selectLine(index, false); curLine = -2; touched();
+});
+$("words").addEventListener("dblclick", e => {
+  const el = e.target.closest(".wrd");
+  if (el){ e.preventDefault(); openLetterDialog(+el.dataset.j); }
+});
 function makeWords(){
   const box = $("words");
   if (!box) return;
@@ -3540,6 +3929,11 @@ function makeWords(){
     ln.words.forEach((w, j) => {
       const e = document.createElement("div");
       e.className = "wrd"; e.dataset.j = j;
+      e.tabIndex = 0;
+      e.setAttribute("role", "button");
+      e.addEventListener("keydown", event => {
+        if (event.key === "Enter"){ event.preventDefault(); event.stopPropagation(); openLetterDialog(j); }
+      });
       e.title = T.wordHint(w.w);
       const t = document.createElement("span");
       t.className = "wtx"; t.textContent = w.w;
@@ -3557,31 +3951,27 @@ function makeWords(){
       box.appendChild(e); wordEls.push(e);
     });
   }
+  // Same word count does not mean the text stayed the same. Cached chips
+  // must reflect typo corrections, undo and pasted replacement words too.
+  wordEls.forEach((el, j) => {
+    const text = el.querySelector(".wtx");
+    if (text.textContent !== ln.words[j].w) text.textContent = ln.words[j].w;
+    el.title = T.wordHint(ln.words[j].w);
+  });
   layoutWords();
 }
 function layoutWords(){
   const ln = sel >= 0 ? lines[sel] : null;
   if (!ln) return;
   const k = pps();
-  // Words overlap in time more often than not, and an article the aligner gave
-  // no time of its own starts exactly where its neighbour does — drawn as they
-  // are, such chips lie on top of each other and the small one cannot even be
-  // grabbed. Each chip is given a sliver of its own and trimmed short of the
-  // next one: the drawing steps aside, the times stay exactly as they are.
-  let prevRight = -1e9;
+  // Zoom must not invent time: minimum hit widths and cumulative displacement
+  // used to push short letter chips past the line end when zoomed out. Keep
+  // real starts and durations; hide unreadable labels rather than spread chips.
   wordEls.forEach((e, j) => {
     const w = ln.words[j];
     if (!w) return;
-    const left = Math.max(w.t * k, prevRight + 1);
-    let width = Math.max(w.d * k, 12);
-    const next = ln.words[j + 1];
-    if (next){
-      // Twelve pixels is the least a finger or a cursor can take hold of:
-      // a sliver thinner than that is visible and still ungrabbable.
-      const nextLeft = Math.max(next.t * k, left + 13);
-      width = Math.max(12, Math.min(width, nextLeft - left - 1));
-    }
-    prevRight = left + width;
+    const left = w.t * k;
+    const width = Math.max(w.d * k, 1);
     e.style.left = left + "px";
     e.style.width = width + "px";
     // on a narrow word the label is unreadable anyway — show no stub
@@ -3713,8 +4103,7 @@ $("words").addEventListener("pointerdown", e => {
   if (e.button !== 0) return;                   // middle button pans the timeline
   const el = e.target.closest(".wrd"); if (!el || sel < 0) return;
   const j = +el.dataset.j, w = lines[sel].words[j];
-  snap("");
-  wdrag = {j, x0:e.clientX, t0:w.t, d0:w.d, moved:false,
+  wdrag = {j, x0:e.clientX, t0:w.t, d0:w.d, moved:false, snapped:false,
            mode: e.target.dataset.wgrip || "move"};
   el.classList.add("on");
   $("tlwrap").classList.add("drag");
@@ -3723,6 +4112,8 @@ $("words").addEventListener("pointerdown", e => {
 window.addEventListener("pointermove", e => {
   if (wdrag){
     if (e.clientX !== wdrag.x0) wdrag.moved = true;
+    if (!wdrag.moved) return;
+    if (!wdrag.snapped){ snap(""); wdrag.snapped = true; }
     const dt = (e.clientX - wdrag.x0) / $("tlwrap").clientWidth * zoom;
     editWord(wdrag.j, wdrag.mode, wdrag.t0, wdrag.d0, dt);
     const w = lines[sel].words[wdrag.j];
@@ -3802,7 +4193,7 @@ window.addEventListener("pointerup", e => {
     $("tlwrap").classList.remove("drag");
     if (moved) refreshStageAfterDrag();
     else curLine = -2;
-    touched();
+    if (moved) touched();
     return;
   }
   // A still second click on an already-selected block dives to the line
@@ -3862,7 +4253,7 @@ function retext(i, text){
   // are the same words, their times are THEIR times — laying the whole line
   // out anew threw away exactly the rhythm the person had already set. Only
   // the changed stretch is laid out, in the gap the change occupies.
-  const old = ln.words;
+  const old = wordGroups(ln.words);
   const oldN = old.map(w => normTok(w.w)), newN = parts.map(normTok);
   let pre = 0;
   while (pre < old.length && pre < parts.length
@@ -3872,8 +4263,16 @@ function retext(i, text){
          && oldN[old.length - 1 - suf]
          && oldN[old.length - 1 - suf] === newN[parts.length - 1 - suf]) suf++;
   const words = [];
+  const keptParts = (group, text) => {
+    const chars = graphemes(text); let at = 0;
+    return group.parts.map((part, k) => {
+      const end = k === group.parts.length - 1 ? chars.length : at + graphemes(part.w).length;
+      const w = chars.slice(at,end).join(""); at = end;
+      return {...part,w,s:syllables(w)};
+    }).filter(w => w.w);
+  };
   for (let k = 0; k < pre; k++)
-    words.push({w: parts[k], t: old[k].t, d: old[k].d, s: syllables(parts[k])});
+    words.push(...keptParts(old[k],parts[k]));
   const mid = parts.slice(pre, parts.length - suf);
   if (mid.length){
     const gapStart = pre ? old[pre - 1].t + old[pre - 1].d : ln.start;
@@ -3891,11 +4290,12 @@ function retext(i, text){
   }
   for (let k = old.length - suf; k < old.length; k++){
     const w = parts[parts.length - (old.length - k)];
-    words.push({w, t: old[k].t, d: old[k].d, s: syllables(w)});
+    words.push(...keptParts(old[k],w));
   }
   ln.words = words;
-  ln.start = words[0].t;
-  ln.end = Math.max(words[words.length - 1].t + (words[words.length - 1].d || 0),
+  // Editing text is not trimming the line: keep intentional padding at its edges.
+  ln.start = Math.min(ln.start, words[0].t);
+  ln.end = Math.max(ln.end, words[words.length - 1].t + (words[words.length - 1].d || 0),
                     ln.start + 0.2);
   return true;
 }
@@ -4259,6 +4659,7 @@ function markAt(t){
   return marks.findIndex(([a, b]) => t >= a && t <= b);
 }
 function setMarking(on){
+  if (on) showInspector("project");
   marking = on;
   $("btnMark").classList.toggle("on", on);
   document.body.classList.toggle("marking", on);
@@ -4593,7 +4994,7 @@ async function realign(lyricsPath){
   if (dirty) return;
   try{
     const j = await api(`/api/project/${encodeURIComponent(pid)}/realign`,
-      {align: caps.whisper ? "auto" : "energy", lang: langOf(),
+      {align: data.engine === "qwen" ? "qwen" : caps.whisper ? "auto" : "energy", lang: langOf(),
        lyrics: lyricsPath || "", noText: ($("edNoText").value || "").trim(),
        stripBacking: lyricsPath ? $("brStripBacking").checked : !!data.stripBacking});
     watchJob(j.job, lyricsPath ? T.realignNew : T.realignSame,
@@ -4602,7 +5003,7 @@ async function realign(lyricsPath){
         toast(r && r.was && r.lines !== r.was
               ? T.realignStats(r.was, r.lines)
               : T.realignDone);
-      });
+      }, ()=>openProject(pid), true);
   }catch(e){ toast(e.message); }
 }
 let checkOff = [];
@@ -4929,6 +5330,9 @@ async function reveal(path){
 }
 
 window.addEventListener("resize", () => { layoutBlocks(); drawWave(); drawBlocks(); });
+// Re-centre when the countdown or responsive shell changes available height,
+// not only when playback moves to another lyric line.
+new ResizeObserver(()=>requestAnimationFrame(()=>centerLine(curLine))).observe($("stage"));
 loadList().catch(e => { document.body.innerHTML =
   '<div class="empty"><h2>' + esc(T.serverDown) + '</h2>' + esc(e.message) + '</div>'; });
 })();

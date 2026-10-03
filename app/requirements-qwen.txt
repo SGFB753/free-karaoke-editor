@@ -1,0 +1,4 @@
+# Optional experimental timing engine. Install into the application's .venv:
+# .venv\Scripts\python.exe -m pip install -r app\requirements-qwen.txt
+# Keep the official wrapper's matching Transformers/tokenizer versions.
+qwen-asr==0.0.6

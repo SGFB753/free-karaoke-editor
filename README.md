@@ -218,6 +218,26 @@ offline build.
 
 ## What is in the folder
 
+To compare word timing against Whisper in a source installation, install the
+optional [Qwen3-ForcedAligner-0.6B](https://github.com/QwenLM/Qwen3-ASR#forcedaligner-usage)
+engine with `.venv\Scripts\python.exe -m pip install -r app\requirements-qwen.txt`.
+Restart `Studio.bat`, then choose “Qwen word timing (experimental)” under Language
+and timing. It aligns supplied lyrics, rather than transcribing them. Its weights
+(about 1.8 GB) download once into a separate model folder. When available, Qwen
+uses isolated vocals and retries suspect phrases in bounded windows, including
+the original recording when needed. Healthy phrases and pauses are not
+redistributed; unresolved timing warnings are listed in the build log. Check
+results on songs, especially backing vocals, repeats and window boundaries. Unsupported
+languages and errors never silently fall back to another engine. Installing into
+`.venv` does not alter an existing EXE; use `-WithQwen` with the Windows build
+script to include the extra runtime in a new EXE.
+If a held ending is cut off while the isolated vocal continues, Qwen restores
+its end without crossing a pause. For manual letter timing, double-click a word
+on the timeline, pick a letter and optionally choose “End at the playhead”.
+Its new block has draggable edges; the word stays joined in preview and video.
+Undo and rhythm copying preserve the split. Lock the edited line to keep its
+manual timing when re-aligning.
+
 ```
 Install.bat  install.command    set up (once)
 Studio.bat   studio.command     open the program window

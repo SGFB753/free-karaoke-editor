@@ -1,6 +1,7 @@
 // Selecting several lines and acting on the whole batch. A real browser:
 // a Shift/Ctrl click is a cursor hit, and jsdom does not compute those.
 import puppeteer from 'puppeteer';
+import {useWorkspaceNavigation} from '../helpers/workspace-navigation.mjs';
 
 const API = process.env.KARAOKE_API;
 let fail = 0;
@@ -13,6 +14,7 @@ const put = async ls => fetch(API+'/api/project/'+encodeURIComponent(PID)+'/timi
 
 const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disable-dev-shm-usage']});
 const p = await b.newPage();
+useWorkspaceNavigation(p);
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 p.on('dialog', d => d.accept());
 await p.setViewport({width:1280, height:1000});
@@ -44,13 +46,40 @@ const timelineSpots = () => p.evaluate(() => [...document.querySelectorAll('#blo
       !!(hit && hit.closest && hit.closest('.blk') === e)};
   }).filter(v => v.ok));
 const hit = async (v, mods) => {
+  // History and seeking can move the preview. Never reuse a stale pixel spot.
+  const locate = () => p.$eval('#scroll .ln:nth-child('+(v.i+1)+')', e => {
+    const r=e.getBoundingClientRect(), s=document.getElementById('stage').getBoundingClientRect();
+    return {x:r.left+r.width/2,y:r.top+r.height/2,
+      inside:r.top>s.top+4 && r.bottom<s.bottom-4,
+      stageX:s.left+s.width/2,stageY:s.top+s.height/2};
+  });
+  let point = await locate();
+  if (!point.inside){
+    await p.mouse.move(point.stageX,point.stageY);
+    await p.mouse.wheel({deltaY:point.y-point.stageY}); await sleep(200);
+    point = await locate();
+  }
   if (mods) for (const m of mods) await p.keyboard.down(m);
-  await p.mouse.click(v.x, v.y);
+  await p.mouse.click(point.x, point.y);
   if (mods) for (const m of mods) await p.keyboard.up(m);
   await sleep(250);
 };
 
-const vis = await spots();
+// The preview centres the first phrase, leaving room for earlier lyrics. For
+// selecting four following phrases, scroll them into view just as a user does.
+const showFirstLines = async () => {
+  const position = await p.$eval('#scroll .ln', e => {
+    const stage = document.getElementById('stage').getBoundingClientRect();
+    const line = e.getBoundingClientRect();
+    return {x:stage.left+stage.width/2, y:stage.top+stage.height/2,
+      delta:line.top-stage.top-20};
+  });
+  await p.mouse.move(position.x,position.y);
+  await p.mouse.wheel({deltaY:position.delta});
+  await sleep(250);
+};
+await showFirstLines();
+let vis = await spots();
 ok('at least four lines are visible on stage', vis.length >= 4, String(vis.length));
 
 console.log('--- press and drag ---');
@@ -199,6 +228,7 @@ await p.click('#btnUndo'); await sleep(900);
 await p.keyboard.press('Escape'); await sleep(150);
 
 console.log('\n--- actions over the whole batch ---');
+await showFirstLines(); vis = await spots();
 await hit(vis[0]);
 await hit(vis[2], ['Shift']);
 await p.click('#btnVoice'); await sleep(900);

@@ -2,6 +2,7 @@
 param(
     [string]$Repository = $env:GITHUB_REPOSITORY,
     [switch]$WithModels,
+    [switch]$WithQwen,
     [switch]$SkipTests
 )
 $ErrorActionPreference = 'Stop'
@@ -15,6 +16,12 @@ if (-not $Repository) {
     $remote = (& git -C $RepoRoot remote get-url origin 2>$null)
     if ($remote -match 'github\.com[/:]([^/]+/[^/.]+)(?:\.git)?$') { $Repository = $Matches[1] }
 }
+
+if ($WithQwen) {
+    & $Python -m pip install --disable-pip-version-check -r (Join-Path $RepoRoot 'app\requirements-qwen.txt')
+    if ($LASTEXITCODE) { throw 'Could not install the optional Qwen engine.' }
+}
+$env:KARAOKE_WITH_QWEN = if ($WithQwen) { '1' } else { '0' }
 if ($Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') {
     throw 'Pass -Repository owner/repository so the release can update from its own fork.'
 }
@@ -26,7 +33,7 @@ if (-not $SkipTests) {
     $env:PYTHONUTF8 = '1'
     Push-Location (Join-Path $RepoRoot 'app')
     try {
-        foreach ($Suite in @('test_pipeline.py','test_delivery.py','test_cli.py','test_video_colors.py','test_packaging.py')) {
+        foreach ($Suite in @('test_pipeline.py','test_qwen.py','test_delivery.py','test_cli.py','test_video_colors.py','test_packaging.py')) {
             & $Python (Join-Path 'tests' $Suite)
             if ($LASTEXITCODE) { throw "$Suite failed; release not built." }
         }
@@ -34,6 +41,10 @@ if (-not $SkipTests) {
 }
 
 if ($WithModels) {
+    if ($WithQwen) {
+        & $Python -c "import sys; sys.path.insert(0, r'$RepoRoot\app'); from kstudio import models as M; from huggingface_hub import snapshot_download; snapshot_download(M.QWEN_MODEL, revision=M.QWEN_REVISION, local_dir=M.qwen_dir(), allow_patterns=['*.json','*.safetensors','*.txt','*.tiktoken'])"
+        if ($LASTEXITCODE) { throw 'Could not cache Qwen weights for the offline build.' }
+    }
     & $Python -c "import whisper; whisper.load_model('small')"
     if ($LASTEXITCODE) { throw 'Could not cache the Whisper small model.' }
     # Demucs downloads its model when it first sees audio.  A tiny silent WAV

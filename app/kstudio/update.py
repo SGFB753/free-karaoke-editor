@@ -20,7 +20,7 @@ import urllib.request
 from typing import Callable, Dict, Optional
 
 from . import __version__
-from .i18n import tr
+from .i18n import tr, lang
 
 ASSET = "KaraokeStudio-windows-x64.zip"
 CHECKSUM = ASSET + ".sha256"
@@ -118,12 +118,38 @@ def latest() -> Dict:
                  and bool(assets.get(ASSET)) and bool(assets.get(CHECKSUM)))
     return {"supported": True, "available": available,
             "current": __version__, "version": version,
+            "tag": release.get("tag_name") or "",
             "page": release.get("html_url") or "", "repository": repo,
             "_zip": assets.get(ASSET), "_sha": assets.get(CHECKSUM)}
 
 
 def public(info: Dict) -> Dict:
     return {k: v for k, v in info.items() if not k.startswith("_")}
+
+
+def release_notes(tag: str, language: str = "", current: str = __version__) -> str:
+    """Notes since the installed version, from the exact release tag.
+
+    Do not read main: its Unreleased section can describe work that is not in
+    the update. Display plain text, never remote HTML in the application.
+    """
+    repo = repository()
+    if not repo or not re.fullmatch(r"[vV]?\d+(?:\.\d+){1,3}", tag or ""):
+        return ""
+    filename = "CHANGELOG.ru.md" if (language or lang()) == "ru" else "CHANGELOG.md"
+    url = f"https://raw.githubusercontent.com/{repo}/{urllib.parse.quote(tag, safe='')}/{filename}"
+    with urllib.request.urlopen(_request(url, "text/plain"), timeout=12) as response:
+        content = response.read(512 * 1024 + 1)
+    if len(content) > 512 * 1024:
+        raise ValueError("release notes too large")
+    text = content.decode("utf-8-sig")
+    headers = list(re.finditer(r"^##\s+([vV]?\d+(?:\.\d+){1,3})\s*$", text, re.M))
+    notes = []
+    for i, header in enumerate(headers):
+        if _version_tuple(current) < _version_tuple(header[1]) <= _version_tuple(tag):
+            end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
+            notes.append(text[header.start():end].strip())
+    return "\n\n".join(notes)
 
 
 def _download(url: str, path: str, log: Callable[[str], None], limit: int) -> None:

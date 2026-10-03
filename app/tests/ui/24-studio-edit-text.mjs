@@ -70,6 +70,18 @@ ok('the label on the timeline updated',
    doc.querySelectorAll('.blk')[I].textContent.includes('исправленный'),
    doc.querySelectorAll('.blk')[I].textContent.slice(0,40));
 
+console.log('\n--- same word count still refreshes the cached word chips ---');
+dbl(doc.querySelectorAll('#scroll .ln')[I]); await sleep(80);
+inp = doc.querySelector('.lnedit');
+inp.value = NEW.replace('исправленный', 'обновлённый'); keyOn(inp, 'Enter'); await sleep(900);
+ok('a replaced word immediately appears in its chip',
+   doc.querySelector('#words .wtx').textContent === 'обновлённый');
+ok('the word tooltip uses the corrected spelling too',
+   doc.querySelector('#words .wrd').title.includes('обновлённый'));
+$('btnUndo').click(); await sleep(900);
+ok('undo restores the word chip as well as the line',
+   doc.querySelector('#words .wtx').textContent === 'исправленный');
+
 console.log('\n--- the timing of the line survived ---');
 ok('the line time is in place',
    Math.abs(after[I].start - before[I].start) < 1e-6 &&

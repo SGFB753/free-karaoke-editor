@@ -1,6 +1,7 @@
 // Overlapping vocals: a second-voice line moves to the second lane of the
 // timeline and stays grabbable. A real browser — jsdom does not do layout.
 import puppeteer from 'puppeteer';
+import {useWorkspaceNavigation} from '../helpers/workspace-navigation.mjs';
 
 const API = process.env.KARAOKE_API;
 let fail = 0;
@@ -11,6 +12,7 @@ const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
 const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disable-dev-shm-usage']});
 const p = await b.newPage();
+useWorkspaceNavigation(p);
 await p.setViewport({width:1366, height:768});
 const errs = []; p.on('pageerror', e => errs.push(String(e)));
 await p.goto(API+'/', {waitUntil:'networkidle0'});

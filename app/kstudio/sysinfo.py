@@ -14,6 +14,7 @@ from typing import Optional, Tuple
 
 # Rough estimates of the peak requirement, gigabytes
 NEED_DEMUCS = 4.0
+NEED_QWEN = 6.0  # approximate CPU peak; audio-window length also matters
 NEED_WHISPER = {"tiny": 1.0, "base": 1.3, "small": 2.2, "medium": 4.5,
                 "large-v3-turbo": 5.0, "large-v3": 8.0}
 

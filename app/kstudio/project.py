@@ -22,6 +22,7 @@ from . import audio as AU
 from . import build as B
 from . import lyrics as L
 from . import separate as S
+from . import jobcontrol as JC
 
 Log = Callable[[str], None]
 PROJECT_FILE = "project.json"
@@ -432,8 +433,9 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
         AU.ensure_on_path()
 
         from . import sysinfo
-        need = sysinfo.NEED_DEMUCS if (separate and S.available()) else \
-            sysinfo.NEED_WHISPER.get(whisper_model, 2.2)
+        need = (sysinfo.NEED_QWEN if align_engine == "qwen" else
+                sysinfo.NEED_DEMUCS if (separate and S.available()) else
+                sysinfo.NEED_WHISPER.get(whisper_model, 2.2))
         ok, note = sysinfo.check(need)
         if not ok:
             log(tr("NOTE: ", "ВНИМАНИЕ: ") + note)
@@ -450,19 +452,24 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
                                               separator,
                                               device=device, log=log)
 
-        # Separation is for the karaoke tracks, not for timing.  A separator
+        # Whisper needs the original recording. A separator
         # can put a quiet, distorted or heavily processed voice into the
         # instrumental stem.  Feeding that incomplete vocal to Whisper made
         # enabling the instrumental move otherwise-correct lyrics.  The
         # original recording is the one source that always contains every
-        # word, so the timing must not depend on the separation switch.
-        align_src = work
+        # word. Qwen prefers the stem, with original-audio local retries.
+        from .qwen import timing_source
+        align_src, isolated = timing_source(work, vocals, align_engine)
+        if isolated:
+            log(tr("Qwen uses the isolated vocal; suspicious phrases can be checked against the original recording.",
+                   "Qwen размечает выделенный вокал; подозрительные фразы можно перепроверить по исходному треку."))
         # Stretches with no words: from the window, and from the lyrics file
         # itself where a heading carries a time range — “[Solo 3:10-3:50]”.
         holes = A.spans(skip, dur) + A.spans(getattr(lyr, "skips", []), dur)
         lyr, engine = A.align(lyr, align_src, dur, align_engine,
                               whisper_model, language, device, log,
-                              isolated=False, skip=holes)
+                              isolated=isolated, skip=holes,
+                              fallback_audio=work if isolated else None)
         if vocals and engine == "whisper" and not lyr.fixed_line_starts:
             A.refine_leading_silence(lyr, vocals, log=log)
             A.refine_uncertain_word_onsets(lyr, vocals, log=log)
@@ -473,7 +480,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
         log(tr("Working out the vocal waveform…", "Считаю волну вокала…"))
         # The separated voice is still the best source for the waveform and
         # phrase display.  A bad stem may make those hints imperfect, but it
-        # can no longer corrupt the actual timing.
+        # is independent of Whisper's actual timing.
         envelope = build_envelope(vocals or work, log)
 
         log(tr("Saving the tracks…", "Сохраняю дорожки…"))
@@ -504,7 +511,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             "duration": round(dur, 3),
             "engine": engine,
             # which model timed it: a re-time must not quietly drop to another
-            "model": whisper_model,
+            "model": "qwen3-forcedaligner-0.6b" if engine == "qwen" else whisper_model,
             "source_audio": local_audio,
             "source_lyrics": local_lyrics,
             "stripBacking": strip_backing,
@@ -544,7 +551,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
         save(folder, data)
         log(tr("The song is ready.", "Проект готов."))
         return folder
-    except Exception:
+    except (Exception, JC.Cancelled):
         # A failed Demucs/Whisper run is not a project. Leaving its encoded
         # fragments behind made the projects directory grow invisibly.
         shutil.rmtree(folder, ignore_errors=True)
@@ -555,6 +562,8 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
 
 def save(folder: str, data: Dict) -> None:
     """Write through a temporary file: a crash halfway will not ruin the project."""
+    from . import jobcontrol
+    jobcontrol.commit()
     path = os.path.join(folder, PROJECT_FILE)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
