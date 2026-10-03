@@ -1,7 +1,7 @@
 // Overlapping vocals: a second-voice line moves to the second lane of the
 // timeline and stays grabbable. A real browser — jsdom does not do layout.
 import puppeteer from 'puppeteer';
-import {useWorkspaceNavigation} from '../helpers/workspace-navigation.mjs';
+import {useWorkspaceNavigation, revealTimeline} from '../helpers/workspace-navigation.mjs';
 
 const API = process.env.KARAOKE_API;
 let fail = 0;
@@ -51,6 +51,7 @@ ok('before the second voice the blocks ran in one lane', Math.abs(top0 - topMain
    `${top0} vs ${topMain}`);
 
 console.log('\n--- the second-voice block can still be grabbed with the mouse ---');
+await revealTimeline(p);
 const box = await p.evaluate(() => {
   const e = document.querySelectorAll('#blocks .blk')[1];
   const r = e.getBoundingClientRect();

@@ -15,7 +15,7 @@ await page.setRequestInterception(true);
 page.on('request',request=>{
   const pathname=new URL(request.url()).pathname;
   if(pathname==='/api/state') return request.respond({status:200,contentType:'application/json',body:JSON.stringify({
-    ...state,timingEngine:rememberedEngine,caps:{...state.caps,qwen:installed,qwenModel:true}})});
+    ...state,timingEngine:rememberedEngine,caps:{...state.caps,whisper:true,qwen:installed,qwenModel:true}})});
   if(pathname==='/api/preferences/timing'){
     rememberedEngine=JSON.parse(request.postData()||'{}').engine;
     return request.respond({status:200,contentType:'application/json',body:JSON.stringify({engine:rememberedEngine})});

@@ -212,9 +212,10 @@ ok('the player belongs to audio and metadata precedes lyrics', await p.evaluate(
   return source.contains(document.getElementById('newAudioPreview')) &&
     !!(metadata.compareDocumentPosition(lyrics) & Node.DOCUMENT_POSITION_FOLLOWING);
 }));
-ok('advanced controls preserve the existing build defaults', await p.evaluate(() =>
-  document.getElementById('selModel').value === 'small' && document.getElementById('chkSep').checked &&
-  document.getElementById('selModel').closest('details')?.classList.contains('build-advanced')));
+const buildCaps=(await (await fetch(API+'/api/state')).json()).caps;
+ok('advanced controls preserve available build defaults', await p.evaluate(caps =>
+  document.getElementById('selModel').value === 'small' && document.getElementById('chkSep').checked === !!caps.demucs &&
+  document.getElementById('selModel').closest('details')?.classList.contains('build-advanced'),buildCaps));
 await p.click('.build-advanced > summary');
 for (const [w, h] of SIZES){
   await p.setViewport({width: w, height: h});

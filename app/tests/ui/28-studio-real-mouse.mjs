@@ -1,6 +1,7 @@
 // A real mouse: jsdom never checks whether the cursor actually hits anything,
 // and that is exactly where the trouble hid — the left edge had nothing to grab.
 import puppeteer from 'puppeteer';
+import {revealTimeline} from '../helpers/workspace-navigation.mjs';
 const API = process.env.KARAOKE_API;
 const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disable-dev-shm-usage']});
 const p = await b.newPage();
@@ -19,6 +20,7 @@ const ok = (n,c,e='') => { console.log((c?'  ✓ ':'  ✗ ')+n+(e?' — '+e:''))
 // Look for a block whose spot is really reachable with the cursor: neighbours
 // may lie on top, and then the click goes to them, not to what we aimed at.
 async function pick(where){
+  await revealTimeline(p);
   return await p.evaluate((where) => {
     const blocks = [...document.querySelectorAll('.blk')];
     for (let i = 0; i < blocks.length; i++){
@@ -40,6 +42,7 @@ async function pick(where){
 }
 
 async function grab(i, where, dx){
+  await revealTimeline(p);
   const before = (await srv())[i];
   const box = await p.evaluate((i, where) => {
     const e = document.querySelectorAll('.blk')[i];

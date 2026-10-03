@@ -1,6 +1,7 @@
 // The length of a word. It could not be set at all before: a word stretched to
 // the next one, and “where it ends” was not a separate value in the first place.
 import puppeteer from 'puppeteer';
+import {revealTimeline} from '../helpers/workspace-navigation.mjs';
 const API = process.env.KARAOKE_API;
 const b = await puppeteer.launch({headless:'new', args:['--no-sandbox','--disable-dev-shm-usage']});
 const p = await b.newPage();
@@ -50,6 +51,7 @@ await new Promise(r => setTimeout(r, 500));
 ok('found a line with words of decent width', true, 'line ' + (LINE+1));
 
 console.log('\n--- even a tiny word has reachable edges ---');
+await revealTimeline(p);
 const tiny = await p.evaluate(() => {
   const e = document.querySelectorAll('.wrd')[0];
   e.classList.add('tiny');
@@ -82,6 +84,7 @@ await waitSaved();
 
 // Is the edge of the block free to grab: a neighbour may be covering it.
 async function freeEdge(side){
+  await revealTimeline(p);
   return await p.evaluate((i, side) => {
     const e = document.querySelectorAll('.blk')[i];
     const r = e.getBoundingClientRect();
@@ -101,6 +104,7 @@ async function pull(spot, dx){
 }
 // Push the next line away if it sits flush and blocks the edge.
 async function shoveNeighbour(){
+  await revealTimeline(p);
   const spot = await p.evaluate((i) => {
     const e = document.querySelectorAll('.blk')[i + 1];
     if (!e) return null;
@@ -142,6 +146,7 @@ async function view(){
 }
 
 async function drag(j, where, dx){
+  await revealTimeline(p);
   const before = await line(LINE);
   const spot = await p.evaluate((j, where) => {
     const e = document.querySelectorAll('.wrd')[j];
@@ -162,6 +167,7 @@ async function drag(j, where, dx){
 const dur = (l, j) => l.words[j].d;
 
 console.log('\n--- while a word is dragged nothing runs away ---');
+await revealTimeline(p);
 const v0 = await view();
 {
   const spot = await p.evaluate(() => {

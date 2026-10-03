@@ -18,3 +18,9 @@ export function useWorkspaceNavigation(page){
     return click(selector, ...args);
   };
 }
+
+export async function revealTimeline(page){
+  // Short windows deliberately scroll; aim mouse gestures at the visible wave.
+  await page.$eval('#tlwrap', el => el.scrollIntoView({block:'center'}));
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+}
