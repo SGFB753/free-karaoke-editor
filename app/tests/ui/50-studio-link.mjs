@@ -194,8 +194,9 @@ ok('the reason stays in the log', $('jobLog').textContent.length > 0,
    ($('jobLog').textContent.split('\n').pop() || '').slice(0, 70));
 click('btnJobBack');
 await sleep(500);
-ok('and it really goes back to the list',
-   !$('scrList').classList.contains('hide'));
+ok('and it returns to the inputs so the failed build can be corrected',
+   !$('scrNew').classList.contains('hide') && $('inAudio').value.length > 0 &&
+   $('taLyrics').value === 'исправленная строка\nбез ссылки на источник');
 
 ok('no errors in the window', w.__errs.length === 0, w.__errs[0] || '');
 console.log(fail ? `\nFAILED: ${fail}` : '\nAll checks passed');

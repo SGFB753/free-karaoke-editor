@@ -31,6 +31,9 @@ const text = () => $('report').textContent.replace(/\s+/g,' ').trim();
 
 $('btnAdd').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(200);
+// Engine choice is now remembered; start this scenario from a known mode.
+$('selAlign').value = 'auto';
+$('selAlign').dispatchEvent(new w.Event('change',{bubbles:true}));
 
 console.log('--- with no files there is no report ---');
 ok('the report is hidden', $('report').classList.contains('hide'));
@@ -69,6 +72,7 @@ ok('the plan changed along with the choice',
 
 console.log('\n--- the picked language reaches the report ---');
 $('selAlign').value = 'auto';
+$('selAlign').dispatchEvent(new w.Event('change',{bubbles:true}));
 $('selLang').value = 'en';
 $('selLang').dispatchEvent(new w.Event('change',{bubbles:true}));
 await sleep(5000);
