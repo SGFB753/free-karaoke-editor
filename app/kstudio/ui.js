@@ -510,6 +510,10 @@ const STR = {
     shiftedToo: "the timing was shifted with it",
     realignNew: "Timing to the new lyrics",
     realignSame: "Recomputing the timing",
+    retimeEngineLabel: "Timing engine",
+    retimeModelLabel: "Whisper model",
+    retimeWhisperMissing: "Whisper dependencies are not installed. Choose another available engine or install stable-ts before re-timing with Whisper.",
+    retimeWarning: "The lyrics file will be read again. Unlocked timing edits will be replaced; locked lines are kept. Audio tracks stay unchanged. You can cancel the running job.",
     realignDone: "Timing recomputed",
     askLyrics: "Take different lyrics and time the song to them?\n\nYour timing edits for this song will be replaced.",
     askRealign: "Re-read the lyrics file and time it again?\n\nIt takes the same file used for the build — with every change you made in it.\n\nYour timing edits for this song will be replaced.",
@@ -1008,6 +1012,10 @@ const STR = {
     shiftedToo: "разметку сдвинул следом",
     realignNew: "Размечаю под новый текст",
     realignSame: "Пересчитываю разметку",
+    retimeEngineLabel: "Движок разметки",
+    retimeModelLabel: "Модель Whisper",
+    retimeWhisperMissing: "Зависимости Whisper не установлены. Выберите доступный движок или установите stable-ts для разметки с Whisper.",
+    retimeWarning: "Файл с текстом будет прочитан заново. Правки таймингов заменятся, кроме запертых строк. Аудиодорожки останутся прежними. Запущенную разметку можно отменить.",
     realignDone: "Разметка пересчитана",
     askLyrics: "Взять другой текст и разметить песню под него?\n\nВаши правки времени у этой песни будут заменены.",
     askRealign: "Перечитать файл с текстом и разметить заново?\n\nБерётся тот же файл, что и при сборке — со всеми правками, которые вы в нём сделали.\n\nВаши правки времени у этой песни будут заменены.",
@@ -1596,9 +1604,11 @@ document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   const top = !$("browser").classList.contains("hide") ? $("browser")
             : !$("letterDlg").classList.contains("hide") ? $("letterDlg")
+            : !$("retimeDlg").classList.contains("hide") ? $("retimeDlg")
             : !$("expDlg").classList.contains("hide") ? $("expDlg") : null;
   if (!top) return;
-  if (top === $("letterDlg")) closeLetterDialog();
+  if (top === $("retimeDlg")) closeRetimeDialog();
+  else if (top === $("letterDlg")) closeLetterDialog();
   else top.classList.add("hide");
   e.preventDefault();
   e.stopImmediatePropagation();
@@ -4903,6 +4913,7 @@ window.addEventListener("pointerup", () => {
 });
 document.addEventListener("keydown", e => {
   if ($("scrEdit").classList.contains("hide")) return;
+  if (!$("retimeDlg").classList.contains("hide")) return;
   // The editor's shortcuts belong to the stage, not to a field somebody is
   // typing in. Ctrl+V in “Other lyrics” must paste text rather than invoke
   // “Paste rhythm”; Backspace must edit text rather than delete a lyric line.
@@ -4989,12 +5000,13 @@ async function replaceTrack(path){
 // The way the text is split into lines is usually fixed after the first build,
 // once it is clear how it sings. That is no reason to redo everything: the
 // tracks are already in the project, only the timing is recomputed.
-async function realign(lyricsPath){
+async function realign(lyricsPath, timing = {}){
   await flush();
   if (dirty) return;
   try{
     const j = await api(`/api/project/${encodeURIComponent(pid)}/realign`,
       {align: data.engine === "qwen" ? "qwen" : caps.whisper ? "auto" : "energy", lang: langOf(),
+       ...timing,
        lyrics: lyricsPath || "", noText: ($("edNoText").value || "").trim(),
        stripBacking: lyricsPath ? $("brStripBacking").checked : !!data.stripBacking});
     watchJob(j.job, lyricsPath ? T.realignNew : T.realignSame,
@@ -5045,13 +5057,57 @@ $("btnLyrics").addEventListener("click", () => {
   if (!confirm(T.askLyrics)) return;
   openBrowser("lyrics2");
 });
-$("btnRealign").addEventListener("click", async () => {
-  // A common case: the same file, simply edited. It is re-read from disk —
-  // nothing has to be picked again. The model is named in the question: it
-  // used to change to another one without a word.
-  const m = (data && data.model) ? T.withModel(data.model) : "";
-  if (!confirm(T.askRealign + m)) return;
-  realign("");
+function retimeNote(){
+  const engine = $("retimeEngine").value;
+  $("retimeModelRow").classList.toggle("hide", engine !== "whisper");
+  $("retimeGo").disabled = engine === "qwen" ? !caps.qwen : engine === "whisper" ? !caps.whisper : false;
+  if (engine === "qwen"){
+    $("retimeNote").textContent = T.alignExplainQwen + " " +
+      (!caps.qwen ? T.qwenMissing : (caps.qwenModel ? T.noteReady : T.noteDownload) + " " + T.qwenMemoryHint);
+  } else if (engine === "energy"){
+    $("retimeNote").textContent = T.alignExplainFast;
+  } else {
+    const model = $("retimeModel").value, need = heavy(model);
+    $("retimeNote").textContent = !caps.whisper ? T.retimeWhisperMissing : T.alignExplainWhisper + " " +
+      ((caps.models || {})[model] ? T.noteReady : T.noteDownload) +
+      (need ? T.needRam(need, caps.freeGb.toFixed(1)) + T.noteSlow : "");
+  }
+}
+function closeRetimeDialog(){
+  $("retimeDlg").classList.add("hide");
+  $("btnRealign").focus();
+}
+$("btnRealign").addEventListener("click", () => {
+  if (!data) return;
+  $("retimeModel").replaceChildren(...[...$("selModel").options].map(o => o.cloneNode(true)));
+  $("retimeModel").value = [...$("retimeModel").options].some(o => o.value === data.model) ? data.model : "small";
+  $("retimeEngine").querySelector('[value="qwen"]').disabled = !caps.qwen;
+  $("retimeEngine").querySelector('[value="whisper"]').disabled = !caps.whisper;
+  // Show the project's saved choice, even if its dependencies were removed.
+  // Do not silently replace Qwen with energy timing on an existing project.
+  $("retimeEngine").value = data.engine === "qwen" ? "qwen" : data.engine === "energy" ? "energy" : "whisper";
+  retimeNote();
+  $("retimeDlg").classList.remove("hide");
+  $("retimeEngine").focus();
+});
+$("retimeEngine").addEventListener("change", retimeNote);
+$("retimeModel").addEventListener("change", retimeNote);
+$("retimeCancel").addEventListener("click", closeRetimeDialog);
+$("retimeGo").addEventListener("click", () => {
+  if ($("retimeGo").disabled) return;
+  const align = $("retimeEngine").value;
+  const model = align === "qwen" ? "qwen3-forcedaligner-0.6b" : $("retimeModel").value;
+  closeRetimeDialog();
+  realign("", {align, model});
+});
+$("retimeDlg").addEventListener("keydown", e => {
+  // Keep Tab inside the dialog, rather than in the timeline underneath it.
+  if (e.key !== "Tab") return;
+  const controls = [...$("retimeDlg").querySelectorAll('select,button')]
+    .filter(el => !el.disabled && !el.closest('.hide'));
+  const first = controls[0], last = controls[controls.length - 1];
+  if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
 });
 
 // Finished files share one obvious folder; show the exact path and open it

@@ -7,6 +7,21 @@ commits themselves are one click away in the history.
 
 ---
 
+## 5.0.1
+
+### Added
+
+- Choose Whisper or Qwen before re-timing an existing project, with a separate
+  Whisper model selector. The dialog defaults to the project's saved engine.
+
+### Fixes
+
+- **Qwen timing:** check phrase edges against the isolated vocal stem so the
+  first or last word does not stretch across silence. Genuine held notes and
+  manually anchored lines are preserved.
+- **Lyrics search:** retry temporary LRCLIB failures, including HTTP 503, up
+  to twice with 1- and 2-second delays, without re-entering the song name.
+
 ## 5.0.0
 
 ### Interface

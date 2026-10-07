@@ -13,6 +13,7 @@ over the whole song.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import difflib
@@ -31,6 +32,7 @@ BASE = (os.environ.get("KARAOKE_LYRICS_API") or "https://lrclib.net").rstrip("/"
 GENIUS_BASE = (os.environ.get("KARAOKE_GENIUS_URL") or "https://genius.com").rstrip("/")
 TIMEOUT = int(os.environ.get("KARAOKE_LYRICS_TIMEOUT") or 12)
 REQUEST_ATTEMPTS = 2
+LRCLIB_ATTEMPTS = 3
 LRCLIB_SOURCE = "LRCLIB"
 GENIUS_SOURCE = "Genius"
 SOURCE = "LRCLIB / Genius"
@@ -227,7 +229,7 @@ def _ask(path: str, params: dict) -> list:
         # LRCLIB asks callers to name themselves, and it is only fair.
         "User-Agent": f"KaraokeStudio/{__version__} (open source karaoke maker)",
     })
-    for attempt in range(REQUEST_ATTEMPTS):
+    for attempt in range(LRCLIB_ATTEMPTS):
         try:
             with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
                 data = json.load(r)
@@ -235,14 +237,22 @@ def _ask(path: str, params: dict) -> list:
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 return []
-            if attempt + 1 < REQUEST_ATTEMPTS and e.code in (408, 425, 429, 500, 502, 503, 504):
-                time.sleep(0.25)
+            if attempt + 1 < LRCLIB_ATTEMPTS and e.code in (408, 425, 429, 500, 502, 503, 504):
+                delay = 1.0 * 2 ** attempt
+                try:
+                    retry_after = float(e.headers.get("Retry-After", "0")) if e.headers else 0
+                    if math.isfinite(retry_after):
+                        delay = max(delay, min(5.0, retry_after))
+                except (TypeError, ValueError):
+                    pass
+                e.close()
+                time.sleep(delay)
                 continue
             raise LyricsError(tr(f"{LRCLIB_SOURCE} answered with {e.code}",
                                  f"{LRCLIB_SOURCE} ответил кодом {e.code}"))
         except (urllib.error.URLError, OSError) as e:
-            if attempt + 1 < REQUEST_ATTEMPTS:
-                time.sleep(0.25)
+            if attempt + 1 < LRCLIB_ATTEMPTS:
+                time.sleep(1.0 * 2 ** attempt)
                 continue
             raise LyricsError(tr(f"could not reach {LRCLIB_SOURCE}: {e.reason if hasattr(e, 'reason') else e}",
                                  f"не достучаться до {LRCLIB_SOURCE}: {e.reason if hasattr(e, 'reason') else e}"))

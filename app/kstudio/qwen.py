@@ -622,6 +622,13 @@ def align_qwen(lyrics, audio_path, duration, language="auto", device=None,
             if ln.words:
                 ln.start, ln.end = ln.words[0].start, ln.words[-1].end
         trim_same_voice_tails(lyrics, fixed)
+        if isolated:
+            # Qwen can assign a whole interlude to the first/last word. Unlike
+            # a duration cap, measured silence preserves genuinely held notes.
+            # Only move an edge inside its existing word; never redistribute
+            # the phrase, or change locked/manually anchored lines or the mix.
+            A.refine_leading_silence(lyrics, audio_path, log=log, max_shift=duration)
+            A.refine_trailing_silence(lyrics, audio_path, log=log)
         return lyrics
     finally:
         if not lent and model is not None:

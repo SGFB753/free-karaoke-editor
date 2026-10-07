@@ -846,7 +846,7 @@ def refine_leading_silence(lyrics: Lyrics, vocal_audio: str,
     for line_index, ln in enumerate(lyrics.lines):
         if line_index in lyrics.fixed_line_indices:
             continue
-        if ln.backing or not ln.words:
+        if ln.backing or ln.lock or ln.keep or not ln.words:
             continue
         first = ln.words[0]
         if first.start is None or first.end is None:
@@ -860,7 +860,20 @@ def refine_leading_silence(lyrics: Lyrics, vocal_audio: str,
             # than a boundary and a blind automatic rewrite is not safe.
             if q["end"] >= first.end - 0.04:
                 continue
-            new_start = min(q["end"] - 0.06, first.end - 0.08)
+            onset = q["end"]
+            # A separated stem may leak a brief instrumental transient at the
+            # end of an interlude. Confirm the onset against this word's own
+            # level, not the loudest verse; keep a consonant margin below.
+            lo = max(0, int(onset / hop))
+            hi = min(len(env), int(first.end / hop))
+            local = env[lo:hi]
+            if local:
+                threshold = max(local) * 0.08
+                for frame in range(lo, hi - 3):
+                    if env[frame] >= threshold and sum(v >= threshold for v in env[frame:frame + 4]) >= 3:
+                        onset = frame * hop
+                        break
+            new_start = min(onset - 0.06, first.end - 0.08)
             if new_start <= first.start + 0.2:
                 continue
             first.start = max(first.start, new_start)

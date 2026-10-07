@@ -48,6 +48,7 @@ try{
   ok('mark-all button belongs to the summary, not an absolute header overlay',
     await page.$eval('.quiet-all',e=>getComputedStyle(e).position==='static'&&!!e.closest('.sum')));
   await page.click('#btnRealign');
+  await page.click('#retimeGo');
   await page.waitForSelector('#scrJob:not(.hide) #btnJobCancel:not(.hide)');
   await page.click('#btnJobCancel');
   await page.waitForSelector('#scrEdit:not(.hide)');

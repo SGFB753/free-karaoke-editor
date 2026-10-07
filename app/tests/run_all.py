@@ -52,7 +52,7 @@ UI_DIR = os.path.join(ROOT, "tests", "ui")
 # These suites need a real browser: they check what the cursor actually hits,
 # and jsdom does not do hit-testing at all.
 def NEEDS_BROWSER(name: str) -> bool:
-    if "cancel-live" in name or "browser-live" in name:
+    if "cancel-live" in name or "browser-live" in name or "retime-model-live" in name:
         return True
     return any(k in name for k in ("real-mouse", "word-length", "replace-track", "scroll-and-end", "quiet-and-voice", "two-lanes", "requirements", "duo-layout", "multiselect", "link-live", "notext-live", "mark-live", "split-join", "clip-marks", "layout", "page-cover", "name-live", "tools-live", "workspace-live", "qwen-live", "letter-live"))
 sys.path.insert(0, ROOT)
@@ -316,6 +316,11 @@ def main() -> int:
          subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_qwen.py")], cwd=ROOT))
     if r.returncode != 0:
         say("\nFAILED on the Qwen integration checks.")
+        return 1
+    r = (SKIPPED if start_at else subprocess.run(
+        [sys.executable, os.path.join(ROOT, "tests", "test_alignment_edges_and_lyrics_retry.py")], cwd=ROOT))
+    if r.returncode != 0:
+        say("\nFAILED on silence edges or lyrics retries.")
         return 1
     head("1b. Delivery: launchers, file names, settings, console language, video")
     r = (SKIPPED if start_at else subprocess.run(
