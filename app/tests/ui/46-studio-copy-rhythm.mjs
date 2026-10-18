@@ -39,6 +39,11 @@ const put = async ls => fetch(API+'/api/project/'+encodeURIComponent(PID)+'/timi
 const pick = i => doc.querySelectorAll('#scroll .ln')[i]
                      .dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 const click = id => $(id).dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+const seek = time => {
+  const options={clientX:time / 26.04 * 900,bubbles:true};
+  $('mmap').dispatchEvent(new w.MouseEvent('pointerdown',options));
+  $('mmap').dispatchEvent(new w.MouseEvent('pointerup',options));
+};
 
 // Our own timing for the duration of the check: two identical lines, like a chorus.
 const original = await srv();
@@ -110,7 +115,7 @@ ok('the other line was not touched',
 ok('and it is said out loud', /слов|words/.test($("toast").textContent), $("toast").textContent);
 
 console.log('\n--- a copy of a batch of lines ---');
-// Select two lines, copy and paste — they must appear below.
+// Copy two lines, then paste at the playhead regardless of the selection.
 pick(1); await sleep(120);
 doc.querySelectorAll('#scroll .ln')[2].dispatchEvent(
   new w.MouseEvent('click',{bubbles:true, shiftKey:true}));
@@ -132,33 +137,46 @@ ok('pasting part of a copied batch matches the text instead of taking its first 
    && !/не совпадает|different|mismatch/i.test($("toast").textContent));
 const beforeBlock = await srv();
 pick(4); await sleep(150);
+seek(0);
 click("btnPasteLine"); await sleep(1000);
 const withBlock = await srv();
 ok('there are two more lines', withBlock.length === beforeBlock.length + 2,
    `${beforeBlock.length} → ${withBlock.length}`);
 ok('exactly the copied ones were pasted',
-   withBlock[5].text === beforeBlock[1].text && withBlock[6].text === beforeBlock[2].text,
-   `${withBlock[5].text} | ${withBlock[6].text}`);
+   withBlock[0].text === beforeBlock[1].text && withBlock[1].text === beforeBlock[2].text,
+   `${withBlock[0].text} | ${withBlock[1].text}`);
 ok('a pasted batch clears the multiple selection',
    doc.querySelectorAll('#scroll .ln.mark').length === 0 &&
    doc.querySelectorAll('.blk.mark').length === 0);
 ok('glued syllables keep their presentation when whole lines are pasted',
-   withBlock[5].words[1].g === true);
-ok('they come after the line we were standing on',
-   withBlock[5].start >= withBlock[4].end - 1e-6,
-   `${withBlock[4].end.toFixed(2)} → ${withBlock[5].start.toFixed(2)}`);
-ok('and they do not run into the next one',
-   !withBlock[7] || withBlock[6].end <= withBlock[7].start + 0.01,
-   `${withBlock[6].end.toFixed(2)} vs ${withBlock[7] ? withBlock[7].start.toFixed(2) : '—'}`);
-ok('the line we were standing on stayed as it was',
-   withBlock[4].text === beforeBlock[4].text, `${beforeBlock[4].text} → ${withBlock[4].text}`);
+   withBlock[0].words[1].g === true);
+ok('the first copy starts at the cursor, even before the original first lyric',
+   withBlock[0].start === 0);
+ok('the original rhythm and pauses are not squeezed to fit the gap',
+   [0,1].every((i)=>{
+     const source=beforeBlock[i+1],copy=withBlock[i];
+     return Math.abs(copy.start-(source.start-beforeBlock[1].start))<.004 &&
+       Math.abs((copy.end-copy.start)-(source.end-source.start))<.004 &&
+       copy.words.every((word,j)=>Math.abs(word.d-source.words[j].d)<.004&&
+         Math.abs((word.t-copy.start)-(source.words[j].t-source.start))<.004);
+   }));
+ok('all existing lines keep their order, timings and metadata',
+   JSON.stringify(withBlock.slice(2)) === JSON.stringify(beforeBlock));
 ok('and all the previous text is in place',
    beforeBlock.every(l => withBlock.some(x => x.text === l.text)));
 ok('the words of the copies are inside their own lines',
-   [5,6].every(i => withBlock[i].words.every(x => x.t >= withBlock[i].start - 1e-6 &&
+   [0,1].every(i => withBlock[i].words.every(x => x.t >= withBlock[i].start - 1e-6 &&
                     x.t + x.d <= withBlock[i].end + 0.01)));
 click("btnUndo"); await sleep(1000);
 ok('Ctrl+Z removes the pasted batch', (await srv()).length === beforeBlock.length);
+click('btnRedo'); await sleep(700);
+ok('redo restores the full unsqueezed copy at the cursor',
+   JSON.stringify(await srv()) === JSON.stringify(withBlock));
+click('btnUndo'); await sleep(700);
+seek(26.04);
+click('btnPasteLine'); await sleep(500);
+ok('a copy that exceeds the audio is rejected, not squeezed or truncated',
+   JSON.stringify(await srv()) === JSON.stringify(beforeBlock) && /не помещается|does not fit/.test($('toast').textContent));
 
 console.log('\n--- duplicating a whole line ---');
 pick(1); await sleep(150);

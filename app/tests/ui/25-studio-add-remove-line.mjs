@@ -37,14 +37,61 @@ const st = await (await fetch(API+"/api/state")).json();
 const PID = st.projects[0].id;
 const srv = async () => (await (await fetch(API+"/api/project/"+encodeURIComponent(PID))).json()).lines;
 const click = id => $(id).dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+const seek = time => {
+  const options = {clientX:time / 26.04 * 900,bubbles:true};
+  $('mmap').dispatchEvent(new w.MouseEvent('pointerdown',options));
+  $('mmap').dispatchEvent(new w.MouseEvent('pointerup',options));
+};
+const reopen = async () => {
+  doc.querySelector('.card').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+  await sleep(1200);
+};
 
 doc.querySelectorAll('.card')[0].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(1200);
 const before = await srv();
 
+console.log('--- inserting before the first line without a selection ---');
+seek(0);
+click('btnAddLine');
+await sleep(100);
+let firstInput = doc.querySelector('.lnedit');
+ok('a selection is not required to insert at the beginning', !!firstInput);
+if (firstInput){
+  firstInput.value = 'первое вступление';
+  firstInput.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+}
+await sleep(700);
+let inserted = await srv();
+ok('the inserted opening is first and starts at the playhead',
+   inserted[0].text === 'первое вступление' && inserted[0].start === 0);
+ok('existing lines retain all their timings, words and properties',
+   JSON.stringify(inserted.slice(1)) === JSON.stringify(before));
+ok('preview and timeline both place the new line first',
+   doc.querySelector('#scroll .ln .hl')?.textContent.trim() === 'первое' &&
+   doc.querySelector('.blk[data-i="0"]')?.textContent.startsWith('1. первое вступление'));
+click('btnUndo'); click('btnUndo');
+await sleep(600);
+ok('undo restores the original list and timing', JSON.stringify(await srv()) === JSON.stringify(before));
+click('btnRedo'); click('btnRedo');
+await sleep(600);
+ok('redo restores the inserted opening and its place', (await srv())[0].text === 'первое вступление');
+await reopen();
+await sleep(100);
+ok('saving and reopening retains the opening as line one',
+   doc.querySelector('#scroll .ln .hl')?.textContent.trim() === 'первое' &&
+   doc.querySelector('.blk[data-i="0"]')?.textContent.startsWith('1. первое вступление'));
+doc.querySelector('#scroll .ln').dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+click('btnDelLine');
+await sleep(700);
+ok('deleting the new opening leaves the original song unchanged',
+   JSON.stringify(await srv()) === JSON.stringify(before));
+await reopen(); // clear fixture-only undo history before the next case
+
 console.log('--- inserting a forgotten line ---');
-doc.querySelectorAll('#scroll .ln')[1].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
+doc.querySelectorAll('#scroll .ln')[before.length - 1].dispatchEvent(new w.MouseEvent('click',{bubbles:true}));
 await sleep(80);
+seek(before[1].end);
 click('btnAddLine');
 await sleep(120);
 const inp = doc.querySelector('.lnedit');
@@ -56,7 +103,7 @@ await sleep(900);
 const after = await srv();
 ok('there is one more line', after.length === before.length + 1,
    `${before.length} → ${after.length}`);
-ok('the new line went right after the selected one', after[2].text === "забытая строка припева",
+ok('the new line went at the playhead between its neighbours', after[2].text === "забытая строка припева",
    after[2].text);
 ok('the neighbouring lines did not move',
    after[1].text === before[1].text && after[3].text === before[2].text);
@@ -100,7 +147,28 @@ ok('the timeline has as many blocks as there are lines',
    doc.querySelectorAll('.blk').length === now.length,
    doc.querySelectorAll('.blk').length + ' / ' + now.length);
 
-console.log('\n--- with no line selected nothing breaks ---');
+console.log('\n--- insertion near the end stays within the audio ---');
+seek(25.04);
+click('btnAddLine');
+await sleep(100);
+const lastInput = doc.querySelector('.lnedit');
+ok('the final gap can receive a new line', !!lastInput);
+if (lastInput){
+  lastInput.value = 'последняя фраза';
+  lastInput.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+}
+await sleep(700);
+const appended = await srv();
+ok('the new final line starts at the playhead and does not exceed the audio',
+   appended.at(-1).text === 'последняя фраза' && Math.abs(appended.at(-1).start - 25.04) < .001 &&
+   appended.at(-1).end <= 26.04);
+click('btnUndo'); click('btnUndo');
+await sleep(600);
+seek(26.04);
+click('btnAddLine');
+await sleep(100);
+ok('at the audio endpoint no impossible line is created',
+   !doc.querySelector('.lnedit') && (await srv()).length === before.length);
 // Cleaning up after ourselves: the project on the stand is shared, and the
 // edits eat the slack inside the lines — the next run would fail for nothing.
 console.log('\n--- putting the project back ---');

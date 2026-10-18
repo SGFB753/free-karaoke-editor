@@ -95,7 +95,7 @@ const STR = {
     lineText: "✎ Line text", textHint: "Fix the words of the selected line (or double-click it)",
     undo: "↶ Undo", undoHint: "Undo the last change (Ctrl+Z)",
     addLine: "＋ line",
-    addLineHint: "Insert a line after the selected one — if it was missing from the lyrics",
+    addLineHint: "Insert a missing line at the playhead; its position in the lyrics follows its start time",
     delLine: "－ line", delLineHint: "Delete the selected line from the lyrics",
     voiceHint: "Who sings the selected line: first voice, second voice, or both " +
       "together. Press repeatedly to cycle through all three states",
@@ -150,16 +150,17 @@ const STR = {
     lineCut: "Line cut — put the timeline playhead where it belongs and press Ctrl+V",
     linesCut: n => `${n} lines cut — put the timeline playhead where they belong and press Ctrl+V`,
     pasteLine: "⧉ Paste line",
-    pasteLineHint: "Insert the copied lines below the selected one, keeping the " +
-      "gaps between them (Ctrl+Shift+V). Nothing existing is overwritten — use " +
+    pasteLineHint: "Insert the copied lines at the timeline playhead without changing " +
+      "word durations or gaps (Ctrl+Shift+V). Nothing existing is overwritten or moved — use " +
       "“Paste rhythm” if you only want the word layout. Ctrl+X cuts selected " +
       "lines; Ctrl+V then inserts them at the timeline playhead.",
     lineReplaced: "The line was replaced by the copied one",
-    linePasted: "The copied line was put below",
+    linePasted: "The copied line was inserted at the playhead",
+    pasteNoRoom: "The complete copy does not fit inside the song here. Move the playhead; its rhythm will not be squeezed.",
     linesReplaced: n => `${n} lines replaced by the copied one`,
     copiedLine: t => `Copied: “${t}”`,
     copiedLines: n => `Copied: ${n} lines`,
-    linesPasted: n => `${n} lines pasted below`,
+    linesPasted: n => `${n} lines inserted at the playhead`,
     copyRhythm: "⧉ Copy", pasteRhythm: n => `⧉ Paste rhythm${n > 1 ? " ×" + n : ""}`,
     rhythmHint: "Copy the selected line — words, rhythm, voice, marks — then paste " +
       "either its rhythm or the whole line into another one. " +
@@ -496,7 +497,7 @@ const STR = {
     wordEnd: "Word end",
     backLast: "◀ last line ",
     ago: " ago",
-    addAfter: "Select the line to insert after first",
+    addAtEnd: "Move the playhead a little before the end of the song to add a line",
     newLineText: "new line",
     delLast: "This is the last line — nothing to delete",
     lineDeleted: "Line deleted",
@@ -600,7 +601,7 @@ const STR = {
     textHint: "Исправить слова выбранной строки (или двойной щелчок по ней)",
     undo: "↶ Отменить", undoHint: "Отменить последнюю правку (Ctrl+Z)",
     addLine: "＋ строка",
-    addLineHint: "Вставить строку после выбранной — если её забыли в тексте",
+    addLineHint: "Вставить строку в позиции курсора; её место в тексте определяется временем начала",
     delLine: "－ строка", delLineHint: "Удалить выбранную строку из текста песни",
     voiceHint: "Кто поёт выбранную строку: первый голос, второй или оба вместе. " +
       "Повторные нажатия переключают все три режима",
@@ -652,16 +653,17 @@ const STR = {
     lineCut: "Строка вырезана — поставьте курсор таймлайна в нужное место и нажмите Ctrl+V",
     linesCut: n => `Вырезано строк: ${n} — поставьте курсор таймлайна в нужное место и нажмите Ctrl+V`,
     pasteLine: "⧉ Вставить строку",
-    pasteLineHint: "Вставить скопированные строки ниже выбранной, сохранив " +
-      "расстояния между ними (Ctrl+Shift+V). Ничего не затирается — если нужна " +
+    pasteLineHint: "Вставить скопированные строки на курсор таймлайна без изменения " +
+      "длительности слов и пауз (Ctrl+Shift+V). Существующие строки не затираются и не сдвигаются — если нужна " +
       "только раскладка слов, есть «Вставить ритм». Ctrl+X вырезает выбранные " +
       "строки, после чего Ctrl+V вставляет их на курсор таймлайна.",
     lineReplaced: "Строка заменена скопированной",
-    linePasted: "Скопированная строка вставлена ниже",
+    linePasted: "Скопированная строка вставлена на курсор",
+    pasteNoRoom: "Копия целиком не помещается в песню в этом месте. Переместите курсор — ритм ужиматься не будет.",
     linesReplaced: n => `Заменено строк: ${n}`,
     copiedLine: t => `Скопировано: «${t}»`,
     copiedLines: n => `Скопировано строк: ${n}`,
-    linesPasted: n => `Вставлено строк ниже: ${n}`,
+    linesPasted: n => `Вставлено строк на курсор: ${n}`,
     copyRhythm: "⧉ Копировать", pasteRhythm: n => `⧉ Вставить ритм${n > 1 ? " ×" + n : ""}`,
     rhythmHint: "Скопировать выбранную строку — слова, ритм, голос, пометки — и " +
       "вставить в другую либо её ритм, либо строку целиком. " +
@@ -998,7 +1000,7 @@ const STR = {
     wordEnd: "Конец слова",
     backLast: "◀ последняя строка ",
     ago: " назад",
-    addAfter: "Сначала выберите строку, после которой вставить",
+    addAtEnd: "Чтобы добавить строку, поставьте курсор чуть раньше конца песни",
     newLineText: "новая строка",
     delLast: "Это последняя строка — удалять нечего",
     lineDeleted: "Строка удалена",
@@ -3277,39 +3279,35 @@ function putLine(ln, item, start){
   ln.section = item.section || null;
   if (item.sure !== undefined) ln.sure = item.sure;
   ln.start = start;
-  ln.end = start + Math.max(item.len, MIN_W * item.words.length);
+  ln.end = start + item.len;
   ln.words = item.words.map(c => ({w: c.w, s: c.s, g: c.g, t: start + c.dt, d: c.d}));
   const last = ln.words[ln.words.length - 1];
   if (last) ln.end = Math.max(ln.end, last.t + last.d);
 }
-function clipLinesAt(start, scale=1){
+function clipLinesAt(start){
   return clip.items.map(item => {
     const ln = {text: "", words: [], section: null};
-    putLine(ln, {...item, len: item.len * scale,
-                 words: item.words.map(w => ({...w, dt: w.dt * scale,
-                                              d: Math.max(w.d * scale, MIN_W)}))},
-            start + item.at * scale);
+    putLine(ln, item, start + item.at);
     return ln;
   });
 }
 function pasteLine(){
   if (!clip) return toast(T.rhythmNone);
-  const idx = targets();
-  if (!idx.length) return toast(T.pickLineFirst);
-  // “Paste” means “add”, not “overwrite”: the copies go in after the selection
-  // and nothing that already exists disappears.
-  const after = idx[idx.length - 1];
-  const cur = lines[after], next = lines[after + 1];
-  const start = cur.end;
-  const span = Math.max(clip.span, 0.4);
-  const room = next ? Math.max(next.start - start, 0.4) : Infinity;
-  const k = Math.min(1, room / span);
+  saveInlineText();
+  const start = clamp(mediaTime(), 0, dur);
+  const made = clipLinesAt(start);
+  // A paste is a translation in time, never a tempo change. If it overlaps
+  // another lyric, retain both; the person can move it or undo the insertion.
+  // Never squeeze real short syllables/letters to a minimum duration either.
+  if (made.some(ln => ln.start < -1e-6 || ln.end > dur + 1e-6))
+    return toast(T.pasteNoRoom);
+  const following = lines.findIndex(ln => ln.start >= start);
+  const index = following < 0 ? lines.length : following;
   snap("");
-  const made = clipLinesAt(start, k);
-  lines.splice(after + 1, 0, ...made);
+  lines.splice(index, 0, ...made);
   marked.clear();
   buildLines(); makeBlocks(); updateLanes();
-  selectLine(after + 1, false);
+  selectLine(index, false);
   curLine = -2; touched();
   toast(made.length > 1 ? T.linesPasted(made.length) : T.linePasted);
 }
@@ -4312,25 +4310,31 @@ function retext(i, text){
 // A missing or a stray line is as much a mistake in the text as a typo, and
 // rebuilding the whole song over it makes no more sense.
 function addLine(){
-  if (sel < 0) return toast(T.addAfter);
-  const cur = lines[sel];
-  const next = lines[sel + 1];
-  // A new line takes the gap up to the next one, but no more than two seconds:
-  // there is no point filling a long pause after a solo. The gap can even be
-  // negative — neighbouring lines may already overlap — and then a short piece
-  // is taken; the “Check” panel will point at the overlap anyway.
-  const start = cur.end;
+  saveInlineText();
+  const start = clamp(mediaTime(), 0, dur);
+  const parts = T.newLineText.split(" ");
+  const minimum = parts.length * MIN_W;
+  if (dur - start < minimum) return toast(T.addAtEnd);
+  // The playhead owns both the timing and the insertion position. Selection
+  // can belong to a completely different verse, or there may be none yet.
+  // Do not globally sort the existing song: backing/duet lines may deliberately
+  // overlap while retaining their written order. Insert only the new line.
+  const following = lines.findIndex(ln => ln.start >= start);
+  const index = following < 0 ? lines.length : following;
+  const next = lines[index];
   const room = next ? next.start - start : Infinity;
-  const end = start + Math.max(0.4, Math.min(2, room));
+  const end = Math.min(dur, start + Math.max(minimum, Math.min(2, room)));
   // `section` is a heading that STARTS at this line. An inserted line must not
   // carry one, or “[Chorus]” would appear in the song twice.
-  const ln = {text: T.newLineText, start, end: Math.max(end, start + 0.4),
+  const ln = {text: T.newLineText, start, end,
               section: null, backing: false, words: []};
-  ln.words = ln.text.split(" ").map(w => ({w, t: start, d: 0, s: syllables(w)}));
+  ln.words = parts.map(w => ({w, t: start, d: 0, s: syllables(w)}));
   spread(ln);
   snap("");
-  lines.splice(sel + 1, 0, ln);
-  buildLines(); makeBlocks(); selectLine(sel + 1, false); touched();
+  lines.splice(index, 0, ln);
+  marked.clear();
+  curLine = -2;
+  buildLines(); makeBlocks(); selectLine(index, false); touched();
   editText(sel);                       // let the real text be typed straight away
 }
 /* ---------- splitting a line, and joining two ----------

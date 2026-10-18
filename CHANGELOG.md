@@ -7,6 +7,17 @@ commits themselves are one click away in the history.
 
 ---
 
+## 5.0.2
+
+### Fixes
+
+- **Pasting copied lines:** insert at the playhead with original word durations
+  and pauses, without squeezing into a gap or moving existing lines. If the copy
+  would exceed the song boundaries, ask for a different cursor position.
+- **Adding lines:** insert at the playhead, including before the first lyric,
+  without selecting an existing line. Preview order and timeline numbering
+  update immediately; existing line timings remain unchanged.
+
 ## 5.0.1
 
 ### Added
