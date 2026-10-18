@@ -37,23 +37,33 @@ try{
     await page.click('.card');await page.waitForSelector('#scrEdit:not(.hide)');
     await page.waitForFunction(()=>document.getElementById('tDur').textContent!=='0:00');
   }
+  // Other scenarios can replace the audio. Its decoded length need not equal
+  // the original project duration used to aim a mouse click. The visible
+  // millisecond clock is the actual instruction given to the editor.
+  const cursor=()=>page.evaluate(async()=>{
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    return document.getElementById('tCur').textContent.trim().split(':').reduce((n,p)=>n*60+Number(p),0);
+  });
+  const settled=()=>page.waitForFunction(()=>document.getElementById('savedNote').classList.contains('ok'));
   async function insert(time,text){
     await page.$eval('#mmap',e=>e.scrollIntoView({block:'center'}));
     const rect=await page.$eval('#mmap',e=>{
       const r=e.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};
     });
     await page.mouse.click(rect.x+rect.w*time/saved.duration,rect.y+rect.h/2);
+    const at=await cursor();
     await page.click('#btnAddLine');
     await page.waitForSelector('.lnedit');
     await page.type('.lnedit',text);await page.keyboard.press('Enter');
     await page.waitForFunction(text=>!document.querySelector('.lnedit')&&
       [...document.querySelectorAll('#scroll .hl')].map(e=>e.textContent).join('').includes(text),{},text);
-    await new Promise(r=>setTimeout(r,650));
+    await settled();
+    return at;
   }
   await open();
-  await insert(1,'Opening');
+  const openingCursor=await insert(1,'Opening');
   ok('timeline cursor inserts an opening before the original first line',
-    saved.lines[0].text==='Opening'&&Math.abs(saved.lines[0].start-1)<.04);
+    saved.lines[0].text==='Opening'&&openingCursor>0&&openingCursor<4&&Math.abs(saved.lines[0].start-openingCursor)<.002);
   ok('locked lead and overlapping backing retain their order and timing',
     JSON.stringify(saved.lines.slice(1))===JSON.stringify(baseline));
   ok('preview and timeline number the opening first',await page.evaluate(()=>
@@ -61,10 +71,11 @@ try{
     document.querySelector('.blk[data-i="0"]')?.textContent.startsWith('1. Opening')));
   await open();
   ok('the opening remains first after reopening',await page.$eval('#scroll .ln .hl',e=>e.textContent.trim()==='Opening'));
-  await insert(9,'Middle');
+  const middleCursor=await insert(9,'Middle');
   ok('cursor inserts between existing phrases despite overlapping backing',
-    saved.lines[3]?.text==='Middle'&&Math.abs(saved.lines[3].start-9)<.04&&saved.lines[4]?.start===12,
-    JSON.stringify(saved.lines.map(l=>({text:l.text,start:l.start,end:l.end}))));
+    saved.lines[3]?.text==='Middle'&&middleCursor>6&&middleCursor<12&&
+    Math.abs(saved.lines[3].start-middleCursor)<.002&&saved.lines[4]?.start===12,
+    JSON.stringify({middleCursor,lines:saved.lines.map(l=>({text:l.text,start:l.start,end:l.end}))}));
   ok('existing metadata and timing are still untouched',
     JSON.stringify(saved.lines.filter(l=>!['Opening','Middle'].includes(l.text)))===JSON.stringify(baseline));
   const beforePaste=structuredClone(saved.lines),source=beforePaste[1];
@@ -75,11 +86,12 @@ try{
     const r=e.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};
   });
   await page.mouse.click(rect.x+rect.w*.2/saved.duration,rect.y+rect.h/2);
+  const pasteCursor=await cursor();
   await page.click('#btnPasteLine');
-  await new Promise(r=>setTimeout(r,700));
+  await settled();
   const copy=saved.lines[0];
   ok('copy is pasted at the cursor, not after its selected source',
-    copy.text===source.text&&Math.abs(copy.start-.2)<.04);
+    copy.text===source.text&&pasteCursor<1&&Math.abs(copy.start-pasteCursor)<.002);
   ok('copy keeps full duration even though the next lyric is less than a second away',
     Math.abs((copy.end-copy.start)-(source.end-source.start))<.004);
   ok('all copied word durations, short syllables and pauses remain unchanged',

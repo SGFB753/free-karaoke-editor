@@ -7,7 +7,7 @@ commits themselves are one click away in the history.
 
 ---
 
-## 5.0.3
+## 5.0.4
 
 ### Fixes
 
