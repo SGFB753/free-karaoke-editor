@@ -4,14 +4,17 @@ const API=process.env.KARAOKE_API;
 const state=await (await fetch(API+'/api/state')).json();
 const id=state.projects[0].id;
 const original=await (await fetch(API+'/api/project/'+encodeURIComponent(id))).json();
-const baseline=original.lines.slice(0,3).map((line,i)=>{
+// Earlier scenarios may leave a two-line project. This scenario owns three
+// fixture lines and must not depend on the number left by another suite.
+const baseline=Array.from({length:3},(_,i)=>{
+  const line=original.lines[i]||original.lines[0];
   const start=[5,4,12][i],end=[8,6,14][i];
   return {...line,start,end,lock:i===0,backing:i===1,words:line.words.map((w,j)=>
     ({...w,t:start+(end-start)*j/line.words.length,d:(end-start)/line.words.length}))};
 });
 baseline[0].words[0].d=.02; // preserve a short syllable rather than a minimum pixel width
 let saved={...original,lines:structuredClone(baseline)},failures=0;
-const ok=(name,test)=>{console.log((test?'  ✓ ':'  ✗ ')+name);if(!test)failures++;};
+const ok=(name,test,detail='')=>{console.log((test?'  ✓ ':'  ✗ ')+name+(!test&&detail?' — '+detail:''));if(!test)failures++;};
 const browser=await puppeteer.launch({headless:'new',
   executablePath:process.env.PUPPETEER_EXECUTABLE_PATH||undefined,
   args:['--no-sandbox','--disable-dev-shm-usage']});
@@ -60,7 +63,8 @@ try{
   ok('the opening remains first after reopening',await page.$eval('#scroll .ln .hl',e=>e.textContent.trim()==='Opening'));
   await insert(9,'Middle');
   ok('cursor inserts between existing phrases despite overlapping backing',
-    saved.lines[3].text==='Middle'&&Math.abs(saved.lines[3].start-9)<.04&&saved.lines[4].start===12);
+    saved.lines[3]?.text==='Middle'&&Math.abs(saved.lines[3].start-9)<.04&&saved.lines[4]?.start===12,
+    JSON.stringify(saved.lines.map(l=>({text:l.text,start:l.start,end:l.end}))));
   ok('existing metadata and timing are still untouched',
     JSON.stringify(saved.lines.filter(l=>!['Opening','Middle'].includes(l.text)))===JSON.stringify(baseline));
   const beforePaste=structuredClone(saved.lines),source=beforePaste[1];
