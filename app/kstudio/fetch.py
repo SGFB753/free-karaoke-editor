@@ -81,6 +81,46 @@ NETWORK_ERROR = re.compile(
     # connection advice as the other transport errors.
     r"\[Errno 22\]\s*Invalid argument", re.I)
 
+# An unqualified player refusal can be temporary/client-specific. It is not
+# evidence that the upload was removed. Explicit restrictions still stop us.
+UNAVAILABLE = re.compile(r"(?:this\s+)?video\s+(?:is\s+)?(?:not available|unavailable)", re.I)
+PERMANENT_VIDEO_ERROR = re.compile(
+    r"private video|video is private|video has been (?:removed|deleted)|"
+    r"removed by|deleted by|account (?:has been )?terminated|"
+    r"copyright|not (?:made )?available in your (?:country|region)|"
+    r"not made (?:this )?video available in your (?:country|region)|"
+    r"(?:not available|unavailable) in (?:this|your) (?:country|region)|"
+    r"blocked (?:it )?in your country|members.only|purchase|paid video", re.I)
+
+
+def _player_refusal(message: str) -> bool:
+    return bool(not PERMANENT_VIDEO_ERROR.search(message)
+                and 'CERTIFICATE_VERIFY_FAILED' not in message.upper()
+                and (TRY_AGAIN.search(message) or UNAVAILABLE.search(message)))
+
+
+def javascript_args() -> list:
+    """Enable the Node already shipped for the independent downloader.
+
+    Node is not enabled by yt-dlp merely because it is installed. Pass its
+    actual path (including in a frozen build), with no profile access or
+    on-demand remote-script downloads. Explicit downloader/runtime settings win.
+    """
+    if (os.environ.get('KARAOKE_YTDLP') or _setting('yt-dlp', 'загрузчик') or
+            any(arg.split('=', 1)[0] in ('--js-runtimes', '--no-js-runtimes')
+                for arg in extra_args())):
+        return []
+    try:
+        import nodejs_wheel
+        folder = os.path.dirname(nodejs_wheel.__file__)
+        node = os.path.join(folder, 'node.exe') if os.name == 'nt' else os.path.join(folder, 'bin', 'node')
+        if os.path.isfile(node):
+            return ['--js-runtimes', 'node:' + node]
+    except ImportError:
+        pass
+    node = shutil.which('node')
+    return ['--js-runtimes', 'node:' + node] if node else []
+
 
 class FetchError(RuntimeError):
     pass
@@ -243,6 +283,17 @@ def places() -> list:
     return uniq
 
 
+def _managed_tool() -> Optional[list]:
+    if not sys.executable:
+        return None
+    try:
+        import yt_dlp  # noqa: F401
+    except ImportError:
+        return None
+    return ([sys.executable, '--internal-ytdlp'] if getattr(sys, 'frozen', False)
+            else [sys.executable, '-m', 'yt_dlp'])
+
+
 def tool() -> Optional[list]:
     """The command that downloads, or None if there is nothing to run.
 
@@ -256,6 +307,11 @@ def tool() -> Optional[list]:
     if own:
         own = os.path.expanduser(own)
         return [own]
+    # Keep yt-dlp and EJS in the same environment. A global command on PATH
+    # may have the same version but lack the solver installed in this venv.
+    managed = _managed_tool()
+    if managed:
+        return managed
     found = shutil.which("yt-dlp")
     if found:
         return [found]
@@ -265,20 +321,7 @@ def tool() -> Optional[list]:
             path = os.path.join(folder, name)
             if os.path.isfile(path) and os.access(path, os.X_OK):
                 return [path]
-    try:                                    # installed as a library, no command
-        import yt_dlp  # noqa: F401
-    except ImportError:
-        return None
-    # A Python that cannot say where it lives cannot be asked to run a module;
-    # passing that emptiness on gives a crash about NoneType instead of an
-    # answer about the song.
-    if not sys.executable:
-        return None
-    # In a PyInstaller build sys.executable is KaraokeStudio.exe, not a Python
-    # interpreter.  The main entry point provides this private dispatch so the
-    # bundled yt-dlp still gets a clean child process.
-    return ([sys.executable, "--internal-ytdlp"] if getattr(sys, "frozen", False)
-            else [sys.executable, "-m", "yt_dlp"])
+    return None
 
 
 def available() -> bool:
@@ -498,6 +541,7 @@ def _base_args(cmd: list, tmp: str) -> list:
         "--restrict-filenames",   # Latin letters, like everywhere else here
         "-o", os.path.join(tmp, "%(title).60s [%(id)s].%(ext)s"),
     ]
+    args += javascript_args()
     where, can_extract = _tools(tmp)
     if where:                     # a pip-installed ffmpeg is not on PATH
         args += ["--ffmpeg-location", where]
@@ -563,11 +607,17 @@ def _network_attempt(args: list, say: Callable, deadline: float) -> tuple:
     """
     code, lines = _attempt(args, say, deadline)
     tail = "\n".join(lines)
-    if (code and NETWORK_ERROR.search(tail) and not RATE_LIMIT.search(tail)
+    permanent = bool(code and PERMANENT_VIDEO_ERROR.search(_reason(lines, code)))
+    unavailable = (args and youtube_url(args[-1]) and UNAVAILABLE.search(tail)
+                   and not permanent)
+    if (code and (NETWORK_ERROR.search(tail) or unavailable) and not RATE_LIMIT.search(tail)
+            and not permanent
             and "CERTIFICATE_VERIFY_FAILED" not in tail.upper()
             and time.time() + 2 < deadline):
-        say(tr("The audio connection broke — retrying once in 2 seconds…",
-               "Соединение при скачивании оборвалось — повторяю один раз через 2 секунды…"))
+        say(tr('YouTube reported an unavailable video — retrying once in 2 seconds…',
+               'YouTube сообщил, что видео недоступно — повторяю один раз через 2 секунды…')
+            if unavailable else tr("The audio connection broke — retrying once in 2 seconds…",
+                                   "Соединение при скачивании оборвалось — повторяю один раз через 2 секунды…"))
         time.sleep(2)
         if time.time() < deadline:
             return _attempt(args, say, deadline)
@@ -591,10 +641,12 @@ def download(url: str, dest_dir: str, log: Optional[Callable] = None, *, browser
     except FetchError as error:
         # Embedded browsing is a last resort, not an alternative for missing,
         # private or deleted videos, certificate errors, or explicit settings.
-        eligible = (isinstance(error, BrowserRequired) or TRY_AGAIN.search(str(error)) or
+        eligible = (isinstance(error, BrowserRequired) or _player_refusal(str(error)) or
                     RATE_LIMIT.search(str(error)) or
                     re.search(r'DPAPI|decrypt|cookie database|Could not copy', str(error), re.I))
-        if embedded and youtube_url(url) and not extra_args() and eligible:
+        if (embedded and youtube_url(url) and not extra_args() and eligible
+                and not PERMANENT_VIDEO_ERROR.search(str(error))
+                and 'CERTIFICATE_VERIFY_FAILED' not in str(error).upper()):
             return embedded(youtube_video_url(url), dest_dir, log)
         raise
 
@@ -609,16 +661,23 @@ def _download_sources(url: str, dest_dir: str, log: Optional[Callable] = None, *
         try:
             return _download(url, dest_dir, log)
         except FetchError as original:
+            if (PERMANENT_VIDEO_ERROR.search(str(original)) or
+                    'CERTIFICATE_VERIFY_FAILED' in str(original).upper()):
+                raise
             # Never read an unrelated browser profile, override explicitly supplied
             # cookie options, or cycle authenticated clients after another refusal.
             configured = any(arg.startswith('--cookies') for arg in extra_args())
             if (youtube_url(url) and not extra_args() and
-                    (isinstance(original, BrowserRequired) or TRY_AGAIN.search(str(original)))):
+                    not PERMANENT_VIDEO_ERROR.search(str(original)) and
+                    (isinstance(original, BrowserRequired) or _player_refusal(str(original)))):
                 try:
                     return _independent_download(url, dest_dir, log)
                 except FetchError as fallback:
                     if log:
                         log(str(fallback))
+                    if (PERMANENT_VIDEO_ERROR.search(str(fallback)) or
+                            'CERTIFICATE_VERIFY_FAILED' in str(fallback).upper()):
+                        raise
             if not browser or not youtube_url(url) or configured:
                 raise
             if not isinstance(original, BrowserRequired):
@@ -728,7 +787,7 @@ def _download(url: str, dest_dir: str, log: Optional[Callable] = None, *, browse
                     "try later or choose a local audio file.",
                     " — соединение при скачивании оборвалось. Проверьте подключение или VPN/прокси; "
                     "попробуйте позже либо выберите аудиофайл с диска."))
-            again = bool(TRY_AGAIN.search(tail))
+            again = bool(TRY_AGAIN.search(tail) and not PERMANENT_VIDEO_ERROR.search(reason))
             if again and i + 1 < len(clients):
                 say(tr(f"The site turned this client away ({reason}) — "
                        f"asking again as “{clients[i + 1]}”…",
@@ -820,6 +879,7 @@ def clip(url: str, dest_dir: str, log: Optional[Callable] = None) -> str:
                 "--restrict-filenames",
                 "-o", os.path.join(tmp, "clip.%(ext)s"),
             ]
+            args += javascript_args()
             if client:
                 args += ["--extractor-args", f"youtube:player_client={client}"]
             args += extra_args() + ["--", url]

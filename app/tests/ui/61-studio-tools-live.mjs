@@ -462,6 +462,35 @@ console.log('\n--- a video source becomes the moving backdrop when selected ---'
   }
 }
 
+console.log('\n--- an imported project can load a video backdrop by link ---');
+await p.click('#inBackdropUrl');
+ok('the video link field is visible in background settings', await p.$eval('#inBackdropUrl', el => el.getBoundingClientRect().width > 150));
+await p.evaluate(() => {
+  window.__backdropFetch = window.fetch;
+  window.__backdropPending = true;
+  window.fetch = async (url, opts) => {
+    const response = value => new Response(JSON.stringify(value), {status:200,
+      headers:{'Content-Type':'application/json'}});
+    if (typeof url === 'string' && url.endsWith('/backdrop') && opts?.method === 'POST'){
+      window.__backdropBody = JSON.parse(opts.body);
+      return response({job:'backdrop-link-check'});
+    }
+    if (typeof url === 'string' && url.includes('/api/job?id=backdrop-link-check'))
+      return response(window.__backdropPending ? {done:false,cancellable:true,log:['Downloading video']} :
+        {done:true,ok:true,result:{backdrop:true}});
+    return window.__backdropFetch(url, opts);
+  };
+  document.querySelector('#inBackdropUrl').value = 'https://example.com/video';
+});
+await p.click('#btnBackdropUrl');
+await p.waitForSelector('#scrJob:not(.hide)');
+ok('link loading exposes progress and cancellation', await p.$eval('#btnJobCancel', el => !el.classList.contains('hide')));
+ok('the link is submitted without choosing a local file', await p.evaluate(() => window.__backdropBody.url === 'https://example.com/video' && !window.__backdropBody.path));
+await p.evaluate(() => { window.__backdropPending = false; });
+await p.waitForSelector('#scrEdit:not(.hide)');
+ok('the editor returns with the video backdrop enabled', await p.$eval('#btnClipBgOff', el => !el.classList.contains('hide')));
+await p.evaluate(() => { window.fetch = window.__backdropFetch; });
+
 ok('nothing in the window went wrong', errs.length === 0, errs.slice(0, 2).join(' | '));
 await b.close();
 await post(`/api/project/${encodeURIComponent(pid)}/delete`, {});

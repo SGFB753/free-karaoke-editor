@@ -23,6 +23,43 @@ class FakeModel:
 
 
 class QwenTests(unittest.TestCase):
+    def setUp(self):
+        # These fixtures exercise Qwen retries. The independent backend has
+        # its own tests; never download/run Whisper on fabricated audio here.
+        recovery = patch('kstudio.qwen_recovery.recover', return_value=0)
+        self.recovery = recovery.start()
+        self.addCleanup(recovery.stop)
+
+    def test_download_cache_is_outside_replaced_installations(self):
+        with tempfile.TemporaryDirectory() as root:
+            home = os.path.join(root, 'user')
+            expected = os.path.join(home, '.cache', 'karaoke-studio', 'qwen3-forcedaligner-0.6b')
+            os.makedirs(expected)
+            for name in ('config.json', 'preprocessor_config.json', 'tokenizer_config.json',
+                         'vocab.json', 'merges.txt', 'model.safetensors'):
+                with open(os.path.join(expected, name), 'wb') as f:
+                    f.write(b'123')
+            for version in ('old', 'updated'):
+                install = os.path.join(root, version, '_internal')
+                with patch.object(sys, 'frozen', True, create=True), \
+                        patch.object(sys, '_MEIPASS', install, create=True), \
+                        patch.object(sys, 'executable', os.path.join(root, version, 'KaraokeStudio.exe')), \
+                        patch.dict(os.environ, {'XDG_CACHE_HOME': os.path.join(install, 'models')}), \
+                        patch.object(M.os.path, 'expanduser', return_value=home), \
+                        patch.object(M, '_MIN_BYTES', 2):
+                    self.assertEqual(M.qwen_dir(), expected)
+                    self.assertTrue(M.qwen_ready())
+
+    def test_explicit_external_model_cache_is_honoured(self):
+        with tempfile.TemporaryDirectory() as root:
+            cache = os.path.join(root, 'external-cache')
+            install = os.path.join(root, 'app')
+            with patch.object(sys, 'frozen', True, create=True), \
+                    patch.object(sys, '_MEIPASS', install, create=True), \
+                    patch.object(sys, 'executable', os.path.join(install, 'KaraokeStudio.exe')), \
+                    patch.dict(os.environ, {'XDG_CACHE_HOME': cache}):
+                self.assertEqual(M.qwen_dir(), os.path.join(cache, 'karaoke-studio', 'qwen3-forcedaligner-0.6b'))
+
     def test_compressed_multisyllable_word_requests_retry_not_redistribution(self):
         lyr=L.parse('Я приеду в Петербург')
         for word,a,b in zip(lyr.words,[12.16,12.48,12.57,12.64],[12.48,12.57,12.64,13.36]):
@@ -84,7 +121,11 @@ class QwenTests(unittest.TestCase):
         def infer(**kwargs):
             words=kwargs['text'].split()
             if len(words)==24:
-                return [[Item(text=w,start_time=10,end_time=10) for w in words]]
+                # A plausible phrase in an otherwise collapsed block can
+                # still be anchored to the wrong repeated occurrence.
+                return [[Item(text=w,start_time=7+i*.4 if i<3 else 10,
+                              end_time=7.3+i*.4 if i<3 else 10)
+                         for i,w in enumerate(words)]]
             return [[Item(text=w,start_time=.2+i*.4,end_time=.5+i*.4) for i,w in enumerate(words)]]
         model.align=infer
         windows=[(0,4,0,10),(4,8,10,20)]
@@ -93,6 +134,7 @@ class QwenTests(unittest.TestCase):
             Q.align_qwen(lyr,'vocals',20,'en',model=model,fallback_audio='original')
         self.assertEqual(guide.call_args.args[1],'original')
         self.assertFalse(Q._failed_placement(lyr.lines))
+        self.assertAlmostEqual(lyr.lines[0].start,.2)
         self.assertGreater(lyr.lines[4].start,10)
 
     def test_mass_failure_is_never_hidden_by_minimum_word_lengths(self):
@@ -154,6 +196,29 @@ class QwenTests(unittest.TestCase):
         self.assertTrue(words[1].qwen_interpolated)
         self.assertGreater(Q._faults([L.Line('Hello world',words=words)])[0],0)
         self.assertIsNone(words[1].prob)
+
+    def test_wrapper_repairs_on_the_timestamp_grid_are_not_mistaken_for_predictions(self):
+        import numpy as np
+        processor = Item(fix_timestamp=lambda raw: [80, 160, 240, 400])
+        original = processor.fix_timestamp
+        def infer(**kwargs):
+            values = processor.fix_timestamp(np.array([800, 160, 240, 400]))
+            return [[Item(text=text, start_time=values[2*i]/1000, end_time=values[2*i+1]/1000)
+                     for i, text in enumerate(('One', 'two'))]]
+        items, repaired = Q._model_alignment(Item(aligner_processor=processor, align=infer))
+        self.assertIs(processor.fix_timestamp, original)
+        words = L.parse('One two').words
+        Q.assign_words(words, items, 0, lambda t:t, 1, timestamp_step=.08, repaired=repaired)
+        self.assertTrue(words[0].qwen_interpolated)
+        self.assertFalse(words[1].qwen_interpolated)
+
+    def test_provenance_observer_is_restored_after_inference_failure(self):
+        processor = Item(fix_timestamp=lambda raw: raw)
+        original = processor.fix_timestamp
+        def fail(**kw): raise RuntimeError('inference failed')
+        with self.assertRaises(RuntimeError):
+            Q._model_alignment(Item(aligner_processor=processor, align=fail))
+        self.assertIs(processor.fix_timestamp, original)
 
     def test_bad_tokens_and_timestamps_fail_explicitly(self):
         for item in (Item(text='wrong',start_time=0,end_time=.2),
@@ -456,6 +521,151 @@ class QwenTests(unittest.TestCase):
             self.assertEqual(len(words),9)
             self.assertTrue(all(0 <= w['t'] < w['t']+w['d'] <= data['duration']+.001 for w in words))
             self.assertTrue(all(a['t']+a['d'] <= b['t']+.001 for a,b in zip(words,words[1:])))
+
+
+class RecoveryTests(unittest.TestCase):
+    def test_recovery_window_uses_independent_bounds_instead_of_failed_qwen_times(self):
+        from copy import deepcopy
+        from kstudio.qwen_recovery import _windows
+        lyr = self.fixture()
+        anchors = {id(ln):deepcopy(ln) for ln in lyr.lines}
+        lyr.lines[0].words[0].start = 17
+        lyr.lines[2].words[-1].end = 18
+        self.assertEqual(list(_windows(lyr.lines, {1}, 20, anchors)),
+                         [(0,3,.5,6.5,{1})])
+
+    def test_cancelling_recovery_does_not_start_a_second_model(self):
+        from kstudio import jobcontrol as JC
+        from kstudio.qwen_recovery import recover
+        control = JC.Control()
+        control.cancel()
+        with patch('kstudio.audio.read_pcm_mono') as decode:
+            with self.assertRaises(JC.Cancelled), JC.scope(control):
+                recover(self.fixture().lines,'unused',20,'en',None,lambda s:None)
+            decode.assert_not_called()
+
+    def test_retry_cannot_replace_a_small_overlap_with_a_reversed_phrase(self):
+        from copy import deepcopy
+        lyr = self.fixture()
+        lyr.lines[1].words[-1].end = 5.2
+        proposal = list(lyr.lines)
+        proposal[2] = deepcopy(proposal[2])
+        for w in proposal[2].words:
+            w.start -= 4
+            w.end -= 4
+        # Both arrangements get the same coarse overlap penalty.
+        self.assertEqual(Q._faults(lyr.lines)[2], Q._faults(proposal)[2])
+        self.assertIs(Q._safe_proposal(lyr.lines, proposal)[2], lyr.lines[2])
+
+    def test_proposal_is_rechecked_after_a_neighbour_is_rolled_back(self):
+        from copy import deepcopy
+        lyr = self.fixture()
+        proposal = deepcopy(lyr.lines)
+        proposal[0].words[-1].end = 4
+        proposal[1].words[0].start = 4
+        proposal[1].words[0].end = 4.2
+        proposal[1].words[1].start = 4.2
+        proposal[1].words[1].end = 5.8
+        proposal[2].words[0].start = 5.8
+        # Last candidate is compressed, so its rollback must also roll back
+        # the middle candidate, then the first candidate that depended on it.
+        proposal[2].words[0].end = 5.8
+        checked = Q._safe_proposal(lyr.lines, proposal)
+        self.assertEqual(Q._faults(checked), Q._faults(lyr.lines))
+        self.assertIs(checked[0], lyr.lines[0])
+
+    def fixture(self):
+        lyr = L.parse('Good start\nFailed phrase\nGood ending')
+        for w, a, b in zip(lyr.words, [1,1.5,3,3,5,5.5], [1.4,2,3,3,5.4,6]):
+            w.start, w.end = a,b
+        for ln in lyr.lines:
+            ln.start, ln.end = ln.words[0].start, ln.words[-1].end
+        return lyr
+
+    def run_recovery(self, lyr, times=None, prob=.9, **opts):
+        from kstudio.qwen_recovery import recover
+        import numpy as np
+        if times is None:
+            times=[(1.1,1.4),(1.5,2.1),(3,3.4),(3.4,3.9),(5.1,5.4),(5.5,6.1)]
+        tokens=[Item(word=w.text,start=a-.5,end=b-.5,probability=prob)
+                for w,(a,b) in zip(lyr.words,times)]
+        aligner=Item(align=lambda *a,**kw:Item(segments=[Item(words=tokens)]))
+        with patch('kstudio.audio.read_pcm_mono', return_value=np.zeros(320000,dtype=np.int16)):
+            return recover(lyr.lines,'fixture',20,'en',None,lambda s:None,aligner=aligner,**opts)
+
+    def test_independent_words_replace_only_failed_phrase_preserving_neighbours_and_text(self):
+        lyr=self.fixture()
+        before=[(w.text,w.start,w.end) for w in lyr.words]
+        self.assertEqual(self.run_recovery(lyr),1)
+        self.assertEqual([(w.start,w.end) for w in lyr.lines[1].words],[(3,3.4),(3.4,3.9)])
+        self.assertEqual([(w.text,w.start,w.end) for w in lyr.lines[0].words],before[:2])
+        self.assertEqual([(w.text,w.start,w.end) for w in lyr.lines[2].words],before[4:])
+        self.assertEqual(Q._faults(lyr.lines),[0,0,0])
+
+    def test_low_confidence_or_collapsed_reserve_is_not_accepted(self):
+        for variant in ('low','collapsed','overlap','word-overlap'):
+            lyr=self.fixture()
+            times=[(1.1,1.4),(1.5,2.1),(3,3.4),(3.4,3.9),(5.1,5.4),(5.5,6.1)]
+            if variant=='collapsed': times[2]=(3,3)
+            if variant=='overlap': times[3]=(3.4,5.6)
+            if variant=='word-overlap': times[2]=(3,3.7)
+            self.assertEqual(self.run_recovery(lyr,times,.01 if variant=='low' else .9),0,variant)
+            self.assertEqual([(w.start,w.end) for w in lyr.lines[1].words],[(3,3),(3,3)])
+
+    def test_locked_manual_and_kept_phrases_are_never_targets(self):
+        for variant in ('lock','keep','fixed'):
+            lyr=self.fixture()
+            opts={}
+            if variant=='fixed': opts['fixed']={id(lyr.lines[1]):3}
+            else: setattr(lyr.lines[1],variant,True)
+            self.assertEqual(self.run_recovery(lyr,**opts),0)
+
+    def test_vocals_are_tried_only_when_original_recovery_still_failed(self):
+        import numpy as np
+        from kstudio.qwen_recovery import recover
+        for first_good in (False, True):
+            lyr = self.fixture()
+            calls = []
+            def align(*args, **kwargs):
+                calls.append(kwargs['original_split'])
+                times = [(1,1.4),(1.5,2),(3,3.4),(3.4,3.9),(5,5.4),(5.5,6)]
+                if not first_good and len(calls) == 1:
+                    times[2] = (3,3)
+                tokens = [Item(word=w.text,start=a-.5,end=b-.5,probability=.9)
+                          for w,(a,b) in zip(lyr.words,times)]
+                return Item(segments=[Item(words=tokens)])
+            with patch('kstudio.audio.read_pcm_mono',return_value=np.zeros(320000,dtype=np.int16)) as decode, \
+                    patch.object(A,'refine_leading_silence'), patch.object(A,'refine_trailing_silence'):
+                changed = recover(lyr.lines,'original',20,'en',None,lambda s:None,
+                                  vocal_path='stem',aligner=Item(align=align))
+            self.assertEqual(changed,1)
+            self.assertEqual(len(calls),1 if first_good else 2)
+            self.assertEqual([c.args[0] for c in decode.call_args_list],
+                             ['original'] if first_good else ['original','stem'])
+            self.assertEqual([(w.start,w.end) for w in lyr.lines[1].words],[(3,3.4),(3.4,3.9)])
+
+    def test_unresolved_warning_survives_saving_and_clears_after_timing_edit(self):
+        import json
+        from kstudio import project as P
+        lyr=self.fixture()
+        lyr.lines[1].timing_review=True
+        A._fill_lines(lyr,20,min_word=.02)
+        data=json.loads(json.dumps({'lines':[ln.to_json() for ln in lyr.lines]}))
+        self.assertTrue(any('alignment' in p['kinds'] for p in P.problems(data)))
+        data['lines'][1]['words'][0]['t'] += .1
+        self.assertFalse(any('alignment' in p['kinds'] for p in P.problems(data)))
+
+    def test_opening_and_saving_editable_minimum_widths_preserves_review(self):
+        from kstudio import project as P
+        lyr = self.fixture()
+        lyr.lines[1].timing_review = True
+        data = {'duration':20, 'lines':[ln.to_json() for ln in lyr.lines]}
+        with tempfile.TemporaryDirectory() as folder:
+            P.save(folder, data)
+            reopened = P.load(folder)
+            self.assertTrue(any('alignment' in p['kinds'] for p in P.problems(reopened)))
+            P.save_lines(folder, reopened['lines'])
+            self.assertTrue(any('alignment' in p['kinds'] for p in P.problems(P.load(folder))))
 
 
 if __name__ == '__main__':

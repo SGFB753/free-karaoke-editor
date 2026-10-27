@@ -28,6 +28,8 @@ page.on('request',request=>{
 });
 await page.goto(API+'/',{waitUntil:'networkidle0'});
 await page.click('#btnAdd'); await sleep(200);
+ok('Qwen is recommended and initially selected without overriding a saved preference',await page.$eval('#selAlign',el=>
+  el.value==='qwen' && /recommended|рекомендуется/.test(el.selectedOptions[0].textContent)));
 ok('Qwen is a visible timing choice, outside the advanced section',await page.$eval('#selAlign',el=>
   !el.closest('details') && [...el.options].some(o=>o.value==='qwen' && !o.disabled && /Qwen/.test(o.textContent))));
 ok('native option backgrounds and text have readable contrast',await page.$eval('#selModel',el=>{
@@ -44,12 +46,13 @@ await page.select('#selAlign','qwen');await sleep(100);
 ok('Qwen explains supplied lyrics, vocals and approximate RAM outside advanced controls',await page.evaluate(()=>{
   const explanation=document.getElementById('alignExplain'),memory=document.getElementById('qwenNote');
   return !explanation.closest('details') && explanation.getBoundingClientRect().height>0 &&
-    /supplied lyrics|загруженный текст/.test(explanation.textContent) &&
+    /supplied lyrics|загруженн(?:ый|ого) текст/.test(explanation.textContent) &&
     /6 GB of free RAM|6 ГБ свободной оперативной/.test(memory.textContent) &&
     /not a fixed minimum|не строгий минимум/.test(memory.textContent);
 }));
-ok('Qwen explains readiness and experimental status without opening advanced controls',await page.$eval('#qwenNote',el=>
-  el.getBoundingClientRect().height>0 && !el.closest('details') && /Qwen3-ForcedAligner/.test(el.textContent)));
+ok('Qwen explains readiness and a separate persistent model download',await page.$eval('#qwenNote',el=>
+  el.getBoundingClientRect().height>0 && !el.closest('details') && /Qwen3-ForcedAligner/.test(el.textContent)
+  && /across app updates|между обновлениями/.test(el.textContent)));
 ok('Whisper models are hidden while Qwen is selected',await page.$eval('#selModel',el=>el.classList.contains('hide')));
 await page.click('.build-advanced > summary');
 await page.click('#btnModelFolder');await sleep(100);

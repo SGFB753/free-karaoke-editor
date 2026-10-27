@@ -1,8 +1,8 @@
 """Optional Qwen forced alignment: ready lyrics in, word timings out.
 
-Keep this experiment separate from Whisper's confidence-based repairs. Qwen
-does not return Whisper probabilities, and pretending otherwise corrupts an A/B
-comparison. Long songs use bounded search windows, never an oversized model input.
+Qwen does not return Whisper probabilities. Independent recovery retains its
+own measured confidence and never supplies invented Qwen confidence. Long songs
+use bounded search windows, never an oversized model input.
 """
 from __future__ import annotations
 
@@ -61,14 +61,15 @@ def _key(text):
                    if unicodedata.category(c)[0] in "LN")
 
 
-def assign_words(words, items, offset, whole, limit, whole_end=None, timestamp_step=None):
+def assign_words(words, items, offset, whole, limit, whole_end=None, timestamp_step=None,
+                 repaired=None, probabilities=None):
     """Match by ordered characters, including hyphens and CJK token splitting.
 
     The supplied lyrics must survive unchanged. A tokenizer mismatch is an
     explicit error, not an excuse to evenly spread a whole verse.
     """
     rec, at = [], 0
-    for item in items:
+    for item_index, item in enumerate(items):
         key = _key(item.text)
         if not key:
             continue
@@ -79,9 +80,10 @@ def assign_words(words, items, offset, whole, limit, whole_end=None, timestamp_s
         end_map = whole_end or whole
         # The official wrapper interpolates invalid timestamp runs. Off-grid
         # values reveal such synthetic times; they are not measured onsets.
-        inferred = bool(timestamp_step and any(
+        inferred = bool((repaired is not None and repaired[item_index]) or timestamp_step and any(
             abs(t - round(t / timestamp_step) * timestamp_step) > .0015 for t in (a, b)))
-        rec.append((at, at + len(key), key, whole(offset + a), end_map(offset + min(b, limit)), inferred))
+        prob = probabilities[item_index] if probabilities is not None else None
+        rec.append((at, at + len(key), key, whole(offset + a), end_map(offset + min(b, limit)), inferred, prob))
         at += len(key)
     if not rec or "".join(_key(w.text) for w in words) != "".join(r[2] for r in rec):
         raise ValueError(tr("Qwen's tokens could not be matched to the supplied lyrics.",
@@ -92,6 +94,7 @@ def assign_words(words, items, offset, whole, limit, whole_end=None, timestamp_s
         if not length:
             word.start = word.end = rec[max(cursor - 1, 0)][4]
             word.qwen_interpolated = False
+            word.prob = None
         else:
             while cursor < len(rec) - 1 and rec[cursor][1] <= at:
                 cursor += 1
@@ -100,8 +103,37 @@ def assign_words(words, items, offset, whole, limit, whole_end=None, timestamp_s
                 last += 1
             word.start, word.end = rec[cursor][3], rec[last][4]
             word.qwen_interpolated = any(r[5] for r in rec[cursor:last + 1])
-        word.prob = None  # no confidence score is provided by this model
+            probs = [r[6] for r in rec[cursor:last + 1] if r[6] is not None]
+            word.prob = min(probs) if probs else None
         at += length
+
+
+def _model_alignment(model, **kwargs):
+    """Observe the wrapper's repairs, including replacements back on its grid.
+
+    The hook belongs to this inference's model instance and is always restored.
+    It observes output only; it does not change model predictions or its repair.
+    """
+    processor = getattr(model, 'aligner_processor', None)
+    original = getattr(processor, 'fix_timestamp', None)
+    if original is None:
+        return model.align(**kwargs)[0], None
+    changes = []
+
+    def capture(raw):
+        fixed = original(raw)
+        changes.append([abs(float(a) - float(b)) > .5 for a, b in zip(raw, fixed)])
+        return fixed
+
+    processor.fix_timestamp = capture
+    try:
+        items = model.align(**kwargs)[0]
+    finally:
+        processor.fix_timestamp = original
+    flags = None
+    if len(changes) == 1 and len(changes[0]) == 2 * len(items):
+        flags = [a or b for a, b in zip(changes[0][::2], changes[0][1::2])]
+    return items, flags
 
 
 def _jobs(lines, duration, audio_path, log, skip=None):
@@ -217,6 +249,31 @@ def trim_same_voice_tails(lyrics, fixed=()):
     return changed
 
 
+def _safe_proposal(lines, proposal, holes=()):
+    """Roll back retries that create/worsen an overlap, including after rollback.
+
+    A constant overlap penalty alone allows a ten-second reversal to replace
+    a minor overlap. Compare the actual overlap as well as warning scores.
+    """
+    before = _faults(lines, holes)
+    while True:
+        after = _faults(proposal, holes)
+        reject = set()
+        for i, (old, new) in enumerate(zip(lines, proposal)):
+            if after[i] > before[i]:
+                reject.update(j for j in (i - 1, i) if j >= 0 and proposal[j] is not lines[j])
+            if not i or new.voice != proposal[i - 1].voice:
+                continue
+            overlap = proposal[i - 1].words[-1].end - new.words[0].start
+            previous = lines[i - 1].words[-1].end - old.words[0].start
+            if overlap > max(.05, previous) + .001:
+                reject.update(j for j in (i - 1, i) if proposal[j] is not lines[j])
+        if not reject:
+            return proposal
+        for i in reject:
+            proposal[i] = lines[i]
+
+
 def _core_bounds(line):
     """A compact cluster bounds a search; it never supplies word timestamps.
 
@@ -298,7 +355,11 @@ def _independent_jobs(lines, audio_path, duration, lo, hi, language, device, log
     if len(cuts) <= 2:
         raise ValueError(tr("No reliable independent phrase boundaries found. Add manual line anchors or choose Whisper.",
                             "Не найдены надёжные независимые границы фраз. Добавьте ручные отметки строк или выберите Whisper."))
-    return [(a, b, start, end) for (a, start), (b, end) in zip(cuts, cuts[1:])]
+    class Windows(list):
+        pass
+    windows = Windows((a, b, start, end) for (a, start), (b, end) in zip(cuts, cuts[1:]))
+    windows.guide = guide.lines
+    return windows
 
 
 def _retry_jobs(lines, lo, hi):
@@ -329,7 +390,8 @@ def timing_source(original, vocals=None, engine="auto"):
     return (vocals, True) if engine == "qwen" and vocals else (original, False)
 
 
-def extend_sustained_tails(lyrics, audio, duration, holes=(), fixed=(), log=lambda msg: None):
+def extend_sustained_tails(lyrics, audio, duration, holes=(), fixed=(), log=lambda msg: None,
+                           next_onsets=None):
     """Recover a truncated last vowel ONLY on an isolated vocal signal.
 
     Require voice already continuing at the model edge and stop at the first
@@ -337,6 +399,7 @@ def extend_sustained_tails(lyrics, audio, duration, holes=(), fixed=(), log=lamb
     no-lyrics mark. This changes the last word's end, never its start or rhythm.
     """
     import numpy as np
+    from .vocal_tails import HarmonicTails
     hop = .02
     size = 320
     n = len(audio) // size * size
@@ -347,8 +410,10 @@ def extend_sustained_tails(lyrics, audio, duration, holes=(), fixed=(), log=lamb
     if peak <= 0:
         return 0
     count = 0
+    tones = HarmonicTails(audio)
     for i, line in enumerate(lyrics.lines):
-        if id(line) in fixed or line.lock or line.keep or line.backing or not line.words:
+        if (id(line) in fixed or i in lyrics.fixed_line_indices or line.lock or line.keep
+                or line.backing or not line.words):
             continue
         word = line.words[-1]
         if word.start is None or word.end is None or word.end - word.start < .12:
@@ -365,8 +430,12 @@ def extend_sustained_tails(lyrics, audio, duration, holes=(), fixed=(), log=lamb
         if len(after) < 4 or np.count_nonzero(after >= threshold) < 3:
             continue
         limit = min(duration, word.end + 8)
+        next_onset = (next_onsets or {}).get(id(line))
+        if next_onset is not None:
+            limit = min(limit, next_onset)
         for following in lyrics.lines[i + 1:]:
             if following.words and following.words[0].start is not None:
+                next_onset = following.words[0].start
                 limit = min(limit, following.words[0].start)
                 break
         for a, b in holes:
@@ -384,17 +453,29 @@ def extend_sustained_tails(lyrics, audio, duration, holes=(), fixed=(), log=lamb
                 if quiet >= 8:  # 160 ms of silence: do not swallow a breath
                     stopped = True
                     break
-        # Reaching the maximum without a measured ending is ambiguous.
+        # Prefer an observed quiet ending, including unvoiced consonants that
+        # follow the vowel. Use the tonal check only when that check could not
+        # find an ending before the next phrase.
+        minimum_extension = .20
         if not stopped:
-            continue
-        end = min(limit, (last_voice + 1) * hop + .04)
-        if end - word.end >= .20:
+            if line.timing_review or (word.prob is not None and word.prob < .15):
+                continue
+            end = tones.end(word.start, word.end, limit,
+                            next_phrase=next_onset is not None and abs(limit - next_onset) < .001)
+            if end is None:
+                continue
+            # Without an actual quiet boundary, leave short ambiguous tails
+            # alone. This pass targets clearly clipped held notes.
+            minimum_extension = .35
+        else:
+            end = min(limit, (last_voice + 1) * hop + .04)
+        if end - word.end >= minimum_extension:
             word.end = end
             line.end = end
             count += 1
     if count:
-        log(tr(f"Qwen: continuing vocal tails restored: {count}.",
-               f"Qwen: восстановлено продолжающихся вокальных окончаний: {count}."))
+        log(tr(f"Held vocal endings extended: {count}.",
+               f"Продлены протяжные вокальные окончания: {count}."))
     return count
 
 
@@ -412,8 +493,8 @@ def align_qwen(lyrics, audio_path, duration, language="auto", device=None,
     if model is None and not available():
         raise RuntimeError(tr("Qwen is not installed. Install app/requirements-qwen.txt in the app's Python environment.",
                               "Qwen не установлен. Установите app/requirements-qwen.txt в Python-окружение программы."))
-    log(tr(f"Qwen forced alignment (experimental), language: {LG.label(code)}",
-           f"Разметка Qwen (экспериментальная), язык: {LG.label(code)}"))
+    log(tr(f"Qwen forced alignment, language: {LG.label(code)}",
+           f"Разметка Qwen, язык: {LG.label(code)}"))
     # Do not level the stem: quiet onsets and genuine pauses are evidence,
     # not background to amplify. Keep exactly the signal used in the A/B test.
     pcm = AU.read_pcm_mono(audio_path, 16000)
@@ -459,6 +540,7 @@ def align_qwen(lyrics, audio_path, duration, language="auto", device=None,
                     dtype=torch.float32 if target == "cpu" else torch.float16,
                     attn_implementation="sdpa")
         fallback = None
+        recovery_anchors = {}
 
         def infer(lines, lo, hi, signal):
             keep = [(max(lo, a), min(hi, b)) for a, b in A.keep_windows(holes, duration)
@@ -479,10 +561,11 @@ def align_qwen(lyrics, audio_path, duration, language="auto", device=None,
                 if len(stitched) / 16000 > MAX_SECONDS + 0.001:
                     raise ValueError(tr("Qwen search window exceeds five minutes.",
                                         "Окно разметки Qwen превышает пять минут."))
-                results = model.align(audio=(stitched, 16000), text=text, language=LANGUAGES[code])
-            assign_words([w for ln in lines for w in ln.words], results[0],
+                items, repaired = _model_alignment(model, audio=(stitched, 16000), text=text, language=LANGUAGES[code])
+            assign_words([w for ln in lines for w in ln.words], items,
                          0.0, whole, len(stitched) / 16000, whole_end=lambda t:whole(t, end=True),
-                         timestamp_step=(getattr(model, "timestamp_segment_time", 0) or 0) / 1000)
+                         timestamp_step=(getattr(model, "timestamp_segment_time", 0) or 0) / 1000,
+                         repaired=repaired)
 
         for n, (lines, lo, hi) in enumerate(jobs, 1):
             if holes and not any(min(hi, b) > max(lo, a) for a, b in A.keep_windows(holes, duration)):
@@ -500,9 +583,14 @@ def align_qwen(lyrics, audio_path, duration, language="auto", device=None,
                 candidate = deepcopy(lines)
                 guided = _independent_jobs(lines, fallback_audio or audio_path, duration,
                                            lo, hi, code, device, log, holes, guide_model)
+                recovery_anchors.update({id(ln): guide for ln, guide in
+                                         zip(lines, getattr(guided, 'guide', []))})
                 for a, b, start, end in guided:
                     infer(candidate[a:b], start, end, audio)
                 if not _failed_placement(candidate) and (invalid or sum(_faults(candidate, holes)) < sum(_faults(lines, holes))):
+                    # After a mass failure even individually plausible raw
+                    # phrases can belong to the wrong repetition. Replace the
+                    # whole failed block using the independent search bounds.
                     for original, recovered in zip(lines, candidate):
                         for w, got in zip(original.words, recovered.words):
                             w.start, w.end = got.start, got.end
@@ -568,6 +656,7 @@ def align_qwen(lyrics, audio_path, duration, language="auto", device=None,
                     for i in range(a, b):
                         if old_scores[i] and new_scores[i] <= old_scores[i]:
                             proposal[i] = candidate[i - a]
+                    proposal = _safe_proposal(lines, proposal, holes)
                     if sum(_faults(proposal, holes)) < sum(old_scores):
                         for i in range(a, b):
                             if proposal[i] is not lines[i]:
@@ -577,7 +666,14 @@ def align_qwen(lyrics, audio_path, duration, language="auto", device=None,
                         old_scores = _faults(lines, holes)
                     if not any(old_scores[a:b]):
                         break
+        if any(_faults(main, holes)):
+            from .qwen_recovery import recover
+            recover(main, fallback_audio or audio_path, duration, code, device, log,
+                    holes, fixed, guide_model, vocal_path=audio_path if isolated else None,
+                    anchors=recovery_anchors)
         suspect = [i + 1 for i, score in enumerate(_faults(main, holes)) if score]
+        for i, ln in enumerate(main):
+            ln.timing_review = i + 1 in suspect
         if suspect:
             numbers = ", ".join(map(str, suspect))
             log(tr(f"Qwen: check phrase/word placement on lines {numbers}; local retries could not resolve every warning.",

@@ -1536,8 +1536,8 @@ You might also like
           m and float(m.group(1)) >= 10.0, m.group(1) if m else "not found")
     vid = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                             "tools", "video.py"), encoding="utf-8").read()
-    m2 = re.search(r"if gap >= ([\d.]+):", vid)
-    check("and the video says the same", m2 and float(m2.group(1)) >= 10.0,
+    m2 = re.search(r"nxt is not None and gap >= ([\d.]+)", vid)
+    check("the video also waits ten seconds between phrases", m2 and float(m2.group(1)) >= 10.0,
           m2.group(1) if m2 else "not found")
 
     print("\nLines do not reach across a marked hole")
@@ -2519,8 +2519,8 @@ You might also like
               for k in ("source_audio", "source_lyrics")),
           [rec2.get("source_audio"), rec2.get("source_lyrics")])
     exact_source = "Bumble Beezy & BaseFace - Мой рок-н-ролл"
-    check("a finished file keeps the source's readable name",
-          P.export_stem(dict(rec2, source_title=exact_source)) == exact_source,
+    check("finished files use project credits rather than the video's title",
+          P.export_stem(dict(rec2, source_title=exact_source)) == 'Lorna Shore - Forevermore',
           P.export_stem(dict(rec2, source_title=exact_source)))
     check("characters forbidden by Windows are replaced, not transliterated",
           P.file_stem('Артист: песня?') == 'Артист_ песня_')
@@ -2997,8 +2997,9 @@ You might also like
     was_path, was_places = os.environ.get("PATH", ""), FE.places
     os.environ["PATH"] = ""
     FE.places = lambda: [hidden]
-    check("a command outside PATH is still found",
-          FE.tool() == [os.path.join(hidden, "yt-dlp")], FE.tool())
+    with patch.object(FE, '_managed_tool', return_value=None):
+        check("a command outside PATH is still found when there is no managed module",
+              FE.tool() == [os.path.join(hidden, "yt-dlp")], FE.tool())
 
     # A Python that cannot say where it lives cannot be asked to run a module:
     # handing that emptiness to the command line crashes on NoneType instead of

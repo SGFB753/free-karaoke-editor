@@ -1562,11 +1562,13 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                 nxt = ln
                 break
         if not singing:
-            prev_end = lines[idx]["end"] if idx >= 0 else 0.0
+            prev_end = (lines[idx]["end"] if idx >= 0 else 0.0) if nxt else song_end
             gap = (nxt["start"] - prev_end) if nxt else (duration - prev_end)
-            # Ten seconds, as in the program itself: a shorter gap is a
-            # breath between lines, and counting it down is noise.
-            if gap >= 10.0:
+            # Ten seconds applies to intros/interludes. The ending uses the
+            # editor's separate rule: count after every voice has finished,
+            # including backing, and hide during the final three seconds.
+            if ((nxt is not None and gap >= 10.0) or
+                    (nxt is None and t >= song_end and duration - t >= 3.0)):
                 left = (nxt["start"] if nxt else duration) - t
                 # The pill is built around the text, and the text sits in its
                 # centre — horizontally and vertically.

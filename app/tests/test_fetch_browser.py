@@ -146,4 +146,125 @@ class BrowserFallbackTests(unittest.TestCase):
             self.assertEqual(os.listdir(root),[])
 
 
+class RecoveryTests(unittest.TestCase):
+    URL = 'https://youtu.be/j082huGdeag'
+
+    def test_generic_unavailable_retries_the_same_command_once(self):
+        import time
+        command = ['downloader', '--', self.URL]
+        log = []
+        with patch.object(F, '_attempt', side_effect=[
+                (1, ['ERROR: [youtube] j082huGdeag: This video is not available']),
+                (0, ['done'])]) as attempt, patch.object(F.time, 'sleep') as sleep:
+            self.assertEqual(F._network_attempt(command, log.append, time.time() + 60)[0], 0)
+        self.assertEqual(attempt.call_count, 2)
+        self.assertEqual(attempt.call_args_list[0].args, attempt.call_args_list[1].args)
+        sleep.assert_called_once_with(2)
+        self.assertTrue(any('2' in line for line in log))
+
+    def test_permanent_refusals_and_limits_do_not_repeat(self):
+        import time
+        for message in (
+                'Video unavailable. This video is private',
+                'This video is not available: video has been deleted',
+                'This video is not available due to a copyright claim',
+                'This video is unavailable in your country',
+                'The uploader has not made this video available in your country',
+                'Video unavailable. HTTP Error 429',
+                'Video unavailable. CERTIFICATE_VERIFY_FAILED'):
+            with patch.object(F, '_attempt', return_value=(1, [message])) as attempt, \
+                    patch.object(F.time, 'sleep') as sleep:
+                F._network_attempt(['downloader', self.URL], lambda _: None, time.time() + 60)
+            self.assertEqual(attempt.call_count, 1, message)
+            sleep.assert_not_called()
+
+    def test_unavailable_retry_is_bounded_and_respects_deadline(self):
+        import time
+        for remaining, expected in ((60, 2), (-1, 1)):
+            with patch.object(F, '_attempt', return_value=(1, ['This video is not available'])) as attempt, \
+                    patch.object(F.time, 'sleep'):
+                F._network_attempt(['downloader', self.URL], lambda _: None, time.time() + remaining)
+            self.assertEqual(attempt.call_count, expected)
+
+    def test_generic_refusal_reaches_independent_then_private_reserve(self):
+        from unittest.mock import Mock
+        embedded = Mock(return_value={'path': 'reserve audio'})
+        with patch.object(F, '_download', side_effect=F.FetchError('This video is not available')), \
+                patch.object(F, 'extra_args', return_value=[]), \
+                patch.object(F, '_independent_download', side_effect=F.FetchError('alternative refused')) as alternative:
+            self.assertEqual(F.download(self.URL, 'unused', embedded=embedded)['path'], 'reserve audio')
+        alternative.assert_called_once()
+        embedded.assert_called_once()
+
+    def test_independent_success_does_not_open_browser(self):
+        from unittest.mock import Mock
+        embedded = Mock()
+        with patch.object(F, '_download', side_effect=F.FetchError('This video is not available')), \
+                patch.object(F, 'extra_args', return_value=[]), \
+                patch.object(F, '_independent_download', return_value={'path': 'audio'}) as alternative:
+            self.assertEqual(F.download(self.URL, 'unused', embedded=embedded), {'path': 'audio'})
+        alternative.assert_called_once()
+        embedded.assert_not_called()
+
+    def test_explicit_restriction_discovered_by_reserve_stops_further_attempts(self):
+        from unittest.mock import Mock
+        embedded = Mock()
+        for reason in ('Video unavailable: private video', 'CERTIFICATE_VERIFY_FAILED'):
+            with patch.object(F, '_download', side_effect=F.FetchError('This video is not available')), \
+                    patch.object(F, 'extra_args', return_value=[]), \
+                    patch.object(F, '_independent_download', side_effect=F.FetchError(reason)):
+                with self.assertRaisesRegex(F.FetchError, reason):
+                    F.download(self.URL, 'unused', embedded=embedded)
+        embedded.assert_not_called()
+
+    def test_restrictions_other_sites_and_explicit_options_do_not_trigger_reserve(self):
+        from unittest.mock import Mock
+        for url, message, extra in (
+                (self.URL, 'Video unavailable: private video; unable to extract', []),
+                (self.URL, 'Video unavailable: copyright; player response missing', []),
+                (self.URL, 'Video unavailable: CERTIFICATE_VERIFY_FAILED', []),
+                ('https://example.com/video', 'Video unavailable', []),
+                (self.URL, 'This video is not available', ['--proxy', 'custom'])):
+            embedded = Mock()
+            with patch.object(F, '_download', side_effect=F.FetchError(message)), \
+                    patch.object(F, 'extra_args', return_value=extra), \
+                    patch.object(F, '_independent_download') as alternative:
+                with self.assertRaises(F.FetchError):
+                    F.download(url, 'unused', embedded=embedded)
+            alternative.assert_not_called()
+            embedded.assert_not_called()
+
+    def test_runtime_uses_the_bundled_node_path_with_spaces(self):
+        from types import SimpleNamespace
+        folder = os.path.join('runtime with spaces', 'nodejs_wheel')
+        module = SimpleNamespace(__file__=os.path.join(folder, '__init__.py'))
+        with patch.dict(sys.modules, {'nodejs_wheel': module}), \
+                patch.dict(os.environ, {'KARAOKE_YTDLP': ''}), \
+                patch.object(F, '_setting', return_value=''), \
+                patch.object(F, 'extra_args', return_value=[]), \
+                patch.object(F.os.path, 'isfile', return_value=True):
+            result = F.javascript_args()
+        expected = os.path.join(folder, 'node.exe') if os.name == 'nt' else os.path.join(folder, 'bin', 'node')
+        self.assertEqual(result, ['--js-runtimes', 'node:' + expected])
+
+    def test_explicit_runtime_or_downloader_settings_win(self):
+        for extra in (['--no-js-runtimes'], ['--js-runtimes', 'node:custom'], ['--js-runtimes=deno']):
+            with patch.dict(os.environ, {'KARAOKE_YTDLP': ''}), \
+                    patch.object(F, '_setting', return_value=''), patch.object(F, 'extra_args', return_value=extra):
+                self.assertEqual(F.javascript_args(), [])
+        with patch.dict(os.environ, {'KARAOKE_YTDLP': 'custom-downloader'}):
+            self.assertEqual(F.javascript_args(), [])
+
+    def test_managed_downloader_wins_over_unrelated_path_command(self):
+        from types import SimpleNamespace
+        for frozen in (False, True):
+            with patch.dict(sys.modules, {'yt_dlp': SimpleNamespace()}), \
+                    patch.dict(os.environ, {'KARAOKE_YTDLP': ''}), \
+                    patch.object(F, '_setting', return_value=''), \
+                    patch.object(sys, 'frozen', frozen, create=True), \
+                    patch.object(F.shutil, 'which', return_value='unrelated-yt-dlp'):
+                expected = [sys.executable, '--internal-ytdlp'] if frozen else [sys.executable, '-m', 'yt_dlp']
+                self.assertEqual(F.tool(), expected)
+
+
 if __name__=='__main__': unittest.main()

@@ -213,26 +213,33 @@ For a local build after `Install.bat`:
 
 The result is `dist\KaraokeStudio-windows-x64.zip`. Whisper and Demucs model
 weights download once when first selected and are then reused from the user's
-cache. Add `-WithModels` only when deliberately making a much larger fully
-offline build.
+cache. Add `-WithModels` only when deliberately making a much larger offline
+Whisper/Demucs build. Qwen weights always stay separate and download on first use.
 
 ## What is in the folder
 
-To compare word timing against Whisper in a source installation, install the
+For recommended Qwen timing of supplied lyrics in a source installation, install the
 optional [Qwen3-ForcedAligner-0.6B](https://github.com/QwenLM/Qwen3-ASR#forcedaligner-usage)
 engine with `.venv\Scripts\python.exe -m pip install -r app\requirements-qwen.txt`.
-Restart `Studio.bat`, then choose “Qwen word timing (experimental)” under Language
+Restart `Studio.bat`, then choose “Qwen word timing (recommended)” under Language
 and timing. It aligns supplied lyrics, rather than transcribing them. Its weights
 (about 1.8 GB) download once into a separate model folder. When available, Qwen
 uses isolated vocals and retries suspect phrases in bounded windows, including
-the original recording when needed. Healthy phrases and pauses are not
-redistributed; unresolved timing warnings are listed in the build log. Check
-results on songs, especially backing vocals, repeats and window boundaries. Unsupported
-languages and errors never silently fall back to another engine. Installing into
+the original recording when needed. Local retries preserve healthy neighbouring
+phrases and pauses. Persistent failures are checked against Whisper's word timing
+on the original recording and, if needed, isolated vocals, with confidence and
+overlap checks; this step appears
+in the log. Unresolved timings appear in the timing review list. Check results on
+songs, especially backing vocals, repeats and window boundaries. Unsupported
+languages produce an error. Installing into
 `.venv` does not alter an existing EXE; use `-WithQwen` with the Windows build
 script to include the extra runtime in a new EXE.
-If a held ending is cut off while the isolated vocal continues, Qwen restores
-its end without crossing a pause. For manual letter timing, double-click a word
+When isolated vocals are available, Qwen and Whisper check clipped final vowels
+using pitch and timbre continuity. Held endings can reach the next phrase without
+a long silence between them. Pauses, no-lyrics marks and manual anchors constrain
+extensions; uncertain signals retain the existing boundary. To place an ending precisely, select the line,
+position the playhead and press “Line ends here” or Shift+Enter. Only the final
+word or previously split final letter changes duration. For manual letter timing, double-click a word
 on the timeline, pick a letter and optionally choose “End at the playhead”.
 Its new block has draggable edges; the word stays joined in preview and video.
 Undo and rhythm copying preserve the split. Lock the edited line to keep its
@@ -600,12 +607,12 @@ whole batch.
 ## Two voices, colours and “the original sings this”
 
 Vocals overlap: a lead and a backing, a clean voice and a scream. A line can be
-given the **second voice** (`◑ Voice` in the Studio, or automatically when the
-line is wholly in round brackets):
+given the **second voice** (`◑ Voice` in the Studio). The separate Backing mark
+preserves the assigned singer:
 
-* in the Studio the timeline splits into **two lanes**, so the blocks stop
-  covering each other;
-* on the finished page such a line is highlighted in the **second colour**;
+* in the Studio, voice 2 and voice-1 backing share a **second lane**;
+  voice-2 backing gets a **third lane** below its singer;
+* voice 2 uses the **second colour**; backing keeps its assigned singer's colour;
 * lines that sound at the same time are highlighted **together**.
 
 **`♪ Original`** marks a line you are not meant to sing — backing vocals,

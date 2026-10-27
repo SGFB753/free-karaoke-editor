@@ -998,6 +998,10 @@ class Handler(BaseHTTPRequestHandler):
                     # extra lightweight request. If that fails, the cover is a
                     # safe fallback rather than a failed song.
                     source_url = (body.get("sourceUrl") or "").strip()
+                    if source_url:
+                        project_data = P.load(folder)
+                        project_data['sourceUrl'] = source_url
+                        P.save(folder, project_data)
                     got_clip = None
                     if background_mode == "video":
                         try:
@@ -1141,17 +1145,14 @@ class Handler(BaseHTTPRequestHandler):
                     P.save(folder, data)
                     return self._json({"ok": True, "backdrop": False})
                 src = (body.get("path") or body.get("url") or "").strip()
-                got = None
-                if re.match(r"^https?://", src):
+                if re.match(r"^https?://", src, re.I):
                     # The link the song itself came from will do: the backdrop
                     # is asked for at the smallest size the site offers, since
                     # it is blurred past recognising anyway.
-                    try:
-                        got = FE.clip(src, folder)
-                        src = got
-                    except Exception as e:
-                        return self._err(400, tr(f"could not fetch the clip: {e}",
-                                                 f"не вышло скачать клип: {e}"))
+                    jid = start_job(tr("Loading video backdrop", "Загружаю видеофон"),
+                                    lambda log: set_backdrop_url(folder, src, log),
+                                    cancellable=True)
+                    return self._json({"job": jid})
                 if not os.path.isfile(src):
                     return self._err(400, tr("no such file", "нет такого файла"))
                 try:
@@ -1159,14 +1160,9 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     return self._err(400, tr(f"not a clip: {e}",
                                              f"это не клип: {e}"))
-                finally:
-                    if got and os.path.isfile(got):
-                        try:
-                            os.remove(got)
-                        except OSError:
-                            pass
                 data = P.load(folder)
                 data["backdrop"] = name
+                data.pop('backdropUrl', None)
                 data["coverBg"] = False
                 P.save(folder, data)
                 discard_staged(src)
@@ -1401,6 +1397,9 @@ def realign_part(folder: str, opts: dict, log) -> dict:
         A.refine_leading_silence(piece, onset_audio, log=log)
         A.refine_uncertain_word_onsets(piece, onset_audio, log=log)
         A.refine_trailing_silence(piece, onset_audio, log=log)
+    if onset_audio and engine in ('whisper', 'qwen') and not piece.fixed_line_starts:
+        A.refine_sustained_tails(piece, onset_audio, dur, skip=outside, log=log,
+                                next_start=hi if b + 1 < len(lines) else None)
 
     fresh = [ln.to_json() for ln in piece.lines]
     moved = 0
@@ -1410,8 +1409,11 @@ def realign_part(folder: str, opts: dict, log) -> dict:
             continue                       # locked by hand: not ours to touch
         old["start"], old["end"] = got["start"], got["end"]
         old["words"] = got["words"]
-        if got.get("sure") is not None:
-            old["sure"] = got["sure"]
+        for key in ('sure', 'timingReview'):
+            if key in got:
+                old[key] = got[key]
+            else:
+                old.pop(key, None)
         moved += 1
     data["lines"] = lines
     data["edited"] = time.time()
@@ -1570,6 +1572,7 @@ def _realign(folder: str, opts: dict, log, scratch: str) -> dict:
         A.refine_leading_silence(lyr, onset_audio, log=log)
         A.refine_uncertain_word_onsets(lyr, onset_audio, log=log)
         A.refine_trailing_silence(lyr, onset_audio, log=log)
+        A.refine_sustained_tails(lyr, onset_audio, data['duration'], skip=holes, log=log)
     fresh = [ln.to_json() for ln in lyr.lines]
     # A line put right by hand outweighs anything a model returns for it.
     if not removed_backing:
@@ -2205,7 +2208,7 @@ def export(folder: str, kind: str, opts: dict, log) -> dict:
             video.render(payload, wav, out, a, on_progress=prog)
             cover_out = ""
             if opts.get("cover"):
-                cover_out = os.path.join(out_dir, base + "_youtube-cover.jpg")
+                cover_out = os.path.join(out_dir, base + ".jpg")
                 video.title_card_image(payload, 1920, 1080, a.font).save(
                     cover_out, "JPEG", quality=94, subsampling=0)
                 log(tr(f"YouTube cover: {cover_out}",
@@ -2327,6 +2330,17 @@ BACKDROP_W = 320
 BACKDROP_FPS = 4
 
 
+def set_backdrop_url(folder: str, url: str, log) -> dict:
+    """Download outside the project; only commit a successfully reduced clip."""
+    with tempfile.TemporaryDirectory(prefix="backdrop-", dir=staging_dir()) as work:
+        src = FE.clip(url, work, log)
+        name = set_backdrop(folder, src)
+        data = P.load(folder)
+        data.update(backdrop=name, backdropUrl=url, coverBg=False)
+        P.save(folder, data)
+    return {"ok": True, "backdrop": True}
+
+
 def set_backdrop(folder: str, src: str) -> str:
     """A clip to stand behind the lyrics, kept small on purpose.
 
@@ -2337,34 +2351,26 @@ def set_backdrop(folder: str, src: str) -> str:
     song, small enough to travel inside a packed one.
     """
     import subprocess as sp
-    source = os.path.abspath(src)
-    for old in os.listdir(folder):
-        old_path = os.path.abspath(os.path.join(folder, old))
-        if old.startswith("backdrop.") and old_path != source:
-            try:
-                os.remove(old_path)
-            except OSError:
-                pass
     dst = os.path.join(folder, "backdrop.mp4")
     # FE.clip may already have named the downloaded source backdrop.mp4. Do
     # not ask ffmpeg to overwrite the file it is reading; use a sibling and
     # atomically put the reduced copy in place afterwards.
-    actual_dst = (os.path.join(folder, "backdrop-new.mp4")
-                  if os.path.abspath(dst) == source else dst)
-    p = sp.run([AU.ffmpeg(), "-y", "-v", "error", "-i", src, "-an", "-sn",
-                "-vf", (f"fps={BACKDROP_FPS},scale={BACKDROP_W}:-2"),
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "32",
-                "-pix_fmt", "yuv420p", actual_dst],
-               stdout=sp.PIPE, stderr=sp.PIPE)
-    if p.returncode != 0 or not os.path.isfile(actual_dst):
-        try:
-            os.remove(actual_dst)
-        except OSError:
-            pass
-        raise ValueError(p.stderr.decode(errors="replace")[-160:]
-                         or tr("not a clip", "не клип"))
-    if actual_dst != dst:
+    handle, actual_dst = tempfile.mkstemp(prefix="_backdrop-", suffix=".mp4", dir=folder)
+    os.close(handle)
+    try:
+        p = sp.run([AU.ffmpeg(), "-y", "-v", "error", "-i", src, "-an", "-sn",
+                    "-vf", (f"fps={BACKDROP_FPS},scale={BACKDROP_W}:-2"),
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "32",
+                    "-pix_fmt", "yuv420p", actual_dst],
+                   stdout=sp.PIPE, stderr=sp.PIPE)
+        if p.returncode != 0 or not os.path.getsize(actual_dst):
+            raise ValueError(p.stderr.decode(errors="replace")[-160:]
+                             or tr("not a clip", "не клип"))
+        JC.commit()
         os.replace(actual_dst, dst)
+    finally:
+        if os.path.isfile(actual_dst):
+            os.remove(actual_dst)
     return "backdrop.mp4"
 
 
@@ -2646,6 +2652,8 @@ def run_desktop_window(server, url: str, force_browser: bool = False) -> None:
                 raise RuntimeError("pywebview did not create a window")
             DESKTOP_NATIVE_WINDOW = window
             remember_window_mode(window)
+            from kstudio.edit_menu import install as install_edit_menu
+            install_edit_menu(window)
 
             def close_when_server_stops():
                 worker.join()
@@ -2833,6 +2841,18 @@ def main(argv=None) -> int:
                 from qwen_asr import Qwen3ForcedAligner  # noqa: F401
             if FE.available():
                 import pytubefix  # noqa: F401
+                import yt_dlp_ejs  # noqa: F401
+                from importlib.resources import files
+                for script in ('core.min.js', 'lib.min.js'):
+                    if not files('yt_dlp_ejs.yt.solver').joinpath(script).is_file():
+                        raise RuntimeError('Packaged YouTube JavaScript solver is missing: ' + script)
+                runtime = FE.javascript_args()
+                if not runtime:
+                    raise RuntimeError('Packaged YouTube JavaScript runtime is missing')
+                result = WP.run([runtime[-1].split(':', 1)[1], '--version'],
+                                capture_output=True, text=True, timeout=10)
+                if result.returncode or int(result.stdout.strip().lstrip('v').split('.')[0]) < 22:
+                    raise RuntimeError('Packaged YouTube JavaScript runtime must be Node 22 or newer')
             from PIL import (Image, ImageDraw, ImageEnhance, ImageFilter,
                              ImageFont, ImageStat)
             image = Image.new("RGB", (4, 4), "white")

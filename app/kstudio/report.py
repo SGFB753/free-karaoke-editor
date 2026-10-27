@@ -257,8 +257,8 @@ def build(audio_path: str, lyrics, duration: float, envelope: List[float],
         if code not in QW.LANGUAGES:
             notes.append(tr(f"Qwen does not support {LG.label(code)}; choose Whisper.",
                             f"Qwen не поддерживает язык «{LG.label(code)}»; выберите Whisper."))
-        notes.append(tr("Qwen alignment is experimental for singing; inspect the word timings, especially repeats and backing vocals.",
-                        "Разметка Qwen на пении экспериментальная; проверьте тайминги слов, особенно повторы и бэки."))
+        notes.append(tr("Check Qwen word timings, especially repeats and backing vocals.",
+                        "Проверьте тайминги слов Qwen, особенно повторы и бэки."))
     free = sysinfo.available_gb()
     if free is not None and free < need:
         notes.append(tr(
@@ -316,7 +316,7 @@ def as_text(rep: Dict) -> str:
     if plan["separate"]:
         steps.append(tr("instrumental", "минусовка"))
     if plan.get("engine") == "qwen":
-        steps.append(tr("Qwen timing (experimental)", "разметка Qwen (экспериментальная)"))
+        steps.append(tr("Qwen timing (recommended)", "разметка Qwen (рекомендуется)"))
     else:
         steps.append(tr("Whisper timing (" + plan["model"] + ")",
                         "разметка Whisper (" + plan["model"] + ")") if plan["whisper"]

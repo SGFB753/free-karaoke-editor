@@ -23,7 +23,7 @@ with_qwen = os.environ.get("KARAOKE_WITH_QWEN") == "1"
 # These libraries discover plugins, model descriptions or data files at
 # runtime.  PyInstaller cannot see those dynamic imports by reading studio.py.
 for package in ("demucs", "stable_whisper", "whisper", "yt_dlp", "imageio_ffmpeg",
-                "pytubefix", "nodejs_wheel"):
+                "pytubefix", "nodejs_wheel", "yt_dlp_ejs"):
     d, b, h = collect_all(package)
     datas += d
     binaries += b
@@ -41,7 +41,7 @@ if with_qwen:
         datas += copy_metadata(distribution)
 
 for distribution in ("demucs", "stable-ts", "openai-whisper", "yt-dlp",
-                     "soundfile", "imageio-ffmpeg"):
+                     "soundfile", "imageio-ffmpeg", "yt-dlp-ejs"):
     try:
         datas += copy_metadata(distribution, recursive=True)
     except Exception:
@@ -61,11 +61,8 @@ hiddenimports += collect_submodules("PIL")
 # the explicit environment flag prevents a populated CI/developer cache from
 # accidentally making every ordinary ZIP a gigabyte larger.
 if os.environ.get("KARAOKE_BUNDLE_MODELS") == "1":
-    if with_qwen:
-        model_cache = os.getenv("XDG_CACHE_HOME", os.path.join(os.path.expanduser("~"), ".cache"))
-        qwen_cache = os.path.join(model_cache, "karaoke-studio", "qwen3-forcedaligner-0.6b")
-        if os.path.isfile(os.path.join(qwen_cache, "model.safetensors")):
-            datas.append((qwen_cache, os.path.join("models", "karaoke-studio", "qwen3-forcedaligner-0.6b")))
+    # Qwen weights always download separately into the persistent user cache,
+    # including offline builds of the other engines.
     whisper_cache = os.path.join(os.path.expanduser("~"), ".cache", "whisper")
     small_model = os.path.join(whisper_cache, "small.pt")
     if os.path.isfile(small_model):

@@ -251,6 +251,8 @@ class Line:
     # split off the tail of the line above: a duet with it, not a line after it.
     # Not saved with the song — re-parsing the text derives it again.
     tail: bool = False
+    # The aligner could not verify this phrase before editor minimum widths.
+    timing_review: bool = False
 
     @property
     def syllables(self) -> int:
@@ -283,6 +285,8 @@ class Line:
         if self.sure is not None:
             out["sure"] = round(self.sure, 3)
         repair_overlapping_json_words([out])
+        if self.timing_review:
+            out['timingReview'] = [[w['w'], w['t'], w['d']] for w in out['words']]
         return out
 
 

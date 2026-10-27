@@ -495,13 +495,17 @@
   .blk.mark,.blk.mark.sel,.blk.mark.bad{background:rgba(255,204,77,.42); border:2px solid #ffe28a;
     color:#fff3c4; outline:2px solid rgba(255,226,138,.9); outline-offset:-2px;
     box-shadow:0 0 8px rgba(255,204,77,.35); z-index:4}
-  /* Vocals sometimes overlap. When a song has a second voice the timeline
-     splits: its lines move to the lower lane and stop covering the main ones. */
+  /* Backing sits below its singer without changing the assigned voice. */
   .tlwrap.twolane{height:158px}
   .tlwrap.twolane .blocks{height:68px}
   .tlwrap.twolane .blk.v2{top:34px}
   .tlwrap.twolane .blk.vboth{top:17px}
+  .tlwrap.twolane .blk.back{top:34px}
+  .tlwrap.twolane .blk.v2.back,.tlwrap.twolane .blk.vboth.back{top:68px}
   .tlwrap.twolane .words{top:112px}
+  .tlwrap.threelane{height:192px}
+  .tlwrap.threelane .blocks{height:102px}
+  .tlwrap.threelane .words{top:148px}
   .blk.bad{border-color:var(--bad)}
   /* Grips at the block edges: the left one moves the line start, the right one
      the end. Wider than they look: a 7px strip is hard to hit with a mouse. */
@@ -694,6 +698,10 @@
   .inspector-controls .darkknob,.inspector-controls .softkeep{width:100%; border:0; padding:calc(10px * var(--editor-scale, 1)) 0; gap:calc(8px * var(--editor-scale, 1)); flex-wrap:wrap}
   .inspector-controls input[type=range]{flex:1; min-width:0; width:auto}
   .inspector-controls .notext{width:100%; min-width:0; font-size:calc(13px * var(--editor-scale, 1))}
+  .backdrop-link{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;min-width:0}
+  .backdrop-link label{width:100%;font-size:13px;color:var(--muted)}
+  .backdrop-link input{width:100%;min-width:0;box-sizing:border-box}
+  .backdrop-link button{width:100%;white-space:normal}
   .panel-description{font-size:calc(13px * var(--editor-scale, 1)); color:var(--muted); line-height:1.5; margin:calc(8px * var(--editor-scale, 1)) 0 calc(18px * var(--editor-scale, 1))}
   .settings-drawer .inspector-pane{border:0}
   .drawer-heading{padding:calc(14px * var(--editor-scale, 1)) calc(16px * var(--editor-scale, 1)) 0}
@@ -831,6 +839,9 @@
   @container (max-width:580px){
     .timeline-commandbar{grid-template-columns:minmax(0,1fr)}
   }
+  @media (min-width:901px) and (max-height:850px){
+    .preview-area{padding-top:6px; padding-bottom:6px}
+  }
   /* Below desktop working height, scroll instead of crushing the preview. */
   @media (max-height:800px){
     #scrEdit{overflow-y:auto}
@@ -945,7 +956,7 @@
         <div class="opts">
           <select id="selAlign">
             <option value="auto" data-t="alignExact" data-tt="alignExplainWhisper">Accurate (Whisper), if available</option>
-            <option value="qwen" data-t="alignQwen" data-tt="alignExplainQwen">Qwen word timing (experimental)</option>
+            <option value="qwen" data-t="alignQwen" data-tt="alignExplainQwen">Qwen word timing (recommended)</option>
             <option value="energy" data-t="alignFast" data-tt="alignExplainFast">Fast, without a neural net</option>
           </select>
           <select id="selLang" data-tt="langTitle" title="Language of the lyrics"></select>
@@ -1053,7 +1064,7 @@
     </div>
   </div><div class="timeline"><div class="timeline-heading"><div class="timeline-title"><h2 data-t="timeline"></h2><span id="zoomNote">15 s</span></div><div class="timeline-view"><button id="btnZoomOut">−</button><button id="btnZoomIn">＋</button><button id="btnFit" data-tt="fitHint" data-t="fitLine" title="Zoom so the selected line fills the timeline">⤢ Fit the line</button><button id="btnUndo" data-tt="undoHint" data-t="undo" title="Undo the last change (Ctrl+Z)" disabled="">↶ Undo</button><button id="btnRedo" data-tt="redoHint" data-t="redo" title="Redo the last undone change (Ctrl+Y)" disabled="">↷ Redo</button></div></div>
 <div class="mmap"><canvas id="mmap"></canvas></div><div class="tlhead">
-<div class="timeline-primary"><button id="btnHere" class="pri" title="Enter" data-t="lineStartsHere">⌖ Line starts here</button><label class="chk"><input type="checkbox" id="chkRest"> <span data-t="andRest">and all after it</span></label><button id="btnLoop" data-tt="loopHint" data-t="loop" title="Play the selected line over and over">↻ Loop</button><button id="btnMark" data-tt="markHint" data-t="markMode" title="Mark on the waveform the stretches that hold no words">✂ No words here</button></div>
+<div class="timeline-primary"><button id="btnHere" class="pri" title="Enter" data-t="lineStartsHere">⌖ Line starts here</button><label class="chk"><input type="checkbox" id="chkRest"> <span data-t="andRest">and all after it</span></label><button id="btnEndHere" data-t="lineEndsHere" data-tt="lineEndsHereHint">Line ends here</button><button id="btnLoop" data-tt="loopHint" data-t="loop" title="Play the selected line over and over">↻ Loop</button><button id="btnMark" data-tt="markHint" data-t="markMode" title="Mark on the waveform the stretches that hold no words">✂ No words here</button></div>
 <div class="timeline-commandbar"><div class="command-group"><span class="command-label" data-t="studioEditTools"></span><div class="command-buttons"><button id="btnText" data-tt="textHint" data-t="lineText" title="Fix the words of the selected line (or double-click it)">✎ Line text</button>
 <button id="btnSplit" data-tt="splitHint" data-t="splitLine" title="Cut the line under the playhead at the nearest word boundary">⤸ Split</button>
 <button id="btnJoin" data-tt="joinHint" data-t="joinLine" title="Join the selected line with the one after it">⤹ Join</button></div></div><div class="command-group"><span class="command-label" data-t="studioClipboard"></span><div class="command-buttons"><button id="btnRhythm" data-tt="rhythmHint" data-t="copyRhythm" title="Copy the selected line — its words and its rhythm (Ctrl+C)">⧉ Copy</button>
@@ -1094,7 +1105,8 @@
         <button class="sw" data-for="colTx" data-tt="textColor" title="Text colour"></button>
         <input type="color" id="colBg" class="hidcol" value="#0a0b14"><input type="color" id="colTx" class="hidcol" value="#e8ebf5"></span></div></div>
 <div class="inspector-group"><h3 data-t="workspaceBackdrop"></h3><div class="inspector-controls"><button id="btnCover" data-tt="coverPickHint" data-t="coverBtn" title="A picture — or a frame from the clip itself — behind the lyrics, blurred">⛰ Cover</button><button id="btnCoverOff" class="hide" data-tt="coverOffHint" title="Back to the plain background">⛰✕</button><span class="darkknob hide" id="grpCoverDark" data-tt="coverDarkHint" title="How dark the cover backdrop is: darker reads better, lighter shows more of the picture">
-        <b>🌗</b><input type="range" id="rCoverDark" min="0" max="95" step="1" value="66"><input type="number" id="nCoverDark" min="0" max="95" step="1" value="66"><b>%</b></span><button id="btnClipBg" data-tt="backdropHint" data-t="backdropBtn" title="A clip behind the lyrics: a file or a link, blurred to a slow field of colour">🎞 Clip behind</button><button id="btnClipBgOff" class="hide" data-tt="backdropOffHint" title="Back to the still backdrop">🎞✕</button></div></div></section>
+        <b>🌗</b><input type="range" id="rCoverDark" min="0" max="95" step="1" value="66"><input type="number" id="nCoverDark" min="0" max="95" step="1" value="66"><b>%</b></span><button id="btnClipBg" data-tt="backdropHint" data-t="backdropBtn" title="A clip behind the lyrics: a file or a link, blurred to a slow field of colour">🎞 Clip behind</button><button id="btnClipBgOff" class="hide" data-tt="backdropOffHint" title="Back to the still backdrop">🎞✕</button></div>
+<div class="backdrop-link"><label for="inBackdropUrl" data-t="backdropLink">Video backdrop from a link</label><input id="inBackdropUrl" type="url" data-tp="backdropUrlPh" placeholder="https://…"><button id="btnBackdropUrl" data-t="backdropLoad">Load video</button></div></div></section>
 <section class="inspector-pane hide" id="inspector-project" data-pane="project"><h2 data-t="studioProject"></h2><p class="panel-description" data-t="studioProjectHint"></p>
 <div class="inspector-group"><h3 data-t="workspaceSources"></h3><div class="inspector-controls"><button id="btnLyrics" data-tt="lyricsHint" data-t="otherLyrics" title="Choose a different lyrics file or paste the text, then time the song to it">⇄ Other lyrics</button><button id="btnTrack" data-tt="trackHint" data-t="ownTrack" title="Use the artist's real instrumental instead of the separated one">♪ My instrumental</button><button id="btnRealign" data-tt="realignHint" data-t="realign" title="Re-read the same lyrics file from disk and time it again — if you edited it">↻ Re-time</button></div></div>
 <div class="inspector-group"><h3 data-t="workspaceMarks"></h3><p class="panel-description" data-t="studioMarksHint"></p><div class="inspector-controls"><input id="edNoText" class="notext" data-tp="noTextPh" data-tt="noTextLabel" placeholder="0:00-0:42, 3:10-3:50 — an intro, a vocalise, a solo"><button id="btnClip" data-tt="clipHint" data-t="clipMarks" title="Cut the line spans back out of the marked stretches">↹ Trim by the marks</button><button id="btnSnap" data-tt="snapHint" data-t="snapAll" title="Move every line to the nearest moment singing starts">Snap all to the vocal</button></div></div></section></div></aside></div>
@@ -1175,7 +1187,7 @@
     <label for="retimeEngine" data-t="retimeEngineLabel"></label>
     <select id="retimeEngine">
       <option value="whisper">Whisper</option>
-      <option value="qwen" data-t="alignQwen">Qwen word timing (experimental)</option>
+      <option value="qwen" data-t="alignQwen">Qwen word timing (recommended)</option>
       <option value="energy" data-t="alignFast">Fast, without a neural net</option>
     </select>
     <div id="retimeModelRow">

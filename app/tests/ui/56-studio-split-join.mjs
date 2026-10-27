@@ -286,6 +286,10 @@ console.log('\n--- overlapping blocks: the one underneath can be reached ---');
 {
   const st0 = await proj();
   const dl = JSON.parse(JSON.stringify(st0.lines));
+  // A pile must occupy the same visual lane. Earlier suites can assign
+  // another singer; different lanes are intentionally independently clickable.
+  dl[0].voice = dl[1].voice = 1;
+  dl[0].backing = dl[1].backing = false;
   // строки 0 и 1 кладём внахлёст
   dl[0].start = 2.0; dl[0].end = 8.0;
   dl[0].words.forEach((w, i) => { w.t = 2.0 + i * 0.8; w.d = 0.7; });
@@ -307,8 +311,9 @@ console.log('\n--- overlapping blocks: the one underneath can be reached ---');
     const a = document.querySelector('#blocks .blk[data-i="0"]').getBoundingClientRect();
     const b = document.querySelector('#blocks .blk[data-i="1"]').getBoundingClientRect();
     return {x: (Math.max(a.left, b.left) + Math.min(a.right, b.right)) / 2,
-            y: (a.top + a.bottom) / 2};
+            y: (a.top + a.bottom) / 2, sameLane: Math.abs(a.top-b.top)<1};
   });
+  ok('the overlapping fixture occupies one lane', spot.sameLane);
   const selNow = () => p.evaluate(() =>
     [...document.querySelectorAll('#scroll .ln')].findIndex(e => e.classList.contains('sel')));
   await p.mouse.click(spot.x, spot.y);

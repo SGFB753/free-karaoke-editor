@@ -116,8 +116,8 @@ for (let i = 0; i < 120; i++){
   await sleep(500);
 }
 ok('the MP3 export finished', !!audioOut && !!audioOut.path, JSON.stringify(audioOut));
-ok('it keeps the readable source name in the finished-files folder',
-   audioOut && path.basename(audioOut.path) === 'song.mp3'
+ok('it uses the current project credits in the finished-files folder',
+   audioOut && path.basename(audioOut.path) === [saved.artist,saved.title].filter(Boolean).join(' - ') + '.mp3'
    && path.resolve(path.dirname(audioOut.path)) ===
       path.resolve(path.dirname(process.env.KARAOKE_PROJECTS), 'output')
    && path.resolve(audioOut.path) !== path.resolve(saved.source_audio),

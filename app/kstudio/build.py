@@ -19,7 +19,7 @@ TEMPLATE = os.path.join(os.path.dirname(__file__), "player.html")
 def ENGINE_NAME(engine: str) -> str:
     return {
         "whisper": tr("Whisper timing", "разметка Whisper"),
-        "qwen": tr("Qwen timing (experimental)", "разметка Qwen (экспериментальная)"),
+        "qwen": tr("Qwen timing (recommended)", "разметка Qwen (рекомендуется)"),
         "energy":  tr("timing by loudness", "разметка по энергии"),
         "manual":  tr("timings from the text", "тайминги из текста"),
         "json":    tr("timings from a file", "тайминги из файла"),

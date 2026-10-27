@@ -7,6 +7,60 @@ commits themselves are one click away in the history.
 
 ---
 
+## 5.1.0
+
+### Alignment
+
+- **Automatic held endings:** isolated vocals are checked for continuation of
+  the final vowel using pitch and timbre as well as energy. A held note can reach
+  the next phrase without requiring a long silence. Pauses, neighbouring phrases,
+  no-lyrics marks and manual anchors constrain extensions. Ambiguous tonal
+  extensions under 0.35 seconds are left alone without a clear quiet boundary. Works with Qwen and
+  Whisper, with no extra model downloads. Difficult vocals still require review.
+- **Qwen timing:** uncertain phrases that survive local retries are checked
+  with Whisper on the original recording, then on isolated vocals if needed.
+  Replacements require sufficient confidence, usable word durations and no
+  worsening of overlaps. Unresolved timings appear in the timing review list.
+- Local retries preserve healthy neighbouring phrases. Timestamps repaired by
+  the Qwen library itself also count as uncertain and are checked again.
+- Qwen is recommended for supplied lyrics and selected initially when no
+  timing preference exists. A saved engine choice still takes precedence.
+
+### Editor
+
+- **Manual held endings:** “Line ends here” and Shift+Enter place the selected line's
+  end at the playhead, extending only its last word or previously split final
+  letter. Other timing stays intact; the edit supports undo.
+- Timeline backing sits below its singer: voice-1 backing shares voice 2's
+  level, while voice-2 backing uses a third lane that appears when needed.
+  Lead and backing remain independently selectable and draggable; repeated
+  clicks stay within the clicked lane.
+- **Existing project backgrounds:** Colours & backdrop includes a video-link
+  field with progress and cancellation. Failed replacements preserve the old
+  backdrop; audio and timing stay intact. Downloaded backdrops survive cleanup.
+- Editable fields in the Windows window offer a compact right-click menu:
+  Cut, Copy, Paste and Delete.
+
+### Export
+
+- Export filenames use the project's current artist and title rather than the
+  source video's heading: `Artist - Title.mp4`, with a matching `Artist - Title.jpg`
+  cover. Editing the credits changes the next export's filenames.
+- **MP4 end countdown:** short endings under ten seconds now show the remaining
+  recording time after all lyrics, including backing, have finished. Like the
+  editor preview, it hides during the final three seconds. Interludes retain
+  their ten-second threshold.
+
+### Downloads and models
+
+- Qwen weights are excluded even from offline builds. The model cache stays
+  outside the installation and is reused across app updates.
+- **YouTube downloads:** retry a generic unavailable-video response once after
+  two seconds, then automatically try the reserve downloaders. Explicit private,
+  deleted and access-restricted videos are not pointlessly retried.
+- Enable the bundled Node runtime for yt-dlp and include its matching EJS
+  JavaScript solver in dependencies and Windows packages, with no manual setup.
+
 ## 5.0.4
 
 ### Fixes

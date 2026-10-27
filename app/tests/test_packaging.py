@@ -87,9 +87,14 @@ def main():
         requirements = f.read()
     check("Windows releases include the native WebView2 shell",
           "pywebview>=6.0,<7" in requirements)
+    check("YouTube dependencies include matched EJS scripts and an enabled Node runtime",
+          'yt-dlp[default]' in requirements and 'nodejs-wheel-binaries>=22' in requirements
+          and '"yt_dlp_ejs"' in spec and '"nodejs_wheel"' in spec)
     build_path = os.path.join(ROOT, "packaging", "build-windows.ps1")
     with open(build_path, encoding="utf-8-sig") as f:
         build_script = f.read()
+    check("Qwen weights cannot leak into offline release archives",
+          'qwen_cache' not in spec and 'snapshot_download(M.QWEN_MODEL' not in build_script)
     check("finished EXE gets a media dependency smoke test",
           "--internal-package-smoke" in build_script)
     check("release archives do not contain writable user-data folders",

@@ -190,6 +190,8 @@ def main(argv=None) -> int:
             lyr, engine = A.align(lyr, align_src, dur, args.align,
                                   args.whisper_model, args.lang, args.device, log,
                                   isolated=bool(vocals), skip=holes)
+            if vocals and engine == 'whisper' and not lyr.fixed_line_starts:
+                A.refine_sustained_tails(lyr, vocals, dur, skip=holes, log=log)
         log(tr(f"Timing ready ({B.ENGINE_LABEL.get(engine, engine)}).",
            f"Разметка готова ({B.ENGINE_LABEL.get(engine, engine)})."))
 

@@ -78,15 +78,12 @@ def file_stem(name: str) -> str:
 
 
 def export_stem(data: Dict) -> str:
-    """The name people knew the source by, rather than a transliterated folder id."""
-    source = (data.get("source_title") or "").strip()
-    if source:
-        return file_stem(source)
+    """Use the editable song credits, with source metadata for legacy projects."""
     title = (data.get("title") or "").strip()
     artist = (data.get("artist") or "").strip()
-    if artist and title and artist.lower() not in title.lower():
+    if artist and title:
         return file_stem(f"{artist} - {title}")
-    return file_stem(title or "Karaoke")
+    return file_stem(title or (data.get('source_title') or '').strip() or artist or "Karaoke")
 
 
 def store_source(folder: str, src: str, stem: str) -> str:
@@ -474,6 +471,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             A.refine_leading_silence(lyr, vocals, log=log)
             A.refine_uncertain_word_onsets(lyr, vocals, log=log)
             A.refine_trailing_silence(lyr, vocals, log=log)
+            A.refine_sustained_tails(lyr, vocals, dur, skip=holes, log=log)
         log(tr(f"Timing ready ({B.ENGINE_LABEL.get(engine, engine)}).",
            f"Разметка готова ({B.ENGINE_LABEL.get(engine, engine)})."))
 
@@ -571,14 +569,23 @@ def save(folder: str, data: Dict) -> None:
     os.replace(tmp, path)
 
 
+def _repair_editable_words(lines):
+    # Making zero-frame words draggable must not clear an alignment warning.
+    reviewed = [ln for ln in lines if ln.get('timingReview') == [
+        [w.get('w'), w.get('t'), w.get('d')] for w in ln.get('words') or []]]
+    L.repair_collapsed_json_words(lines)
+    L.repair_overlapping_json_words(lines)
+    for ln in reviewed:
+        ln['timingReview'] = [[w.get('w'), w.get('t'), w.get('d')] for w in ln.get('words') or []]
+
+
 def load(folder: str) -> Dict:
     with open(os.path.join(folder, PROJECT_FILE), encoding="utf-8") as f:
         data = json.load(f)
     # Repair impossible zero-frame words from old/manual edits in memory. The
     # next ordinary save persists the correction; merely opening a project is
     # still read-only.
-    L.repair_collapsed_json_words(data.get("lines") or [])
-    L.repair_overlapping_json_words(data.get("lines") or [])
+    _repair_editable_words(data.get("lines") or [])
     # Old projects stored every lead as voice 1 even when their Genius section
     # headings named different performers. Infer only while the project still
     # has that untouched all-main-voice shape; a person's assignments win.
@@ -695,8 +702,7 @@ def save_lines(folder: str, lines: List[Dict], colors=None, theme=None,
                soft_keep_level=...) -> Dict:
     data = load(folder)
     data["lines"] = lines
-    L.repair_collapsed_json_words(data["lines"])
-    L.repair_overlapping_json_words(data["lines"])
+    _repair_editable_words(data["lines"])
     if colors:
         data["colors"] = list(colors)[:2]
     if theme:
@@ -860,6 +866,11 @@ def problems(data: Dict) -> List[Dict]:
     for i, ln in enumerate(lines):
         ws = ln.get("words") or []
         why = []
+        if ln.get('timingReview') and ln['timingReview'] == [
+                [w.get('w'), w.get('t'), w.get('d')] for w in ws]:
+            why.append((tr("automatic word timing could not be verified — check this phrase",
+                           "авторазметка слов не подтвердилась — проверьте эту фразу"),
+                        'alignment'))
 
         gaps = [ws[k + 1]["t"] - (ws[k]["t"] + ws[k]["d"]) for k in range(len(ws) - 1)]
         if gaps and max(gaps) > 1.2:

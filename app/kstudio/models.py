@@ -8,6 +8,7 @@ One of the two was always lying.
 from __future__ import annotations
 
 import os
+import sys
 from typing import Dict, Optional
 from .i18n import tr
 
@@ -56,9 +57,24 @@ QWEN_REVISION = "c7cbfc2048c462b0d63a45797104fc9db3ad62b7"
 
 
 def qwen_dir() -> str:
-    """A separate, inspectable cache; never overwrite Whisper's weights."""
+    """A persistent user cache, never a downloaded model inside the install."""
     default = os.path.join(os.path.expanduser("~"), ".cache")
-    return os.path.join(os.getenv("XDG_CACHE_HOME", default), "karaoke-studio",
+    cache = os.getenv("XDG_CACHE_HOME", default)
+    if getattr(sys, 'frozen', False):
+        # Offline builds may seed XDG_CACHE_HOME with their bundled Whisper
+        # cache. Qwen downloads must survive replacing that installation.
+        for root in (getattr(sys, '_MEIPASS', None), os.path.dirname(sys.executable or '')):
+            if not root:
+                continue
+            try:
+                install = os.path.normcase(os.path.abspath(root))
+                selected = os.path.normcase(os.path.abspath(cache))
+                if os.path.commonpath([selected, install]) == install:
+                    cache = default
+                    break
+            except ValueError:  # cache and executable may be on different drives
+                continue
+    return os.path.join(cache, "karaoke-studio",
                         "qwen3-forcedaligner-0.6b")
 
 

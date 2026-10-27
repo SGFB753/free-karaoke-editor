@@ -12,8 +12,9 @@ soundfile>=0.12
 numpy>=1.21
 
 # --- a song from a link: the studio takes the sound out of a video link ---
-yt-dlp>=2024.1.1
+yt-dlp[default]>=2026.8.19
 pytubefix==11.2.0
+nodejs-wheel-binaries>=22.0.0
 
 # --- rendering the MP4 video (tools/video.py) ---
 pillow>=9.0

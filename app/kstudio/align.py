@@ -886,6 +886,23 @@ def refine_leading_silence(lyrics: Lyrics, vocal_audio: str,
     return fixed
 
 
+def refine_sustained_tails(lyrics: Lyrics, vocal_audio: str, duration: float,
+                           skip=None, log: Log = _noop, next_start=None) -> int:
+    """Use the separated vocal for ending evidence after any word aligner."""
+    from . import audio as AU, qwen as Q
+    import numpy as np
+    try:
+        raw = AU.read_pcm_mono(vocal_audio, 16000)
+    except (OSError, RuntimeError, ValueError) as exc:
+        log(tr(f"Could not check held endings: {exc}",
+               f"Не удалось проверить протяжные окончания: {exc}"))
+        return 0
+    audio = np.frombuffer(raw.tobytes(), dtype='<i2').astype('float32') / 32768.
+    bounds = {id(lyrics.lines[-1]): next_start} if lyrics.lines and next_start is not None else None
+    return Q.extend_sustained_tails(lyrics, audio, duration, holes=spans(skip, duration), log=log,
+                                    next_onsets=bounds)
+
+
 def refine_trailing_silence(lyrics: Lyrics, vocal_audio: str,
                             log: Log = _noop) -> int:
     """Remove a sustained quiet tail from the final word, on vocals only.

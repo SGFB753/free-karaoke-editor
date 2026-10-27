@@ -61,14 +61,14 @@ const STR = {
     lyricsPh: "txt — one line of the song per line of the file",
     langAlign: "Language and timing",
     alignExact: "Accurate (Whisper), if available",
-    alignQwen: "Qwen word timing (experimental)",
+    alignQwen: "Qwen word timing (recommended)",
     alignExplainWhisper: "Whisper matches your supplied lyrics to the audio to time words. If unavailable or unsuccessful, Studio falls back to approximate loudness-based timing.",
-    alignExplainQwen: "Qwen matches your supplied lyrics to vocals, rather than transcribing new text. Experimental for songs: check the resulting timings. Supply the recording with vocals, not an instrumental.",
+    alignExplainQwen: "Recommended for timing supplied lyrics to vocals, rather than transcribing new text. Check the resulting timings. Supply the recording with vocals, not an instrumental.",
     alignExplainFast: "No neural model: timing is estimated from loudness and syllable counts. Fast and lightweight, but not suitable when precise word timings are needed.",
-    qwenMemoryHint: "Weights: about 1.8 GB on disk. CPU memory guideline: about 6 GB of free RAM, not a fixed minimum or a VRAM requirement; usage depends on audio-window length.",
+    qwenMemoryHint: "Weights: about 1.8 GB, downloaded separately once and reused across app updates. CPU memory guideline: about 6 GB of free RAM, not a fixed minimum or a VRAM requirement; usage depends on audio-window length.",
     qwenMissing: "Qwen is not installed in this build. Install app/requirements-qwen.txt into the app's Python environment.",
     qwenUnavailable: "not installed",
-    qwenHint: "Qwen3-ForcedAligner-0.6B · aligns the supplied lyrics, not transcription. Experimental for singing; check the result. Long songs use approximate search-window boundaries. Backing vocals still need checking.",
+    qwenHint: "Qwen3-ForcedAligner-0.6B · recommended for supplied lyrics, not transcription. Check the result. Long songs use approximate search-window boundaries. Backing vocals still need checking.",
     qwenFolderOpened: "The Qwen model folder is open",
     qwenDeleteHint: "Qwen weights are in a separate folder (about 1.8 GB). Delete the weights there to free space; they download again when needed.",
     alignFast: "Fast, without a neural net",
@@ -92,6 +92,9 @@ const STR = {
     openLibrary: "Open files", hide: "Hide",
     timeline: "Timeline", noLine: "no line selected",
     lineStartsHere: "⌖ Line starts here", andRest: "and all after it",
+    lineEndsHere: "Line ends here",
+    lineEndsHereHint: "Extend the selected line's last word or letter to the playhead (Shift+Enter). Other words and lines keep their timing.",
+    lineEndTooEarly: "Place the playhead after the start of the last word or letter.",
     lineText: "✎ Line text", textHint: "Fix the words of the selected line (or double-click it)",
     undo: "↶ Undo", undoHint: "Undo the last change (Ctrl+Z)",
     addLine: "＋ line",
@@ -453,6 +456,8 @@ const STR = {
     backdropOffHint: "Take the clip away — back to the still backdrop.",
     pickBackdrop: "A clip to stand behind the lyrics",
     backdropUrlPh: "a link to the clip — the song's own will do",
+    backdropLink: "Video backdrop from a link",
+    backdropLoad: "Load video",
     backdropWait: "Taking the clip\u2026 this can take a minute",
     backdropSet: "The clip stands behind the lyrics now",
     backdropGone: "The clip is gone — the still backdrop is back",
@@ -565,14 +570,14 @@ const STR = {
     lyricsPh: "txt — одна строка песни на строку файла",
     langAlign: "Язык и разметка",
     alignExact: "Точно (Whisper), если доступен",
-    alignQwen: "Тайминги Qwen (экспериментально)",
+    alignQwen: "Тайминги Qwen (рекомендуется)",
     alignExplainWhisper: "Whisper сопоставляет загруженный текст со звуком и размечает слова. Если модель недоступна или не справилась, студия перейдёт к приблизительной разметке по громкости.",
-    alignExplainQwen: "Qwen привязывает загруженный текст к вокалу, а не распознаёт новый текст. На песнях пока эксперимент: проверьте тайминги. Нужен исходник с голосом, не минусовка.",
+    alignExplainQwen: "Рекомендуется для привязки загруженного текста к вокалу, а не распознавания нового текста. Проверьте тайминги. Нужен исходник с голосом, не минусовка.",
     alignExplainFast: "Без нейросети: время оценивается по громкости и числу слогов. Быстро и без тяжёлой модели, но для точных таймингов слов не подходит.",
-    qwenMemoryHint: "Веса: около 1,8 ГБ на диске. Для CPU ориентир — около 6 ГБ свободной оперативной памяти, не строгий минимум и не требование к видеопамяти; расход зависит от длины обрабатываемого фрагмента.",
+    qwenMemoryHint: "Веса: около 1,8 ГБ, скачиваются отдельно один раз и сохраняются между обновлениями программы. Для CPU ориентир — около 6 ГБ свободной оперативной памяти, не строгий минимум и не требование к видеопамяти; расход зависит от длины обрабатываемого фрагмента.",
     qwenMissing: "Qwen не установлен в этой сборке. Установите app/requirements-qwen.txt в Python-окружение программы.",
     qwenUnavailable: "не установлен",
-    qwenHint: "Qwen3-ForcedAligner-0.6B · размечает загруженный текст, не распознаёт его заново. На пении пока эксперимент: проверьте результат. В длинных песнях границы поисковых окон приблизительные. Бэки тоже нужно проверить.",
+    qwenHint: "Qwen3-ForcedAligner-0.6B · рекомендуется для загруженного текста, не распознаёт его заново. Проверьте результат. В длинных песнях границы поисковых окон приблизительные. Бэки тоже нужно проверить.",
     qwenFolderOpened: "Папка модели Qwen открыта",
     qwenDeleteHint: "Веса Qwen хранятся в отдельной папке (около 1,8 ГБ). Для освобождения места удалите их оттуда; при необходимости они скачаются снова.",
     alignFast: "Быстро, без нейросети",
@@ -597,6 +602,9 @@ const STR = {
     openLibrary: "Открыть файлы",
     hide: "Скрыть", timeline: "Дорожка", noLine: "строка не выбрана",
     lineStartsHere: "⌖ Начало строки — сюда", andRest: "и все следующие",
+    lineEndsHere: "Конец строки — сюда",
+    lineEndsHereHint: "Дотянуть последнее слово или букву выбранной строки до курсора (Shift+Enter). Остальные слова и строки сохраняют тайминги.",
+    lineEndTooEarly: "Поставьте курсор после начала последнего слова или буквы.",
     lineText: "✎ Текст строки",
     textHint: "Исправить слова выбранной строки (или двойной щелчок по ней)",
     undo: "↶ Отменить", undoHint: "Отменить последнюю правку (Ctrl+Z)",
@@ -956,6 +964,8 @@ const STR = {
     backdropOffHint: "Убрать клип — вернуть неподвижный фон.",
     pickBackdrop: "Клип, который встанет за текстом",
     backdropUrlPh: "ссылка на клип — подойдёт та же, что у песни",
+    backdropLink: "Видеофон по ссылке",
+    backdropLoad: "Загрузить видео",
     backdropWait: "Достаю клип\u2026 это может занять минуту",
     backdropSet: "Клип встал за текстом",
     backdropGone: "Клип убран — вернулся неподвижный фон",
@@ -2001,7 +2011,7 @@ function resetNewSongForm(){
   $("taLyrics").value = "";
   const defModel = [...$("selModel").options].find(o => o.defaultSelected);
   if (defModel) $("selModel").value = defModel.value;
-  const savedEngine = preferredTimingEngine;
+  const savedEngine = preferredTimingEngine || (caps.qwen ? "qwen" : "auto");
   $("selAlign").value = savedEngine === "qwen" && caps.qwen ? "qwen" :
     savedEngine === "energy" ? "energy" : caps.whisper ? "auto" : "energy";
   $("selLang").value = "auto";
@@ -3775,13 +3785,16 @@ function makeBlocks(){
   layoutBlocks();
   paintMarks();          // the blocks are rebuilt — the marks have to come back
 }
-// The second lane is only needed when the song has a second voice: otherwise
-// the timeline would be twice as tall for nothing.
+// Backing sits one lane below its singer. Voice-1 backing shares voice 2's
+// level; voice-2 backing needs a third level to remain independently editable.
 function updateLanes(){
-  const two = lines.some(l => l.voice === 2 || l.voice === 3);
+  const two = lines.some(l => l.backing || l.voice === 2 || l.voice === 3);
+  const three = lines.some(l => l.backing && voiceOf(l) !== 1);
   const wrap = $("tlwrap");
-  if (wrap.classList.contains("twolane") === two) return;
+  if (wrap.classList.contains("twolane") === two &&
+      wrap.classList.contains("threelane") === three) return;
   wrap.classList.toggle("twolane", two);
+  wrap.classList.toggle("threelane", three);
   drawWave();                       // the canvas under the timeline changed height
 }
 function layoutBlock(i){
@@ -4078,7 +4091,7 @@ $("blocks").addEventListener("pointerdown", e => {
   // meaning — select and maybe drag — and a SECOND press on the same spot,
   // released without moving, dives to the line underneath (see pointerup).
   diveAt = (!batchDrag && !e.shiftKey && !e.ctrlKey && !e.metaKey && i === sel)
-    ? {x: e.clientX, t: viewStart() + (e.clientX -
+    ? {x: e.clientX, y: e.clientY, t: viewStart() + (e.clientX -
          $("tlwrap").getBoundingClientRect().left) / pps()}
     : null;
   selectLine(i, false, batchDrag ? "keep" : pickMode);
@@ -4206,10 +4219,13 @@ window.addEventListener("pointerup", e => {
   }
   // A still second click on an already-selected block dives to the line
   // beneath it: overlapping lines can all be reached now, not only the top.
-  if (diveAt && Math.abs(e.clientX - diveAt.x) < 3){
+  if (diveAt && Math.abs(e.clientX - diveAt.x) < 3 && Math.abs(e.clientY - diveAt.y) < 3){
     const pile = [];
-    for (let k = 0; k < lines.length; k++)
-      if (lines[k].start <= diveAt.t && diveAt.t <= lines[k].end) pile.push(k);
+    for (let k = 0; k < lines.length; k++){
+      const rect = blockEls[k]?.getBoundingClientRect();
+      if (lines[k].start <= diveAt.t && diveAt.t <= lines[k].end && rect &&
+          rect.top <= diveAt.y && diveAt.y <= rect.bottom) pile.push(k);
+    }
     if (pile.length > 1){
       const at = pile.indexOf(sel);
       const next = pile[(at >= 0 ? at + 1 : 0) % pile.length];
@@ -4819,6 +4835,21 @@ function putHere(){
   toast(restToo() ? T.lineSetRest(sel+1) : T.lineSet(sel+1));
 }
 $("btnHere").addEventListener("click", putHere);
+function endHere(){
+  if (sel < 0) return toast(T.pickLineFirst);
+  const ln = lines[sel], last = ln.words[ln.words.length - 1];
+  const end = clamp(mediaTime(), 0, dur);
+  if (!last || end < last.t + MIN_W) return toast(T.lineEndTooEarly);
+  if (Math.abs(ln.end - end) < .001 && Math.abs(last.t + last.d - end) < .001) return;
+  snap('');
+  last.d = end - last.t;
+  ln.end = end;
+  curLine = -2;
+  layoutBlocks(); touched();
+  $('selNote').textContent = T.lineEndAt(sel + 1, fmtMs(end));
+  toast(T.lineEndAt(sel + 1, fmtMs(end)));
+}
+$('btnEndHere').addEventListener('click', endHere);
 
 $("btnLoop").addEventListener("click", () => {
   if (sel < 0) return toast(T.pickLineFirst);
@@ -4977,7 +5008,7 @@ document.addEventListener("keydown", e => {
     case "PageDown": e.preventDefault(); stageScroll($("stage").clientHeight*0.8); break;
     case "[": e.preventDefault(); nudge(-0.05); break;
     case "]": e.preventDefault(); nudge(0.05); break;
-    case "Enter": e.preventDefault(); putHere(); break;
+    case "Enter": e.preventDefault(); e.shiftKey ? endHere() : putHere(); break;
   }
 });
 
@@ -5256,15 +5287,22 @@ async function takeCover(path, url){
 // song itself came from is a fair place to get one.
 function refreshBackdrop(){
   $("btnClipBgOff").classList.toggle("hide", !(data && data.backdrop));
+  $('inBackdropUrl').value = (data && (data.backdropUrl || data.sourceUrl)) || '';
 }
 async function takeBackdrop(path, url){
   toast(T.backdropWait);
   try{
-    await api(`/api/project/${encodeURIComponent(pid)}/backdrop`,
+    if (url){ stop(); await flush(); }
+    const result = await api(`/api/project/${encodeURIComponent(pid)}/backdrop`,
       url ? {url} : {path});
-    data.backdrop = "backdrop.mp4"; data.coverBg = false;
-    refreshBackdrop(); refreshCover(); toast(T.backdropSet);
-    if (!$("stillBox").classList.contains("hide")) showStill(stillT, false);
+    const done = () => {
+      data.backdrop = "backdrop.mp4"; data.coverBg = false;
+      data.backdropUrl = url || null;
+      refreshBackdrop(); refreshCover(); screen('scrEdit'); toast(T.backdropSet);
+      if (!$("stillBox").classList.contains("hide")) showStill(stillT, false);
+    };
+    if (result.job) watchJob(result.job, T.backdropWait, done, ()=>screen('scrEdit'), true);
+    else done();
   }catch(e){ toast(e.message); }
 }
 function backdropUrlRow(box){
@@ -5292,6 +5330,15 @@ function backdropUrlRow(box){
   box.appendChild(r);
 }
 $("btnClipBg").addEventListener("click", () => openBrowser("backdrop"));
+$('btnBackdropUrl').addEventListener('click', () => {
+  const url = $('inBackdropUrl').value.trim();
+  if (!/^https?:\/\//i.test(url)) return toast(T.coverUrlBad);
+  takeBackdrop(null, url);
+});
+$('inBackdropUrl').addEventListener('keydown', e => {
+  e.stopPropagation();
+  if (e.key === 'Enter'){ e.preventDefault(); $('btnBackdropUrl').click(); }
+});
 $("btnClipBgOff").addEventListener("click", async () => {
   try{
     await api(`/api/project/${encodeURIComponent(pid)}/backdrop`, {off: true});
