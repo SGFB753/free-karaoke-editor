@@ -9,10 +9,6 @@ commits themselves are one click away in the history.
 
 ## 5.1.1
 
-- The unmatched-lyrics field releases focus on any outside pointer press,
-  including the timeline and minimap. Space then controls playback immediately;
-  selecting and copying text inside the field still works normally.
-
 - Qwen has a separate “Check uncertain timing with Whisper” checkbox when
   creating a project or re-timing it. Enabled by default; disabling it skips
   both Whisper recovery paths and model downloads. The choice is remembered
