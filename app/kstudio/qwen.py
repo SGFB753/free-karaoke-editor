@@ -24,6 +24,18 @@ BLOCK_SECONDS = 45.0
 BLOCK_LINES = 16
 
 
+class RecoveryUnavailable(ValueError):
+    """Optional Whisper code/weights could not be loaded, not bad Qwen input."""
+
+
+def unplaced_warning(whisper_review=True):
+    if not whisper_review:
+        return tr("Qwen could not place these lyrics. Whisper review is disabled; the project and untimed text are saved for manual editing.",
+                  "Qwen не смог привязать эти строки. Перепроверка Whisper отключена; проект и текст без таймингов сохранены для ручной правки.")
+    return tr("Qwen could not place these lyrics and optional Whisper recovery is unavailable. The project and text are preserved for manual timing; no timing was invented.",
+              "Qwen не смог привязать эти строки, а резервная проверка Whisper недоступна. Проект и текст сохранены для ручной разметки; выдуманные тайминги не добавлялись.")
+
+
 def prepare_import():
     """DyNet's Japanese tokenizer uses ANSI file paths on Windows.
 
@@ -331,14 +343,30 @@ def _independent_jobs(lines, audio_path, duration, lo, hi, language, device, log
     try:
         A.align_whisper(guide, audio_path, duration, model_name, language, device, log,
                         skip=list(holes) + [(0, lo), (hi, duration)])
-    except ImportError as exc:
-        raise ValueError(tr("Qwen placement failed and optional Whisper recovery is unavailable. Add manual anchors or install Whisper; the result will not be saved.",
-                            "Qwen потерял привязку, а Whisper для перепроверки не установлен. Добавьте ручные отметки или установите Whisper; результат не будет сохранён.")) from exc
+    except (ImportError, OSError, RuntimeError) as exc:
+        raise RecoveryUnavailable(tr(
+            f"Optional Whisper recovery is unavailable: {exc}",
+            f"Резервная проверка Whisper недоступна: {exc}")) from exc
+    unplaced_start = None
+    if _failed_placement(guide.lines):
+        # A cut/shorter recording can leave a suffix of supplied text without
+        # any acoustic match. Preserve it separately, never squeeze it into
+        # the outro or discard the otherwise independently timed song.
+        for a, b in A.pile_runs(guide.lines):
+            prefix = guide.lines[:a]
+            words = [w for ln in prefix for w in ln.words]
+            if (b == len(lines) - 1 and a >= 3 and a >= len(lines) / 2
+                    and guide.lines[a].start >= hi - 2
+                    and not _failed_placement(prefix) and words
+                    and sum((w.prob or 0) >= .4 for w in words) >= len(words) * .5):
+                unplaced_start = a
+                guide.lines = prefix
+                break
     if _failed_placement(guide.lines):
         raise ValueError(tr("Independent phrase alignment also failed. Check the lyrics and add manual anchors or choose Whisper.",
                             "Независимая привязка фраз тоже не удалась. Проверьте текст, добавьте ручные отметки или выберите Whisper."))
     cuts = [(0, lo)]
-    for i in range(1, len(lines)):
+    for i in range(1, len(guide.lines)):
         first = cuts[-1][0]
         left, right = guide.lines[i - 1], guide.lines[i]
         if i - first < 6 and left.end - guide.lines[first].start < 25:
@@ -351,14 +379,15 @@ def _independent_jobs(lines, audio_path, duration, lo, hi, language, device, log
             seam = (left_core[1] + right_core[0]) / 2
             if cuts[-1][1] + .1 < seam < hi - .1:
                 cuts.append((i, seam))
-    cuts.append((len(lines), hi))
-    if len(cuts) <= 2:
+    cuts.append((len(guide.lines), hi))
+    if len(cuts) <= 2 and unplaced_start is None:
         raise ValueError(tr("No reliable independent phrase boundaries found. Add manual line anchors or choose Whisper.",
                             "Не найдены надёжные независимые границы фраз. Добавьте ручные отметки строк или выберите Whisper."))
     class Windows(list):
         pass
     windows = Windows((a, b, start, end) for (a, start), (b, end) in zip(cuts, cuts[1:]))
     windows.guide = guide.lines
+    windows.unplaced_start = unplaced_start
     return windows
 
 
@@ -481,7 +510,7 @@ def extend_sustained_tails(lyrics, audio, duration, holes=(), fixed=(), log=lamb
 
 def align_qwen(lyrics, audio_path, duration, language="auto", device=None,
                log=lambda msg: None, isolated=False, skip=None, model=None,
-               fallback_audio=None, guide_model="small"):
+               fallback_audio=None, guide_model="small", whisper_review=True):
     from . import align as A, audio as AU, lang as LG
     from .progress import Heartbeat
     import numpy as np
@@ -541,6 +570,26 @@ def align_qwen(lyrics, audio_path, duration, language="auto", device=None,
                     attn_implementation="sdpa")
         fallback = None
         recovery_anchors = {}
+        unplaced_ids = set()
+        source_indices = {id(ln): i + 1 for i, ln in enumerate(lyrics.lines)}
+        whisper_unavailable = not whisper_review
+
+        def original_signal():
+            nonlocal fallback, fallback_audio
+            if not fallback_audio or fallback_audio == audio_path:
+                return None
+            if fallback is None:
+                try:
+                    raw = AU.read_pcm_mono(fallback_audio, 16000)
+                    fallback = np.frombuffer(raw.tobytes(), dtype="<i2").astype("float32") / 32768.0
+                    if abs(len(fallback) - len(audio)) > 16000 * .25:
+                        raise ValueError("original and vocal durations differ")
+                except (OSError, RuntimeError, ValueError) as exc:
+                    log(tr(f"Qwen: original-audio retry unavailable: {exc}",
+                           f"Qwen: перепроверка по исходному треку недоступна: {exc}"))
+                    fallback_audio = None
+                    fallback = None
+            return fallback
 
         def infer(lines, lo, hi, signal):
             keep = [(max(lo, a), min(hi, b)) for a, b in A.keep_windows(holes, duration)
@@ -580,24 +629,79 @@ def align_qwen(lyrics, audio_path, duration, language="auto", device=None,
                 invalid = True
                 log(tr(f"Qwen initial result rejected: {exc}", f"Начальный результат Qwen отклонён: {exc}"))
             if invalid or _failed_placement(lines):
-                candidate = deepcopy(lines)
-                guided = _independent_jobs(lines, fallback_audio or audio_path, duration,
-                                           lo, hi, code, device, log, holes, guide_model)
-                recovery_anchors.update({id(ln): guide for ln, guide in
-                                         zip(lines, getattr(guided, 'guide', []))})
-                for a, b, start, end in guided:
-                    infer(candidate[a:b], start, end, audio)
-                if not _failed_placement(candidate) and (invalid or sum(_faults(candidate, holes)) < sum(_faults(lines, holes))):
-                    # After a mass failure even individually plausible raw
-                    # phrases can belong to the wrong repetition. Replace the
-                    # whole failed block using the independent search bounds.
-                    for original, recovered in zip(lines, candidate):
-                        for w, got in zip(original.words, recovered.words):
-                            w.start, w.end = got.start, got.end
-                            w.qwen_interpolated = getattr(got, 'qwen_interpolated', False)
-                elif invalid:
-                    raise ValueError(tr("Qwen returned invalid timings even after independent recovery; the result will not be saved.",
-                                        "Qwen вернул некорректные тайминги даже после независимой перепроверки; результат не будет сохранён."))
+                try:
+                    if whisper_unavailable:
+                        raise RecoveryUnavailable("Whisper recovery is unavailable for this job")
+                    guided = _independent_jobs(lines, fallback_audio or audio_path, duration,
+                                               lo, hi, code, device, log, holes, guide_model)
+                except RecoveryUnavailable as exc:
+                    whisper_unavailable = True
+                    if whisper_review:
+                        log(str(exc))
+                    candidate = deepcopy(lines)
+                    signal = original_signal()
+                    restored = False
+                    if signal is not None:
+                        log(tr("Qwen: retrying placement against the original audio without Whisper.",
+                               "Qwen: повторяю привязку по исходному звуку без Whisper."))
+                        try:
+                            infer(candidate, lo, hi, signal)
+                            restored = not _failed_placement(candidate)
+                        except ValueError:
+                            pass
+                    if restored:
+                        for original, recovered in zip(lines, candidate):
+                            for word, got in zip(original.words, recovered.words):
+                                word.start, word.end = got.start, got.end
+                                word.qwen_interpolated = getattr(got, 'qwen_interpolated', False)
+                        invalid = False
+                    else:
+                        first = source_indices[id(lines[0])]
+                        last = source_indices[id(lines[-1])]
+                        following = next((source_indices[id(ln)] for ln in main if source_indices[id(ln)] > last), len(lyrics.lines) + 1)
+                        for ln in lyrics.lines:
+                            if first <= source_indices[id(ln)] < following:
+                                unplaced_ids.add(id(ln))
+                                lyrics.unplaced_lyrics.append({'text': ln.text, 'line': source_indices[id(ln)],
+                                                               'reason': 'whisper-unavailable' if whisper_review else 'whisper-disabled'})
+                        log(unplaced_warning(whisper_review))
+                        continue
+                    guided = None
+                if guided is not None:
+                    cut = getattr(guided, 'unplaced_start', None)
+                    if cut is not None:
+                        if not lyrics.allow_unplaced_ending or lines[-1] is not main[-1]:
+                            raise ValueError(tr("Independent alignment failed inside the song. Check the lyrics and manual anchors.",
+                                                "Независимая привязка потеряна внутри песни. Проверьте текст и ручные отметки."))
+                        first_unplaced = source_indices[id(lines[cut])]
+                        tail = [ln for ln in lyrics.lines if source_indices[id(ln)] >= first_unplaced]
+                        if any(id(ln) in fixed or ln.lock or
+                               (lyrics.has_manual_times and ln.start is not None) for ln in tail):
+                            raise ValueError(tr("Unmatched lyrics include manually anchored or locked lines. Check the lyrics and anchors.",
+                                                "Среди непривязанных строк есть закреплённые или отмеченные вручную. Проверьте текст и отметки."))
+                        for ln in tail:
+                            unplaced_ids.add(id(ln))
+                            lyrics.unplaced_lyrics.append({'text': ln.text, 'line': source_indices[id(ln)],
+                                                           'reason': 'unmatched-ending'})
+                        lines = lines[:cut]
+                        log(tr(f"The last {len(tail)} lines could not be matched to this recording. They are kept separately in the project for review; no timings were invented.",
+                               f"Последние {len(tail)} строк не удалось привязать к этой записи. Они сохранены отдельно в проекте для проверки; выдуманные тайминги не добавлялись."))
+                    candidate = deepcopy(lines)
+                    recovery_anchors.update({id(ln): guide for ln, guide in
+                                             zip(lines, getattr(guided, 'guide', []))})
+                    for a, b, start, end in guided:
+                        infer(candidate[a:b], start, end, audio)
+                    if not _failed_placement(candidate) and (invalid or sum(_faults(candidate, holes)) < sum(_faults(lines, holes))):
+                        # After a mass failure even individually plausible raw
+                        # phrases can belong to the wrong repetition. Replace the
+                        # whole failed block using the independent search bounds.
+                        for original, recovered in zip(lines, candidate):
+                            for w, got in zip(original.words, recovered.words):
+                                w.start, w.end = got.start, got.end
+                                w.qwen_interpolated = getattr(got, 'qwen_interpolated', False)
+                    elif invalid:
+                        raise ValueError(tr("Qwen returned invalid timings even after independent recovery; the result will not be saved.",
+                                            "Qwen вернул некорректные тайминги даже после независимой перепроверки; результат не будет сохранён."))
             if not any(_faults(lines, holes)):
                 continue
             retry_jobs = _retry_jobs(lines, lo, hi)
@@ -624,20 +728,9 @@ def align_qwen(lyrics, audio_path, duration, language="auto", device=None,
                 sources = []
                 if len(retry_jobs) > 1:
                     sources.append(audio)
-                if fallback_audio and fallback_audio != audio_path:
-                    if fallback is None:
-                        try:
-                            raw = AU.read_pcm_mono(fallback_audio, 16000)
-                            fallback = np.frombuffer(raw.tobytes(), dtype="<i2").astype("float32") / 32768.0
-                            if abs(len(fallback) - len(audio)) > 16000 * .25:
-                                raise ValueError("original and vocal durations differ")
-                        except (OSError, RuntimeError, ValueError) as exc:
-                            log(tr(f"Qwen: original-audio retry unavailable: {exc}",
-                                   f"Qwen: перепроверка по исходному треку недоступна: {exc}"))
-                            fallback_audio = None
-                            fallback = None
-                    if fallback is not None:
-                        sources.append(fallback)
+                original = original_signal()
+                if original is not None:
+                    sources.append(original)
                 for signal in sources:
                     log(tr(f"Qwen: checking phrases {a + 1}–{b} inside {A.mmss(start)}–{A.mmss(end)}",
                            f"Qwen: перепроверяю фразы {a + 1}–{b} в пределах {A.mmss(start)}–{A.mmss(end)}"))
@@ -666,7 +759,10 @@ def align_qwen(lyrics, audio_path, duration, language="auto", device=None,
                         old_scores = _faults(lines, holes)
                     if not any(old_scores[a:b]):
                         break
-        if any(_faults(main, holes)):
+        if unplaced_ids:
+            main = [ln for ln in main if id(ln) not in unplaced_ids]
+            lyrics.lines = [ln for ln in lyrics.lines if id(ln) not in unplaced_ids]
+        if not whisper_unavailable and any(_faults(main, holes)):
             from .qwen_recovery import recover
             recover(main, fallback_audio or audio_path, duration, code, device, log,
                     holes, fixed, guide_model, vocal_path=audio_path if isolated else None,

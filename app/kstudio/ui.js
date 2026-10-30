@@ -30,6 +30,12 @@ const STR = {
     workspaceMarks: "Wordless stretches", workspaceAudio: "Monitor vocals", workspaceBuildHint: "Audio → Lyrics → Timing → Ready",
     workspaceMonitorHint: "Vocal volume for listening while editing. Wheel: 5%; Shift + wheel: 1%. This slider does not change the exported video.",
     workspaceAdvanced: "Advanced timing settings",
+    whisperReviewLabel: "Check uncertain timing with Whisper",
+    whisperReviewHint: "May take longer and download a Whisper model. Switch off to skip Whisper entirely; uncertain timing will need manual review.",
+    unplacedTitle: n => `No audio match: ${n} lines`,
+    unplacedHint: "These ending lines could not be matched to this recording. The recording may be shorter than the lyrics. They are saved here, outside the timeline and export. You can copy them to correct the text and re-time.",
+    unplacedRecoveryHint: "Qwen could not place these lyrics and Whisper recovery is unavailable. Your audio and text are saved. Copy this text to add and time lines manually, or re-time later. These untimed lines are excluded from export.",
+    unplacedReviewOffHint: "Qwen could not place these lyrics. Whisper review is switched off. Your audio and text are saved for manual timing or another re-timing attempt; untimed lines are excluded from export.",
     studioEditor: "Timing & lyrics", studioEditorHint: "Select a line, listen and adjust it on the timeline.",
     studioLook: "Colours & backdrop", studioLookHint: "Voices, cover and video",
     studioProject: "Lyrics & audio", studioProjectHint: "Sources, pauses and re-timing",
@@ -539,6 +545,12 @@ const STR = {
     workspaceMarks: "Участки без текста", workspaceAudio: "Слушать вокал", workspaceBuildHint: "Аудио → Текст → Разметка → Готово",
     workspaceMonitorHint: "Громкость вокала для прослушивания при правке текста. Колесико: 5%; Shift + колесико: 1%. Этот ползунок не меняет громкость в готовом видео.",
     workspaceAdvanced: "Дополнительные настройки разметки",
+    whisperReviewLabel: "Перепроверять сомнительные тайминги через Whisper",
+    whisperReviewHint: "Может занять больше времени и потребовать скачивания модели Whisper. Снимите галочку, чтобы пропустить Whisper полностью; сомнительные тайминги придётся проверить вручную.",
+    unplacedTitle: n => `Не привязались к записи: ${n} строк`,
+    unplacedHint: "Эти строки в конце текста не удалось привязать к записи. Возможно, запись короче текста. Они сохранены здесь, вне таймлайна и экспорта. Текст можно скопировать, исправить и разметить заново.",
+    unplacedRecoveryHint: "Qwen не смог привязать эти строки, а резервная проверка Whisper недоступна. Аудио и текст сохранены. Скопируйте текст, чтобы добавить и разметить строки вручную, или выполните переразметку позже. Строки без таймингов не попадают в экспорт.",
+    unplacedReviewOffHint: "Qwen не смог привязать эти строки. Перепроверка Whisper отключена. Аудио и текст сохранены для ручной разметки или новой попытки; строки без таймингов не попадают в экспорт.",
     studioEditor: "Текст и разметка", studioEditorHint: "Выбери строку, прослушай и поправь её на дорожке.",
     studioLook: "Цвета и фон", studioLookHint: "Голоса, обложка и видео",
     studioProject: "Текст и аудио", studioProjectHint: "Источники, паузы и переразметка",
@@ -1244,7 +1256,7 @@ function screen(name){
 }
 
 /* ================= song list ================= */
-let caps = {}, lastData = null, libraryDir = "", preferredTimingEngine = null;
+let caps = {}, lastData = null, libraryDir = "", preferredTimingEngine = null, preferredWhisperReview = true;
 let updateInfo = null, updateChecked = false;
 let desktopLifetime = null;
 function keepDesktopProcessWithThisWindow(){
@@ -1323,6 +1335,7 @@ async function loadList(){
   const st = await api("/api/state");
   caps = st.caps;
   preferredTimingEngine = st.timingEngine || null;
+  preferredWhisperReview = st.whisperReview !== false;
   document.querySelectorAll(".app-version").forEach(el => {
     el.textContent = caps.version ? "v" + caps.version : "Karaoke Studio";
     el.title = "Karaoke Studio " + (caps.version || "");
@@ -1399,6 +1412,7 @@ function modelNote(){
   $("alignExplain").textContent = engine === "qwen" ? T.alignExplainQwen :
     engine === "energy" ? T.alignExplainFast : T.alignExplainWhisper;
   const qwen = $("selAlign").value === "qwen";
+  $("qwenReviewRow").classList.toggle('hide', !qwen);
   $("selModel").classList.toggle("hide", qwen);
   $("modelNote").classList.toggle("hide", qwen);
   $("qwenNote").classList.toggle("hide", !qwen);
@@ -1558,6 +1572,16 @@ $("inLyrics").addEventListener("input", () => {
 $("selLang").addEventListener("change", modelNote);
 $("selModel").addEventListener("change", modelNote);
 let timingPreferenceSave = Promise.resolve();
+function saveWhisperReview(engine, review){
+  preferredTimingEngine = engine === 'whisper' ? 'auto' : engine;
+  preferredWhisperReview = review;
+  $('chkWhisperReview').checked = review;
+  timingPreferenceSave = timingPreferenceSave.catch(() => {}).then(() =>
+    api('/api/preferences/timing', {engine: engine === 'whisper' ? 'auto' : engine, whisperReview: review}))
+    .catch(e => toast(e.message));
+}
+$('chkWhisperReview').addEventListener('change', () => saveWhisperReview($('selAlign').value, $('chkWhisperReview').checked));
+$('retimeWhisperReview').addEventListener('change', () => saveWhisperReview($('retimeEngine').value, $('retimeWhisperReview').checked));
 $("selAlign").addEventListener("change", () => {
   modelNote();
   const engine = $("selAlign").value;
@@ -2015,6 +2039,7 @@ function resetNewSongForm(){
   $("selAlign").value = savedEngine === "qwen" && caps.qwen ? "qwen" :
     savedEngine === "energy" ? "energy" : caps.whisper ? "auto" : "energy";
   $("selLang").value = "auto";
+  $('chkWhisperReview').checked = preferredWhisperReview;
   $("chkSep").checked = !!caps.demucs;
   $("chkFine").checked = false;
   $("chkFine").disabled = !caps.demucs;
@@ -2293,6 +2318,7 @@ $("btnBuild").addEventListener("click", async () => {
     }
     const cover = $("inCover").value.trim();
     const j = await api("/api/new", {audio, lyrics, align: $("selAlign").value,
+      whisperReview: $('chkWhisperReview').checked,
       model: $("selModel").value, lang: $("selLang").value,
       separate: $("chkSep").checked, noText: $("inNoText").value.trim(),
       stripBacking: $("chkStripBacking").checked,
@@ -3234,6 +3260,7 @@ $("btnRealignPart").addEventListener("click", async () => {
   try{
     const j = await api("/api/project/" + encodeURIComponent(pid) + "/realign-part",
       {from: a, to: b, align: data.engine === "qwen" ? "qwen" : caps.whisper ? "auto" : "energy", lang: langOf(),
+       whisperReview: data.whisperReview !== false,
        noText: ($("edNoText").value || "").trim()});
     watchJob(j.job, T.realignPart, r => {
       openProject(pid);
@@ -3540,6 +3567,16 @@ function drawSummary(data){
   }
 }
 function showProblems(list){
+  const unplaced = (data && data.unplacedLyrics) || [];
+  const pending = $('unplacedLyrics');
+  if (pending){
+    pending.classList.toggle('hide', !unplaced.length);
+    pending.querySelector('summary').textContent = T.unplacedTitle(unplaced.length);
+    pending.querySelector('p').textContent = unplaced.some(ln => ln.reason === 'whisper-disabled') ? T.unplacedReviewOffHint :
+      unplaced.some(ln => ln.reason === 'whisper-unavailable') ? T.unplacedRecoveryHint : T.unplacedHint;
+    pending.querySelector('textarea').value = unplaced.map(ln => ln.text).join('\n');
+    pending.querySelector('textarea').setAttribute('aria-label', T.unplacedTitle(unplaced.length));
+  }
   const box=$("probs"); box.innerHTML="";
   const restore = () => {
     if (!checkOff.length) return;
@@ -3555,7 +3592,7 @@ function showProblems(list){
     box.appendChild(r);
   };
   if (!list || !list.length){
-    box.innerHTML='<div class="allgood">' + T.allGood + '</div>';
+    box.innerHTML=unplaced.length ? '' : '<div class="allgood">' + T.allGood + '</div>';
     restore();
     lineEls.forEach(L => L.el.querySelectorAll(".bad").forEach(x=>x.remove()));
     window.__badLines = new Set(); layoutBlocks(); return;
@@ -4927,6 +4964,14 @@ function tick(){
 }
 
 /* ================= keyboard ================= */
+// Canvas/div timeline gestures cancel their native focus change. The copied
+// untimed text must nevertheless release focus on *any* outside pointer press.
+// Capture runs before those gestures; this readonly field has no edit to save.
+document.addEventListener('pointerdown', e => {
+  const field = document.activeElement;
+  if (field && field.matches && field.matches('#unplacedLyrics textarea') && !field.contains(e.target))
+    field.blur();
+}, true);
 // A toolbar click must not turn the next Space into another press of that
 // button.  Space is the editor's play/pause key; dropping mouse focus here also
 // keeps the native button activation from racing the global shortcut.  A button
@@ -5094,6 +5139,7 @@ $("btnLyrics").addEventListener("click", () => {
 });
 function retimeNote(){
   const engine = $("retimeEngine").value;
+  $('retimeReviewRow').classList.toggle('hide', engine !== 'qwen');
   $("retimeModelRow").classList.toggle("hide", engine !== "whisper");
   $("retimeGo").disabled = engine === "qwen" ? !caps.qwen : engine === "whisper" ? !caps.whisper : false;
   if (engine === "qwen"){
@@ -5121,6 +5167,7 @@ $("btnRealign").addEventListener("click", () => {
   // Show the project's saved choice, even if its dependencies were removed.
   // Do not silently replace Qwen with energy timing on an existing project.
   $("retimeEngine").value = data.engine === "qwen" ? "qwen" : data.engine === "energy" ? "energy" : "whisper";
+  $('retimeWhisperReview').checked = typeof data.whisperReview === 'boolean' ? data.whisperReview : preferredWhisperReview;
   retimeNote();
   $("retimeDlg").classList.remove("hide");
   $("retimeEngine").focus();
@@ -5133,12 +5180,12 @@ $("retimeGo").addEventListener("click", () => {
   const align = $("retimeEngine").value;
   const model = align === "qwen" ? "qwen3-forcedaligner-0.6b" : $("retimeModel").value;
   closeRetimeDialog();
-  realign("", {align, model});
+  realign("", {align, model, whisperReview: $('retimeWhisperReview').checked});
 });
 $("retimeDlg").addEventListener("keydown", e => {
   // Keep Tab inside the dialog, rather than in the timeline underneath it.
   if (e.key !== "Tab") return;
-  const controls = [...$("retimeDlg").querySelectorAll('select,button')]
+  const controls = [...$("retimeDlg").querySelectorAll('select,input,button')]
     .filter(el => !el.disabled && !el.closest('.hide'));
   const first = controls[0], last = controls[controls.length - 1];
   if (e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }

@@ -390,6 +390,10 @@
   .sum .wide u{text-decoration:none; color:var(--accent); cursor:pointer}
   /* min-height:0 or the list refuses to shrink below its content, grows past
      the panel and gets clipped — which reads as “the scrolling is broken”. */
+  #unplacedLyrics{margin-bottom:14px; color:#f1cc7a}
+  #unplacedLyrics summary{cursor:pointer; line-height:1.5}
+  #unplacedLyrics p{font-size:13px; line-height:1.5; margin:8px 0; color:var(--muted)}
+  #unplacedLyrics textarea{width:100%; max-height:240px; resize:vertical}
   .probs{flex:1 1 6rem; overflow:auto; padding:0 8px 10px; min-height:2.5rem}
   /* The summary must never squeeze the Check list out of existence: it gets a
      ceiling and its own scroll, the list gets a guaranteed floor. */
@@ -979,6 +983,7 @@
           </label>
         </div>
         <div class="hint" id="alignExplain" role="status"></div>
+        <div id="qwenReviewRow" class="hide"><label class="knob"><input type="checkbox" id="chkWhisperReview" checked> <span data-t="whisperReviewLabel">Check uncertain timing with Whisper</span></label><div class="hint" data-t="whisperReviewHint"></div></div>
         <div class="hint" id="modelNote"></div>
         <div class="hint hide" id="qwenNote"></div>
         <div class="opts" style="margin-top:7px">
@@ -1091,7 +1096,7 @@
         <input type="range" id="rSoftLevel" min="5" max="80" step="1" value="35" disabled="">
         <b id="vSoftLevel">35%</b>
       </span></div></div></section>
-<section class="review-card inspector-pane" id="inspector-check" data-pane="check"><div class="section-heading"><h2 data-t="studioReview"></h2></div><div class="probs" id="probs"></div><details class="review-summary"><summary data-t="summary"></summary><div class="sum" id="sum"></div></details></section>
+<section class="review-card inspector-pane" id="inspector-check" data-pane="check"><div class="section-heading"><h2 data-t="studioReview"></h2></div><details id="unplacedLyrics" class="hide"><summary></summary><p></p><textarea readonly rows="6" aria-label="Unmatched lyrics"></textarea></details><div class="probs" id="probs"></div><details class="review-summary"><summary data-t="summary"></summary><div class="sum" id="sum"></div></details></section>
 <div class="settings-drawer hide" id="workspaceDrawer"><div class="drawer-heading"><button id="btnWorkspaceClose" data-t="studioBackEdit"></button></div>
 <section class="inspector-pane hide" id="inspector-look" data-pane="look"><h2 data-t="studioLook"></h2><p class="panel-description" data-t="studioLookHint"></p>
 <div class="inspector-group"><h3 data-t="workspaceColors"></h3><div class="inspector-controls"><span class="pick" data-tt="colorsHint" title="What the singing is lit with: first colour is the main voice, second is the second voice">
@@ -1194,6 +1199,7 @@
       <label for="retimeModel" data-t="retimeModelLabel"></label>
       <select id="retimeModel"></select>
     </div>
+    <div id="retimeReviewRow" class="hide"><label class="knob"><input type="checkbox" id="retimeWhisperReview" checked> <span data-t="whisperReviewLabel">Check uncertain timing with Whisper</span></label><p class="hint" data-t="whisperReviewHint"></p></div>
     <p class="muted" id="retimeNote" aria-live="polite"></p>
     <div class="row btns">
       <button id="retimeCancel" data-t="cancel">Cancel</button>

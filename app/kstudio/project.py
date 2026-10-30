@@ -384,7 +384,7 @@ def build_envelope(path: str, log: Log = _noop) -> Dict:
 # --------------------------------------------------------------------------- #
 
 def create(audio_path: str, lyrics_path: str, root: str, *,
-           align_engine: str = "auto", whisper_model: str = "small",
+           align_engine: str = "auto", whisper_model: str = "small", whisper_review: bool = True,
            language: str = "ru", separate: bool = True,
            device: Optional[str] = None, codec: str = "mp3",
            skip=None, separator: str = "htdemucs",
@@ -466,7 +466,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
         lyr, engine = A.align(lyr, align_src, dur, align_engine,
                               whisper_model, language, device, log,
                               isolated=isolated, skip=holes,
-                              fallback_audio=work if isolated else None)
+                              fallback_audio=work if isolated else None, whisper_review=whisper_review)
         if vocals and engine == "whisper" and not lyr.fixed_line_starts:
             A.refine_leading_silence(lyr, vocals, log=log)
             A.refine_uncertain_word_onsets(lyr, vocals, log=log)
@@ -508,6 +508,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             "titleSet": bool(title_set),
             "duration": round(dur, 3),
             "engine": engine,
+            "whisperReview": whisper_review,
             # which model timed it: a re-time must not quietly drop to another
             "model": "qwen3-forcedaligner-0.6b" if engine == "qwen" else whisper_model,
             "source_audio": local_audio,
@@ -536,6 +537,7 @@ def create(audio_path: str, lyrics_path: str, root: str, *,
             "keepSpans": [[round(a, 3), round(b, 3)] for a, b in holes],
             "envelope": envelope,
             "lines": [ln.to_json() for ln in lyr.lines],
+            "unplacedLyrics": lyr.unplaced_lyrics,
         }
         if cover and os.path.isfile(cover):
             # A local picker accepts common image formats. Store one genuine
@@ -836,6 +838,50 @@ def keep_locked(old: List[Dict], fresh: List[Dict], log=_noop) -> int:
     log(tr(f"  lines left as they were, locked: {len(locked)}",
            f"  строк оставлено как были, они заперты: {len(locked)}"))
     return len(locked)
+
+
+def retain_previous_timing(old, fresh, unplaced, log=_noop):
+    """A missing optional recovery model must not erase existing timing.
+
+    Restore only identical lyrics in the same order. A changed text has no
+    trustworthy old correspondence and remains available as unplaced text.
+    """
+    pending = {ln['line'] - 1: ln for ln in unplaced}
+
+    def unchanged():
+        if old and not fresh and any(ln['reason'] in ('whisper-unavailable', 'whisper-disabled') for ln in unplaced):
+            kept = []
+            for line in old:
+                line = dict(line)
+                line['timingReview'] = [[w['w'], w['t'], w['d']] for w in line.get('words') or []]
+                kept.append(line)
+            log(tr("Re-timing unavailable: the previous lyrics and timing were kept. New untimed text is saved separately.",
+                   "Переразметка недоступна: прежний текст и тайминги сохранены. Новый текст без таймингов сохранён отдельно."))
+            return kept, unplaced
+        return fresh, unplaced
+
+    if not pending or len(pending) + len(fresh) != len(old):
+        return unchanged()
+    result, restored, at = [], set(), 0
+    for i, line in enumerate(old):
+        if i in pending:
+            note = pending[i]
+            if note['text'] != line.get('text'):
+                return unchanged()
+            if note['reason'] in ('whisper-unavailable', 'whisper-disabled'):
+                kept = dict(line)
+                kept['timingReview'] = [[w['w'], w['t'], w['d']] for w in kept.get('words') or []]
+                result.append(kept)
+                restored.add(i)
+        else:
+            if at >= len(fresh) or fresh[at].get('text') != line.get('text'):
+                return unchanged()
+            result.append(fresh[at])
+            at += 1
+    if restored:
+        log(tr(f"Whisper recovery was not used: kept previous timing on {len(restored)} lines, marked for review.",
+               f"Резервная проверка Whisper не использовалась: сохранены прежние тайминги {len(restored)} строк, они отмечены для проверки."))
+    return result, [ln for ln in unplaced if ln['line'] - 1 not in restored]
 
 
 def problems(data: Dict) -> List[Dict]:

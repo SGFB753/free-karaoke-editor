@@ -32,10 +32,15 @@ class PreferencesTests(unittest.TestCase):
                 self.assertIsNone(P.timing_engine(root))
                 with urlopen(Request(base + '/api/preferences/timing',
                         data=b'{"engine":"qwen"}', headers={'Content-Type': 'application/json'})) as response:
-                    self.assertEqual(json.load(response), {'engine': 'qwen'})
+                    self.assertEqual(json.load(response), {'engine': 'qwen', 'whisperReview': True})
+                with urlopen(Request(base + '/api/preferences/timing',
+                        data=b'{"engine":"qwen","whisperReview":false}', headers={'Content-Type': 'application/json'})) as response:
+                    self.assertFalse(json.load(response)['whisperReview'])
                 with patch.object(S, 'capabilities', return_value={}):
                     with urlopen(base + '/api/state') as response:
-                        self.assertEqual(json.load(response)['timingEngine'], 'qwen')
+                        state = json.load(response)
+                        self.assertEqual(state['timingEngine'], 'qwen')
+                        self.assertFalse(state['whisperReview'])
             finally:
                 server.shutdown()
                 server.server_close()
@@ -59,6 +64,19 @@ class PreferencesTests(unittest.TestCase):
                 self.assertIsNone(P.timing_engine(root))
             P.save_timing_engine(root, "qwen")
             self.assertEqual(P.timing_engine(root), "qwen")
+
+
+    def test_whisper_review_choice_survives_engine_changes_and_old_settings(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.assertTrue(P.whisper_review(root))
+            P.save_timing_engine(root, 'qwen')
+            self.assertTrue(P.whisper_review(root))
+            P.save_timing_engine(root, 'qwen', whisper_review=False)
+            P.save_timing_engine(root, 'auto')
+            self.assertFalse(P.whisper_review(root))
+            self.assertEqual(P.timing_engine(root), 'auto')
+            P.save_timing_engine(root, 'qwen', whisper_review=True)
+            self.assertTrue(P.whisper_review(root))
 
 
 if __name__ == "__main__":

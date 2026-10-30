@@ -7,6 +7,30 @@ commits themselves are one click away in the history.
 
 ---
 
+## 5.1.1
+
+- The unmatched-lyrics field releases focus on any outside pointer press,
+  including the timeline and minimap. Space then controls playback immediately;
+  selecting and copying text inside the field still works normally.
+
+- Qwen has a separate “Check uncertain timing with Whisper” checkbox when
+  creating a project or re-timing it. Enabled by default; disabling it skips
+  both Whisper recovery paths and model downloads. The choice is remembered
+  for new projects and stored in each project.
+
+- Whisper recovery remains optional for Qwen: missing libraries and failed
+  model downloads or loads no longer abort project creation. Qwen can retry
+  against the original audio. If placement still fails, audio and untimed text
+  are preserved for manual editing; existing timing is retained and marked
+  for review during re-timing. Failed Whisper downloads are not repeated for
+  every block of the song.
+
+- A truncated recording with extra ending lyrics no longer invalidates the
+  independently aligned part of a Qwen project. Unmatched ending text is kept
+  separately in Review, available to copy, without invented timeline or export
+  timings. This requires a reliable preceding alignment; locked lines and
+  partial re-timing are protected from automatic exclusion.
+
 ## 5.1.0
 
 ### Alignment

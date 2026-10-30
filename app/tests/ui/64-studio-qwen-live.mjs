@@ -3,6 +3,7 @@ import puppeteer from 'puppeteer';
 const API=process.env.KARAOKE_API;
 const state=await (await fetch(API+'/api/state')).json();
 let failures=0,installed=true,openedEngine='',rememberedEngine=null;
+let whisperReview=true;
 const ok=(name,condition)=>{console.log((condition?'  ✓ ':'  ✗ ')+name);if(!condition)failures++;};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const browser=await puppeteer.launch({headless:'new',
@@ -15,10 +16,11 @@ await page.setRequestInterception(true);
 page.on('request',request=>{
   const pathname=new URL(request.url()).pathname;
   if(pathname==='/api/state') return request.respond({status:200,contentType:'application/json',body:JSON.stringify({
-    ...state,timingEngine:rememberedEngine,caps:{...state.caps,whisper:true,qwen:installed,qwenModel:true}})});
+    ...state,timingEngine:rememberedEngine,whisperReview,caps:{...state.caps,whisper:true,qwen:installed,qwenModel:true}})});
   if(pathname==='/api/preferences/timing'){
-    rememberedEngine=JSON.parse(request.postData()||'{}').engine;
-    return request.respond({status:200,contentType:'application/json',body:JSON.stringify({engine:rememberedEngine})});
+    const body=JSON.parse(request.postData()||'{}');rememberedEngine=body.engine;
+    if(typeof body.whisperReview==='boolean')whisperReview=body.whisperReview;
+    return request.respond({status:200,contentType:'application/json',body:JSON.stringify({engine:rememberedEngine,whisperReview})});
   }
   if(pathname==='/api/models/open-folder'){
     openedEngine=JSON.parse(request.postData()||'{}').engine;
@@ -43,6 +45,12 @@ ok('native option backgrounds and text have readable contrast',await page.$eval(
   });
 }));
 await page.select('#selAlign','qwen');await sleep(100);
+ok('Whisper review is visible outside advanced settings and enabled by default',await page.$eval('#chkWhisperReview',e=>e.checked&&!e.closest('details')&&e.getBoundingClientRect().height>0));
+const reviewSaved=page.waitForResponse(r=>new URL(r.url()).pathname==='/api/preferences/timing');
+await page.click('#chkWhisperReview');await reviewSaved;
+ok('disabling Whisper review is saved',whisperReview===false);
+await page.reload({waitUntil:'networkidle0'});await page.click('#btnAdd');await sleep(200);
+ok('Whisper review stays disabled after reopening',await page.$eval('#chkWhisperReview',e=>!e.checked));
 ok('Qwen explains supplied lyrics, vocals and approximate RAM outside advanced controls',await page.evaluate(()=>{
   const explanation=document.getElementById('alignExplain'),memory=document.getElementById('qwenNote');
   return !explanation.closest('details') && explanation.getBoundingClientRect().height>0 &&
@@ -58,6 +66,7 @@ await page.click('.build-advanced > summary');
 await page.click('#btnModelFolder');await sleep(100);
 ok('model folder opens the selected Qwen cache, not the Whisper folder',openedEngine==='qwen');
 await page.select('#selAlign','auto');await sleep(100);
+ok('Whisper review control is hidden outside Qwen',await page.$eval('#qwenReviewRow',e=>e.classList.contains('hide')));
 ok('switching back preserves the selected Whisper model',await page.$eval('#selModel',el=>
   !el.classList.contains('hide') && el.value==='small'));
 installed=false;

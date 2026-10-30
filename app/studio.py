@@ -596,6 +596,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/state":
                 return self._json({"projects": P.list_all(PROJECTS),
                                    "timingEngine": PREF.timing_engine(PROJECTS),
+                                   "whisperReview": PREF.whisper_review(PROJECTS),
                                    "downloadBrowser": FE.saved_browser(os.path.join(PROJECTS, '.download-browser.json')),
                                    "uiLangs": extra_langs(),
                                    "caps": capabilities(),
@@ -790,8 +791,11 @@ class Handler(BaseHTTPRequestHandler):
                 engine = body.get('engine')
                 if engine not in PREF.ENGINES:
                     return self._err(400, 'Unsupported timing engine')
-                PREF.save_timing_engine(PROJECTS, engine)
-                return self._json({'engine': engine})
+                review = body.get('whisperReview')
+                if review is not None and not isinstance(review, bool):
+                    return self._err(400, 'whisperReview must be boolean')
+                PREF.save_timing_engine(PROJECTS, engine, review)
+                return self._json({'engine': engine, 'whisperReview': PREF.whisper_review(PROJECTS)})
 
             if path == '/api/job/cancel':
                 with JOBS_LOCK:
@@ -970,6 +974,7 @@ class Handler(BaseHTTPRequestHandler):
                 if background_mode not in ("none", "cover", "video"):
                     background_mode = "cover"
                 opts = dict(align_engine=body.get("align", "auto"),
+                            whisper_review=bool(body.get("whisperReview", PREF.whisper_review(PROJECTS))),
                             strip_backing=bool(body.get("stripBacking", False)),
                             whisper_model=body.get("model", "small"),
                             language=body.get("lang", "auto"),
@@ -1366,6 +1371,8 @@ def realign_part(folder: str, opts: dict, log) -> dict:
 
     text = "\n".join((ln.get("text") or "") for ln in lines[a:b + 1])
     piece = L.parse(text)
+    # Partial re-timing must preserve its one-to-one line mapping.
+    piece.allow_unplaced_ending = False
     if len(piece.lines) != b - a + 1:
         raise ValueError(tr("the chosen lines could not be read back as text",
                             "выбранные строки не удалось прочитать обратно как текст"))
@@ -1391,7 +1398,8 @@ def realign_part(folder: str, opts: dict, log) -> dict:
     piece, engine = A.align(piece, audio, dur,
                             chosen_engine, model,
                             opts.get("lang", "auto"), None, log,
-                            isolated=isolated, skip=outside, fallback_audio=original)
+                            isolated=isolated, skip=outside, fallback_audio=original,
+                            whisper_review=bool(opts.get('whisperReview', data.get('whisperReview', True))))
     onset_audio = vocal_timing_audio(folder, data)
     if onset_audio and engine == "whisper" and not piece.fixed_line_starts:
         A.refine_leading_silence(piece, onset_audio, log=log)
@@ -1402,6 +1410,7 @@ def realign_part(folder: str, opts: dict, log) -> dict:
                                 next_start=hi if b + 1 < len(lines) else None)
 
     fresh = [ln.to_json() for ln in piece.lines]
+    fresh, _ = P.retain_previous_timing(lines[a:b + 1], fresh, piece.unplaced_lyrics, log)
     moved = 0
     for k, got in enumerate(fresh):
         old = lines[a + k]
@@ -1566,7 +1575,8 @@ def _realign(folder: str, opts: dict, log, scratch: str) -> dict:
                           chosen_engine, model,
                           opts.get("lang", "auto"), None, log,
                           isolated=isolated,
-                          skip=holes, fallback_audio=original)
+                          skip=holes, fallback_audio=original,
+                          whisper_review=bool(opts.get('whisperReview', data.get('whisperReview', True))))
     onset_audio = vocal_timing_audio(folder, data)
     if onset_audio and engine == "whisper" and not lyr.fixed_line_starts:
         A.refine_leading_silence(lyr, onset_audio, log=log)
@@ -1574,16 +1584,22 @@ def _realign(folder: str, opts: dict, log, scratch: str) -> dict:
         A.refine_trailing_silence(lyr, onset_audio, log=log)
         A.refine_sustained_tails(lyr, onset_audio, data['duration'], skip=holes, log=log)
     fresh = [ln.to_json() for ln in lyr.lines]
+    fresh, lyr.unplaced_lyrics = P.retain_previous_timing(old_lines, fresh, lyr.unplaced_lyrics, log)
     # A line put right by hand outweighs anything a model returns for it.
     if not removed_backing:
-        P.keep_locked(old_lines, fresh, log)
+        matching = old_lines
+        if lyr.unplaced_lyrics and [ln.get('text') for ln in old_lines[:len(fresh)]] == [ln['text'] for ln in fresh]:
+            matching = old_lines[:len(fresh)]
+        P.keep_locked(matching, fresh, log)
     else:
         for original, aligned in zip(kept, fresh):
             for key in ("voice", "keep", "keepSoft", "section"):
                 if key in original:
                     aligned[key] = original[key]
     data["lines"] = fresh
+    data["unplacedLyrics"] = lyr.unplaced_lyrics
     data["engine"] = engine
+    data["whisperReview"] = bool(opts.get('whisperReview', data.get('whisperReview', True)))
     data["stripBacking"] = strip_backing
     data["noText"] = ", ".join(f"{a:.1f}-{b:.1f}" for a, b in holes)
     data["keepSpans"] = P.keep_spans(data)

@@ -5,7 +5,7 @@ const API=process.env.KARAOKE_API;
 const state=await (await fetch(API+'/api/state')).json();
 const id=state.projects[0].id;
 const project=await (await fetch(API+'/api/project/'+encodeURIComponent(id))).json();
-let saved={...project,engine:'qwen',model:'qwen3-forcedaligner-0.6b'},available=true;
+let saved={...project,engine:'qwen',model:'qwen3-forcedaligner-0.6b',whisperReview:false},available=true;
 let calls=[],cancelled=false,failures=0;
 const ok=(name,test)=>{console.log((test?'  ✓ ':'  ✗ ')+name);if(!test)failures++;};
 const browser=await puppeteer.launch({headless:'new',
@@ -36,8 +36,10 @@ try{
   }
   await open();
   ok('project Qwen engine is selected by default',await page.$eval('#retimeEngine',e=>e.value==='qwen'));
+  ok('the project remembers its disabled Whisper review choice',await page.$eval('#retimeWhisperReview',e=>!e.checked&&e.getBoundingClientRect().height>0));
   ok('Whisper model is hidden for Qwen',await page.$eval('#retimeModelRow',e=>e.classList.contains('hide')));
   await page.select('#retimeEngine','whisper');
+  ok('Whisper review control is hidden when Whisper is the main engine',await page.$eval('#retimeReviewRow',e=>e.classList.contains('hide')));
   ok('Qwen-to-Whisper starts with a valid model, not the Qwen model name',await page.$eval('#retimeModel',e=>e.value==='small'));
   await page.select('#retimeModel','medium');
   await page.select('#retimeEngine','qwen');await page.select('#retimeEngine','whisper');
@@ -52,12 +54,13 @@ try{
   await page.waitForSelector('#scrJob:not(.hide) #btnJobCancel:not(.hide)');
   ok('explicit engine and model reach re-timing API',calls.length===1&&calls[0].align==='whisper'&&calls[0].model==='large-v3');
   await page.click('#btnJobCancel');await page.waitForSelector('#scrEdit:not(.hide)');
-  saved={...project,engine:'whisper',model:'medium'};
+  saved={...project,engine:'whisper',model:'medium',whisperReview:false};
   await open();
   ok('saved Whisper size is restored in the dialog',await page.$eval('#retimeModel',e=>e.value==='medium'));
   await page.select('#retimeEngine','qwen');await page.click('#retimeGo');
   await page.waitForSelector('#scrJob:not(.hide) #btnJobCancel:not(.hide)');
   ok('Whisper-to-Qwen explicitly sends the Qwen engine',calls.length===2&&calls[1].align==='qwen');
+  ok('the Whisper review choice reaches the re-timing API',calls[1].whisperReview===false);
   await page.click('#btnJobCancel');await page.waitForSelector('#scrEdit:not(.hide)');
   saved={...project,engine:'qwen',model:'qwen3-forcedaligner-0.6b'};available=false;
   await open();

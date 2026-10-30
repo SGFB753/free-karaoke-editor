@@ -307,6 +307,9 @@ class Lyrics:
     skips: List[tuple] = field(default_factory=list)
     # Lines copied from a lyrics site's recommendation widget, not from a song.
     ignored_junk: int = 0
+    # Text with no reliable audio match stays recoverable outside timed lyrics.
+    unplaced_lyrics: list = field(default_factory=list)
+    allow_unplaced_ending: bool = True
 
     @property
     def words(self) -> List[Word]:

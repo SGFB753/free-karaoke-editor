@@ -668,5 +668,264 @@ class RecoveryTests(unittest.TestCase):
             self.assertTrue(any('alignment' in p['kinds'] for p in P.problems(P.load(folder))))
 
 
+class TruncatedRecordingTests(unittest.TestCase):
+    def fixture(self):
+        return L.parse('\n'.join(f'Unique phrase number {i}' for i in range(12)))
+
+    def guide(self, lyrics, *args, **kwargs):
+        for i, ln in enumerate(lyrics.lines):
+            for j, w in enumerate(ln.words):
+                w.start = i * 2 + j * .35 if i < 8 else 23.3
+                w.end = w.start + (.3 if i < 8 else .02)
+                w.prob = .9 if i < 8 else 0
+            ln.start, ln.end = ln.words[0].start, ln.words[-1].end
+
+    def test_unmatched_suffix_does_not_invalidate_reliable_phrase_bounds(self):
+        lyrics = self.fixture()
+        with patch.object(A, 'align_whisper', side_effect=self.guide):
+            windows = Q._independent_jobs(lyrics.lines, 'unused', 24, 0, 24,
+                                          'en', None, lambda _: None, [], 'small')
+        self.assertEqual(windows.unplaced_start, 8)
+        self.assertEqual(len(windows.guide), 8)
+        self.assertEqual(windows[-1][1], 8)
+        self.assertEqual(len(lyrics.lines), 12)  # detection itself never deletes text
+
+    def test_short_reliable_prefix_can_be_retried_without_extra_text(self):
+        lyrics = self.fixture()
+        lyrics.lines = lyrics.lines[:3] + lyrics.lines[8:11]
+        def guide(short, *args, **kwargs):
+            self.guide(short)
+            for ln in short.lines[3:]:
+                ln.start, ln.end = 23.3, 23.32
+                for w in ln.words:
+                    w.start, w.end, w.prob = 23.3, 23.32, 0
+        with patch.object(A, 'align_whisper', side_effect=guide):
+            windows = Q._independent_jobs(lyrics.lines, 'unused', 24, 0, 24,
+                                          'en', None, lambda _: None, [], 'small')
+        self.assertEqual(windows.unplaced_start, 3)
+        self.assertEqual(list(windows), [(0, 3, 0, 24)])
+
+    def test_cut_recording_keeps_unmatched_text_outside_timed_lyrics(self):
+        import numpy as np
+        lyrics = self.fixture()
+        original = [ln.text for ln in lyrics.lines]
+        model = FakeModel()
+        def infer(**kwargs):
+            words = kwargs['text'].split()
+            return [[Item(text=w, start_time=1 if len(words) == 48 else .2 + i * .35,
+                          end_time=1 if len(words) == 48 else .5 + i * .35)
+                     for i, w in enumerate(words)]]
+        model.align = infer
+        with patch('kstudio.audio.read_pcm_mono', return_value=np.zeros(384000, dtype=np.int16)), \
+                patch.object(A, 'align_whisper', side_effect=self.guide):
+            Q.align_qwen(lyrics, 'unused', 24, 'en', model=model)
+        self.assertEqual([ln.text for ln in lyrics.lines], original[:8])
+        self.assertEqual([ln['text'] for ln in lyrics.unplaced_lyrics], original[8:])
+        self.assertEqual([ln['line'] for ln in lyrics.unplaced_lyrics], [9, 10, 11, 12])
+        self.assertFalse(Q._failed_placement(lyrics.lines))
+
+    def test_low_confidence_prefix_does_not_allow_automatic_exclusion(self):
+        lyrics = self.fixture()
+        def uncertain(guide, *args, **kwargs):
+            self.guide(guide)
+            for word in guide.words:
+                word.prob = 0
+        with patch.object(A, 'align_whisper', side_effect=uncertain):
+            with self.assertRaises(ValueError):
+                Q._independent_jobs(lyrics.lines, 'unused', 24, 0, 24,
+                                    'en', None, lambda _: None, [], 'small')
+
+    def test_locked_ending_is_not_silently_excluded(self):
+        import numpy as np
+        lyrics = self.fixture()
+        lyrics.lines[-1].lock = True
+        model = FakeModel()
+        model.align = lambda **kw: [[Item(text=w, start_time=1, end_time=1) for w in kw['text'].split()]]
+        with patch('kstudio.audio.read_pcm_mono', return_value=np.zeros(384000, dtype=np.int16)), \
+                patch.object(A, 'align_whisper', side_effect=self.guide):
+            with self.assertRaisesRegex(ValueError, 'locked|закреплённые'):
+                Q.align_qwen(lyrics, 'unused', 24, 'en', model=model)
+        self.assertEqual(len(lyrics.lines), 12)
+        self.assertFalse(lyrics.unplaced_lyrics)
+
+    def test_collapse_away_from_recording_end_is_not_treated_as_missing_text(self):
+        lyrics = self.fixture()
+        def misplaced(guide, *args, **kwargs):
+            self.guide(guide)
+            for ln in guide.lines[8:]:
+                ln.start = ln.end = 18
+                for w in ln.words:
+                    w.start = w.end = 18
+        with patch.object(A, 'align_whisper', side_effect=misplaced):
+            with self.assertRaises(ValueError):
+                Q._independent_jobs(lyrics.lines, 'unused', 24, 0, 24,
+                                    'en', None, lambda _: None, [], 'small')
+
+    def test_unmatched_text_survives_edit_save_and_is_not_exported_as_lyrics(self):
+        from kstudio import project as P
+        import studio
+        lyrics = L.parse('Matched phrase')
+        for i, w in enumerate(lyrics.words):
+            w.start, w.end = i * .4, i * .4 + .3
+        lyrics.lines[0].start, lyrics.lines[0].end = 0, .7
+        pending = [{'text': 'An unmatched chorus', 'line': 96, 'reason': 'unmatched-ending'}]
+        data = dict(title='Test', duration=24, lines=[ln.to_json() for ln in lyrics.lines],
+                    unplacedLyrics=pending, tracks={})
+        with tempfile.TemporaryDirectory() as folder:
+            P.save(folder, data)
+            reopened = P.load(folder)
+            P.save_lines(folder, reopened['lines'])
+            edited = P.load(folder)
+            self.assertEqual(edited['unplacedLyrics'], pending)
+            self.assertEqual(studio._lyrics_from(edited).plain_text(), 'Matched phrase')
+
+
+class OptionalWhisperTests(unittest.TestCase):
+    def lyrics(self):
+        return L.parse('\n'.join(['Hello again world'] * 8))
+
+    def collapsed(self):
+        model = FakeModel()
+        model.align = lambda **kw: [[Item(text=w, start_time=1, end_time=1) for w in kw['text'].split()]]
+        return model
+
+    def test_disabling_review_skips_both_whisper_paths(self):
+        import numpy as np
+        from kstudio import qwen_recovery as QR
+        for collapsed in (True, False):
+            with self.subTest(collapsed=collapsed):
+                lyrics, model = self.lyrics(), self.collapsed() if collapsed else FakeModel()
+                if not collapsed:
+                    infer = model.align
+                    def compressed(**kw):
+                        result = infer(**kw)
+                        result[0][0].end_time = result[0][0].start_time + .01
+                        return result
+                    model.align = compressed
+                with patch('kstudio.audio.read_pcm_mono', return_value=np.zeros(320000, dtype=np.int16)), \
+                        patch.object(Q, '_independent_jobs', side_effect=AssertionError('Whisper guide called')) as guide, \
+                        patch.object(QR, 'recover', side_effect=AssertionError('Whisper words called')) as recovery:
+                    Q.align_qwen(lyrics, 'unused', 20, 'en', model=model, whisper_review=False)
+                guide.assert_not_called(); recovery.assert_not_called()
+                if collapsed:
+                    self.assertEqual(len(lyrics.unplaced_lyrics), 8)
+                    self.assertTrue(all(ln['reason'] == 'whisper-disabled' for ln in lyrics.unplaced_lyrics))
+                else:
+                    self.assertEqual(len(lyrics.lines), 8)
+                    self.assertTrue(any(ln.timing_review for ln in lyrics.lines))
+
+    def test_dispatch_passes_the_review_choice_to_qwen(self):
+        lyrics = self.lyrics()
+        with patch.object(Q, 'align_qwen', return_value=lyrics) as run:
+            A.align(lyrics, 'unused', 20, 'qwen', language='en', whisper_review=False)
+        self.assertIs(run.call_args.kwargs['whisper_review'], False)
+
+    def test_missing_code_failed_download_and_invalid_weights_preserve_draft(self):
+        import numpy as np
+        for error in (ModuleNotFoundError('stable_whisper'), OSError('SSL EOF'), RuntimeError('checksum mismatch')):
+            with self.subTest(error=str(error)):
+                lyrics = self.lyrics()
+                with patch('kstudio.audio.read_pcm_mono', return_value=np.zeros(320000, dtype=np.int16)), \
+                        patch.object(A, 'align_whisper', side_effect=error) as recovery:
+                    result = Q.align_qwen(lyrics, 'unused', 20, 'en', model=self.collapsed())
+                self.assertIs(result, lyrics)
+                self.assertEqual(result.lines, [])
+                self.assertEqual([ln['text'] for ln in result.unplaced_lyrics], ['Hello again world'] * 8)
+                self.assertTrue(all(ln['reason'] == 'whisper-unavailable' for ln in result.unplaced_lyrics))
+                recovery.assert_called_once()
+
+    def test_original_audio_can_recover_qwen_without_whisper(self):
+        import numpy as np
+        lyrics, model = self.lyrics(), FakeModel()
+        good = model.align
+        def infer(**kw):
+            if np.any(kw['audio'][0]):
+                return good(**kw)
+            return [[Item(text=w, start_time=1, end_time=1) for w in kw['text'].split()]]
+        model.align = infer
+        with patch('kstudio.audio.read_pcm_mono', side_effect=lambda path, _: np.ones(320000, dtype=np.int16) if path == 'original' else np.zeros(320000, dtype=np.int16)), \
+                patch.object(A, 'align_whisper', side_effect=OSError('offline')):
+            Q.align_qwen(lyrics, 'vocal', 20, 'en', model=model, fallback_audio='original')
+        self.assertEqual(len(lyrics.lines), 8)
+        self.assertFalse(lyrics.unplaced_lyrics)
+        self.assertFalse(Q._failed_placement(lyrics.lines))
+
+    def test_local_recovery_model_failure_keeps_existing_qwen_words(self):
+        from kstudio import qwen_recovery as QR
+        lyrics = L.parse('Hello again world')
+        for i, word in enumerate(lyrics.words):
+            word.start, word.end = i * .02, i * .02 + .02
+        lyrics.lines[0].start, lyrics.lines[0].end = 0, .06
+        before = [(w.text, w.start, w.end) for w in lyrics.words]
+        def unavailable(*args, **kwargs):
+            raise OSError('download failed')
+        with patch.dict(sys.modules, {'stable_whisper': Item(load_model=unavailable)}):
+            self.assertEqual(QR.recover(lyrics.lines, 'unused', 20, 'en', None, lambda _: None), 0)
+        self.assertEqual([(w.text, w.start, w.end) for w in lyrics.words], before)
+
+    def test_unavailable_whisper_is_not_downloaded_again_for_each_block(self):
+        import numpy as np
+        lyrics = self.lyrics()
+        def jobs(lines, *args):
+            return [(lines[:4], 0, 4), (lines[4:], 4, 8)]
+        with patch('kstudio.audio.read_pcm_mono', return_value=np.zeros(128000, dtype=np.int16)), \
+                patch.object(Q, 'MAX_SECONDS', 5), patch.object(Q, '_jobs', side_effect=jobs), \
+                patch.object(A, 'align_whisper', side_effect=OSError('offline')) as recovery:
+            Q.align_qwen(lyrics, 'unused', 8, 'en', model=self.collapsed())
+        recovery.assert_called_once()
+        self.assertEqual(len(lyrics.unplaced_lyrics), 8)
+
+    def test_cancellation_is_not_treated_as_unavailable_recovery(self):
+        import numpy as np
+        from kstudio import jobcontrol as JC
+        with patch('kstudio.audio.read_pcm_mono', return_value=np.zeros(320000, dtype=np.int16)), \
+                patch.object(A, 'align_whisper', side_effect=JC.Cancelled):
+            with self.assertRaises(JC.Cancelled):
+                Q.align_qwen(self.lyrics(), 'unused', 20, 'en', model=self.collapsed())
+
+    def test_existing_timings_survive_failed_optional_recovery(self):
+        from kstudio import project as P
+        old = [{'text': 'Previous lyric', 'start': 2, 'end': 3,
+                'words': [{'w': 'Previous', 't': 2, 'd': .4}, {'w': 'lyric', 't': 2.5, 'd': .5}]}]
+        pending = [{'text': 'Previous lyric', 'line': 1, 'reason': 'whisper-unavailable'}]
+        fresh, pending = P.retain_previous_timing(old, [], pending)
+        self.assertEqual(fresh[0]['words'], old[0]['words'])
+        self.assertEqual((fresh[0]['start'], fresh[0]['end']), (2, 3))
+        self.assertTrue(fresh[0]['timingReview'])
+        self.assertFalse(pending)
+        # Different lyrics must never inherit the old lyric's timing.
+        pending = [{'text': 'Changed lyric', 'line': 1, 'reason': 'whisper-unavailable'}]
+        fresh, pending = P.retain_previous_timing(old, [], pending)
+        self.assertEqual(fresh[0]['text'], 'Previous lyric')
+        self.assertEqual(fresh[0]['words'], old[0]['words'])
+        self.assertEqual(pending[0]['text'], 'Changed lyric')
+
+    def test_project_is_created_with_audio_and_text_even_without_any_recovered_times(self):
+        import wave
+        from pathlib import Path
+        from kstudio import project as P
+        real_align = Q.align_qwen
+        for enabled in (True, False):
+            with tempfile.TemporaryDirectory() as folder:
+                audio, text = Path(folder) / 'source.wav', Path(folder) / 'source.txt'
+                with wave.open(str(audio), 'wb') as wav:
+                    wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(16000)
+                    wav.writeframes(b'\0\0' * 320000)
+                text.write_text(self.lyrics().plain_text(), encoding='utf-8')
+                with patch.object(Q, 'align_qwen', side_effect=lambda *a, **kw: real_align(*a, **kw, model=self.collapsed())), \
+                        patch.object(A, 'align_whisper', side_effect=OSError('offline') if enabled else AssertionError('Whisper called')) as whisper:
+                    project = P.create(str(audio), str(text), str(Path(folder) / 'projects'),
+                                       align_engine='qwen', language='en', separate=False, whisper_review=enabled)
+                if not enabled:
+                    whisper.assert_not_called()
+                saved = P.load(project)
+                self.assertIs(saved['whisperReview'], enabled)
+                self.assertFalse(saved['lines'])
+                self.assertEqual(len(saved['unplacedLyrics']), 8)
+                self.assertTrue(Path(saved['source_audio']).is_file())
+                self.assertEqual(Path(saved['source_lyrics']).read_text(encoding='utf-8'), text.read_text(encoding='utf-8'))
+
+
+
 if __name__ == '__main__':
     unittest.main()
