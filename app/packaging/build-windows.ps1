@@ -33,7 +33,7 @@ if (-not $SkipTests) {
     $env:PYTHONUTF8 = '1'
     Push-Location (Join-Path $RepoRoot 'app')
     try {
-        foreach ($Suite in @('test_pipeline.py','test_qwen.py','test_vocal_tails.py','test_native_edit_menu.py','test_project_backdrop.py','test_video_end_countdown.py','test_delivery.py','test_cli.py','test_video_colors.py','test_packaging.py')) {
+        foreach ($Suite in @('test_pipeline.py','test_qwen.py','test_vocal_tails.py','test_native_edit_menu.py','test_project_backdrop.py','test_video_end_countdown.py','test_video_text.py','test_delivery.py','test_cli.py','test_video_colors.py','test_packaging.py')) {
             & $Python (Join-Path 'tests' $Suite)
             if ($LASTEXITCODE) { throw "$Suite failed; release not built." }
         }

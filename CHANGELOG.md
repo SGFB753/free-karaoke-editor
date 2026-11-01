@@ -7,6 +7,13 @@ commits themselves are one click away in the history.
 
 ---
 
+## 5.1.2
+
+- Fixed arrow-like glyphs appearing beside words in MP4 exports and covers.
+  Some fonts displayed invisible directional marks copied from lyric sites.
+  These formatting marks are removed on import and rendering, including for
+  existing projects, without changing timing or requiring re-alignment.
+
 ## 5.1.1
 
 - Qwen has a separate “Check uncertain timing with Whisper” checkbox when

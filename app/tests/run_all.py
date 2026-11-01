@@ -322,6 +322,11 @@ def main() -> int:
     if r.returncode != 0:
         say("\nFAILED on the exported ending countdown.")
         return 1
+    r = (SKIPPED if start_at else subprocess.run(
+        [sys.executable, os.path.join(ROOT, "tests", "test_video_text.py")], cwd=ROOT))
+    if r.returncode != 0:
+        say("\nFAILED on exported text rendering.")
+        return 1
     r = (SKIPPED if start_at else
          subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_qwen.py")], cwd=ROOT))
     if r.returncode != 0:

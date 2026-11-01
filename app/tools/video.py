@@ -317,7 +317,7 @@ def short_line(text: str, most: int = 34) -> str:
     there is more.
     """
     text = re.sub(r"\s+([,.;:!?…»\)\]\}])", r"\1",
-                  " ".join(str(text or "").split()))
+                  " ".join(L.clean_display_text(text).split()))
     if len(text) <= most:
         return text
     cut = text[:most]
@@ -532,7 +532,7 @@ class LineArt:
     def __init__(self, line, font_for, width, margin, main=True, align="center"):
         from PIL import Image, ImageDraw
         raw = line["words"] or []
-        words = [w["w"] for w in raw] or [line["text"]]
+        words = [L.clean_display_text(w["w"]) for w in raw] or [L.clean_display_text(line["text"])]
         # a syllable carries no space before it: “ма ла фи ли” is one word
         glue = [bool(w.get("g")) for w in raw] or [False]
         def joined(items, flags):
@@ -830,8 +830,8 @@ def title_card_image(payload, W=1920, H=1080, font_path=None):
 
     apply_colors(payload)
     D = payload.get("data") or {}
-    title = str(D.get("title") or "").strip()
-    artist = str(D.get("artist") or "").strip()
+    title = L.clean_display_text(D.get("title")).strip()
+    artist = L.clean_display_text(D.get("artist")).strip()
     cover_uri = payload.get("cardCover") or payload.get("cover") or ""
     frame = make_background(W, H, cover_uri, 58).copy()
     # A little extra shade keeps long white titles readable on pale artwork.
@@ -1145,7 +1145,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
     # The frame speaks the song's language; the log below keeps speaking the
     # program's, because it is read by the person at the keyboard.
     said = frame_lang(payload)
-    title = (D.get("title") or "") + ((" — " + D["artist"]) if D.get("artist") else "")
+    title = L.clean_display_text((D.get("title") or "") + ((" — " + D["artist"]) if D.get("artist") else ""))
 
     # The name in the corner never changes, and drawing it anew on each of
     # thousands of frames was pure ceremony: it is painted into the background
@@ -1497,7 +1497,7 @@ def render(payload, audio_wav, out_path, args, on_progress=None):
                     paste_faded(frame, piece, (bx[0], y_j + bx[1]), a_j)
                 if k == 0 and lines[j].get("section"):
                     d.text((margin, y_j - int(H * 0.055)),
-                           lines[j]["section"].upper(), font=small,
+                           L.clean_display_text(lines[j]["section"]).upper(), font=small,
                            fill=COL_SECT, **edged(small))
 
         # A backing line that will enter over the current lead is shown dim in

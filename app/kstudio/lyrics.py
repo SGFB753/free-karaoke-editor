@@ -327,6 +327,18 @@ SYL_MARK = "=\u00ad"
 _CLOSE_PUNCT_RE = re.compile(r"^[,.;:!?…»\)\]\}]")
 
 
+_DISPLAY_CONTROLS = dict.fromkeys(map(ord, "\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\ufeff"))
+
+
+def clean_display_text(text: str) -> str:
+    """Copied directional marks are invisible in browsers but some fonts draw them.
+
+    Keep actual arrows, joiners and variation selectors: those can be part of
+    the written lyric. Only remove the invisible directional formatting/BOM.
+    """
+    return str(text or "").translate(_DISPLAY_CONTROLS)
+
+
 def tidy_spacing(text: str) -> str:
     """Remove accidental spaces before closing punctuation from pasted text."""
     return re.sub(r"\s+([,.;:!?…»\)\]\}])", r"\1", str(text or ""))
@@ -486,7 +498,7 @@ def strip_paste_junk(raw: str) -> tuple[str, int]:
 
 def parse(raw: str) -> Lyrics:
     """Text → Lyrics. Understands LRC timings, bracketed sections and meta headers."""
-    raw, ignored_junk = strip_paste_junk(raw)
+    raw, ignored_junk = strip_paste_junk(clean_display_text(raw))
     lyr = Lyrics()
     lyr.ignored_junk = ignored_junk
     pending_section: Optional[str] = None
