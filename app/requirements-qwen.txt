@@ -2,3 +2,6 @@
 # .venv\Scripts\python.exe -m pip install -r app\requirements-qwen.txt
 # Keep the official wrapper's matching Transformers/tokenizer versions.
 qwen-asr==0.0.6
+# nagisa_utils imports six.moves from a Cython extension; wheel metadata and
+# PyInstaller cannot reliably discover that runtime dependency themselves.
+six>=1.16

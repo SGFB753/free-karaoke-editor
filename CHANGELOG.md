@@ -7,6 +7,17 @@ commits themselves are one click away in the history.
 
 ---
 
+## 5.1.3
+
+- Qwen dependencies and the downloader's Node binary are separate from the
+  core ZIP. They download automatically once on first use and remain cached
+  outside the installation across editor updates. Existing model weights stay.
+- On the same volume, the updater hardlinks immutable temporary program copies
+  instead of repeatedly writing the whole application. Rollback is preserved;
+  different volumes fall back to ordinary copying.
+  Completed updates remove the temporary archive, unpacked files and retired
+  updater copy. Obsolete bundled Qwen libraries do not remain in the installation.
+
 ## 5.1.2
 
 - Fixed arrow-like glyphs appearing beside words in MP4 exports and covers.

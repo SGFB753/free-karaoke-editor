@@ -267,4 +267,27 @@ class RecoveryTests(unittest.TestCase):
                 self.assertEqual(F.tool(), expected)
 
 
+class CachedNodeTests(unittest.TestCase):
+    def test_cached_node_updates_pytubefix_runners_too(self):
+        from types import ModuleType
+        from pathlib import Path
+        from kstudio import components as C
+        package = ModuleType('nodejs_wheel'); package.__path__ = []
+        package.__file__ = 'old-runtime/nodejs_wheel/__init__.py'
+        executable = ModuleType('nodejs_wheel.executable'); executable.ROOT_DIR = 'old-runtime'
+        package.executable = executable
+        runner = ModuleType('pytubefix.sig_nsig.node_runner'); runner.NODE_DIR = 'old-runtime'
+        guard = ModuleType('pytubefix.botGuard.bot_guard'); guard.NODE_DIR = 'old-runtime'; guard.NODE_PATH = 'old.exe'
+        with patch.dict(sys.modules, {'nodejs_wheel': package, 'nodejs_wheel.executable': executable,
+                'pytubefix.sig_nsig.node_runner': runner, 'pytubefix.botGuard.bot_guard': guard}), \
+                patch.object(C, 'supported', return_value=True), patch.object(C, 'ensure', return_value=Path('cached-node')), \
+                patch.object(F.os.path, 'isfile', return_value=False), patch.object(F, '_setting', return_value=''), \
+                patch.object(F, 'extra_args', return_value=[]), patch.dict(os.environ, {'KARAOKE_YTDLP': ''}):
+            result = F.javascript_args()
+        self.assertEqual(result, ['--js-runtimes', 'node:' + str(Path('cached-node')/'node.exe')])
+        self.assertEqual(executable.ROOT_DIR, 'cached-node')
+        self.assertEqual(runner.NODE_DIR, 'cached-node')
+        self.assertEqual(guard.NODE_PATH, str(Path('cached-node')/'node.exe'))
+
+
 if __name__=='__main__': unittest.main()

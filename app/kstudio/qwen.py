@@ -65,7 +65,8 @@ def prepare_import():
 
 
 def available() -> bool:
-    return importlib.util.find_spec("qwen_asr") is not None
+    from . import components
+    return components.supported() or importlib.util.find_spec("qwen_asr") is not None
 
 
 def _key(text):
@@ -547,6 +548,9 @@ def align_qwen(lyrics, audio_path, duration, language="auto", device=None,
     lent = model is not None
     try:
         if model is None:
+            from . import components
+            if components.supported():
+                components.activate_qwen(log)
             import torch
             prepare_import()
             from qwen_asr import Qwen3ForcedAligner

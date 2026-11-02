@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
+import json
+import sys
 from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, "..", ".."))
@@ -18,27 +20,25 @@ datas = [
 ]
 binaries = []
 hiddenimports = []
-with_qwen = os.environ.get("KARAOKE_WITH_QWEN") == "1"
 
 # These libraries discover plugins, model descriptions or data files at
 # runtime.  PyInstaller cannot see those dynamic imports by reading studio.py.
 for package in ("demucs", "stable_whisper", "whisper", "yt_dlp", "imageio_ffmpeg",
-                "pytubefix", "nodejs_wheel", "yt_dlp_ejs"):
+                "pytubefix", "yt_dlp_ejs"):
     d, b, h = collect_all(package)
     datas += d
     binaries += b
     hiddenimports += h
 
-# An explicit optional build avoids shipping a developer's extra ML runtime by
-# accident. Include the tokenizer dictionaries needed by the official wrapper.
-if with_qwen:
-    for package in ("qwen_asr", "nagisa", "soynlp"):
-        d, b, h = collect_all(package, filter_submodules=lambda name: ".cli" not in name)
-        datas += d
-        binaries += b
-        hiddenimports += h
-    for distribution in ("qwen-asr", "transformers", "accelerate", "nagisa", "soynlp"):
-        datas += copy_metadata(distribution)
+# Optional engine packages live in the separately cached runtime, including
+# their Python code: omitting only model weights does not make the core small.
+component_exclusions = ["qwen_asr", "transformers", "nagisa", "soynlp"]
+exclusion_file = os.path.join(ROOT, "build", "component-exclusions.json")
+if os.path.isfile(exclusion_file):
+    with open(exclusion_file, encoding="utf-8") as source:
+        component_exclusions += json.load(source)
+component_exclusions = [name for name in component_exclusions if name != "nodejs_wheel"]
+hiddenimports += ["nodejs_wheel", "nodejs_wheel.executable"]
 
 for distribution in ("demucs", "stable-ts", "openai-whisper", "yt-dlp",
                      "soundfile", "imageio-ffmpeg", "yt-dlp-ejs"):
@@ -54,6 +54,13 @@ hiddenimports += collect_submodules("yt_dlp")
 # small Pillow module family; otherwise the EXE builds successfully and only
 # fails later on ImageEnhance/ImageDraw when a person asks for an MP4.
 hiddenimports += collect_submodules("PIL")
+# Cached Qwen packages are ordinary .py files. Their standard-library imports
+# are not visible to the core's static graph (for example filecmp in HF).
+hiddenimports += [name for name in sys.stdlib_module_names if name not in
+                  {"antigravity", "this", "tkinter", "turtle", "idlelib", "ensurepip", "venv", "_tkinter"}
+                  and not name.startswith("_test")]
+for package in ("email", "http", "urllib", "importlib", "xml", "html", "concurrent", "multiprocessing"):
+    hiddenimports += collect_submodules(package)
 
 # Model weights are deliberately not part of a normal release.  Whisper and
 # Demucs already download the selected weight once into the user's cache and
@@ -88,7 +95,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=["tkinter", "matplotlib.tests", "numpy.tests"] + ([] if with_qwen else ["qwen_asr"]),
+    excludes=["tkinter", "matplotlib.tests", "numpy.tests"] + component_exclusions,
     noarchive=False,
 )
 

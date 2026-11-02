@@ -7,12 +7,20 @@ on:
         description: "Release tag, for example v4.46.3"
         required: true
         type: string
+      publish:
+        description: "Publish only after all checks pass (disable for a verification build)"
+        default: true
+        type: boolean
   push:
     tags:
       - "v*"
 
 permissions:
   contents: write
+
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -74,16 +82,77 @@ jobs:
         run: |
           $version = (.\.venv\Scripts\python.exe -c "import sys; sys.path.insert(0, 'app'); import kstudio; print(kstudio.__version__)").Trim()
           if ($env:RELEASE_TAG -ne "v$version") { throw "Tag must be v$version" }
-          # Libraries and ffmpeg stay self-contained. Model weights download
-          # once on first use and then live in the user's cache; carrying them
-          # in every GitHub release only makes uploads slower and less reliable.
+          # Core libraries and ffmpeg stay self-contained. Optional runtimes
+          # and model weights persist separately across application updates.
           powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\app\packaging\build-windows.ps1 -Repository '${{ github.repository }}' -WithQwen -SkipTests
+      - name: Check compatibility with already published runtimes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $published = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/runtime-v1" 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            if (($published | Out-String) -notmatch 'HTTP 404') { throw 'Could not check the published runtime release.' }
+            Write-Host 'First runtime release: staged runtimes were checked by the build.'; exit 0
+          }
+          if (($published | ConvertFrom-Json).draft) { Write-Host 'Runtime draft is not yet used by clients; staged runtimes were checked.'; exit 0 }
+          $root = Join-Path $env:RUNNER_TEMP 'published-runtimes'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          foreach ($component in @('qwen', 'node')) {
+            $name = (.\.venv\Scripts\python.exe -c "import sys; sys.path.insert(0,'app'); from kstudio.components import filename; print(filename('$component'))").Trim()
+            gh release download runtime-v1 --pattern $name --pattern "$name.sha256" --dir $root --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Published runtime download failed.' }
+            $archive = Join-Path $root $name
+            $expected = (Get-Content -LiteralPath "$archive.sha256" -Raw).Trim().Split(' ')[0]
+            if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $expected) { throw 'Published runtime checksum mismatch.' }
+            Expand-Archive -LiteralPath $archive -DestinationPath (Join-Path $root $component) -Force
+          }
+          $env:KARAOKE_COMPONENTS_DIR = $root
+          $probe = Start-Process -FilePath build\release-dist\KaraokeStudio\KaraokeStudio.exe -ArgumentList '--internal-package-smoke' -Wait -PassThru -WindowStyle Hidden
+          if ($probe.ExitCode) { throw 'Core is incompatible with cached runtimes. Bump the runtime revision before publishing.' }
+      - name: Upload verified build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-${{ github.sha }}
+          path: |
+            dist/*.zip
+            dist/*.sha256
       - name: Create or update GitHub release
+        if: github.event_name != 'workflow_dispatch' || inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
         shell: pwsh
         run: |
+          $current = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:TAG" 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            if (-not ($current | ConvertFrom-Json).draft) {
+              throw 'This version is already public. Use a new version, or publish=false for verification.'
+            }
+          } elseif (($current | Out-String) -notmatch 'HTTP 404') {
+            throw 'Could not safely check whether this version is already public.'
+          }
+          # Optional runtimes have their own immutable release/cache revision.
+          # Publish them first so the new core never points at missing assets.
+          gh release view runtime-v1 2>$null
+          if ($LASTEXITCODE -ne 0) { gh release create runtime-v1 --target $env:GITHUB_SHA --title 'Optional runtimes v1' --draft --notes 'One-time Qwen and Node runtimes, cached separately from application updates.' }
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime release creation failed.' }
+          $runtime = gh release view runtime-v1 --json isDraft,assets | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime state check failed.' }
+          $existing = @($runtime.assets.name)
+          foreach ($asset in Get-ChildItem dist\*-runtime-v1-*) {
+            if ($runtime.isDraft) {
+              # A retry may have generated a different ZIP checksum. Replace
+              # both draft assets together; public assets remain immutable.
+              gh release upload runtime-v1 $asset.FullName --clobber
+              if ($LASTEXITCODE -ne 0) { throw 'Runtime draft upload failed.' }
+            } elseif ($asset.Name -notin $existing) {
+              gh release upload runtime-v1 $asset.FullName
+              if ($LASTEXITCODE -ne 0) { throw 'Runtime upload failed.' }
+            }
+          }
+          gh release edit runtime-v1 --draft=false --latest=false
+          if ($LASTEXITCODE -ne 0) { throw 'Runtime publication failed.' }
           $version = $env:TAG.TrimStart('v')
           $sections = foreach ($file in @('CHANGELOG.ru.md', 'CHANGELOG.md')) {
             $log = Get-Content -LiteralPath $file -Raw -Encoding utf8

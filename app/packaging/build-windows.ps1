@@ -20,6 +20,8 @@ if (-not $Repository) {
 if ($WithQwen) {
     & $Python -m pip install --disable-pip-version-check -r (Join-Path $RepoRoot 'app\requirements-qwen.txt')
     if ($LASTEXITCODE) { throw 'Could not install the optional Qwen engine.' }
+    & $Python (Join-Path $RepoRoot 'app\packaging\runtime-components.py')
+    if ($LASTEXITCODE) { throw 'Could not build the separate runtime components.' }
 }
 $env:KARAOKE_WITH_QWEN = if ($WithQwen) { '1' } else { '0' }
 if ($Repository -notmatch '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$') {
@@ -33,7 +35,7 @@ if (-not $SkipTests) {
     $env:PYTHONUTF8 = '1'
     Push-Location (Join-Path $RepoRoot 'app')
     try {
-        foreach ($Suite in @('test_pipeline.py','test_qwen.py','test_vocal_tails.py','test_native_edit_menu.py','test_project_backdrop.py','test_video_end_countdown.py','test_video_text.py','test_delivery.py','test_cli.py','test_video_colors.py','test_packaging.py')) {
+        foreach ($Suite in @('test_components.py','test_updater_files.py','test_pipeline.py','test_qwen.py','test_vocal_tails.py','test_native_edit_menu.py','test_project_backdrop.py','test_video_end_countdown.py','test_video_text.py','test_delivery.py','test_cli.py','test_video_colors.py','test_packaging.py')) {
             & $Python (Join-Path 'tests' $Suite)
             if ($LASTEXITCODE) { throw "$Suite failed; release not built." }
         }
@@ -100,7 +102,13 @@ Copy-Item -LiteralPath (Join-Path $BuildDir 'build-info.json') -Destination $Dis
 # the finished EXE before publishing anything.
 $SmokeError = Join-Path $Dist 'package-smoke-error.txt'
 if (Test-Path -LiteralPath $SmokeError) { Remove-Item -LiteralPath $SmokeError -Force }
-$PackageSmoke = Start-Process -FilePath (Join-Path $Dist 'KaraokeStudio.exe') -ArgumentList '--internal-package-smoke' -Wait -PassThru -WindowStyle Hidden
+$OriginalComponentsDir = $env:KARAOKE_COMPONENTS_DIR
+try {
+    if ($WithQwen) { $env:KARAOKE_COMPONENTS_DIR = Join-Path $BuildDir 'components-stage' }
+    $PackageSmoke = Start-Process -FilePath (Join-Path $Dist 'KaraokeStudio.exe') -ArgumentList '--internal-package-smoke' -Wait -PassThru -WindowStyle Hidden
+} finally {
+    $env:KARAOKE_COMPONENTS_DIR = $OriginalComponentsDir
+}
 if ($PackageSmoke.ExitCode) {
     if (Test-Path -LiteralPath $SmokeError) { Get-Content -LiteralPath $SmokeError }
     throw 'Packaged media dependencies are incomplete.'

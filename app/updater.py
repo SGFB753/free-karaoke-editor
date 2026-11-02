@@ -281,11 +281,27 @@ def _remove(path: str) -> None:
         os.remove(path)
 
 
+def _link_or_copy(src: str, dst: str) -> str:
+    """Program files are immutable; temporary copies can share their bytes.
+
+    Replacement always unlinks the destination before writing new files, so
+    rollback links keep the old bytes. Staging/backup trees are later unlinked,
+    not modified. Different volumes or filesystems fall back to ordinary copy.
+    """
+    if not os.path.islink(src):
+        try:
+            os.link(src, dst)
+            return dst
+        except OSError:
+            pass
+    return shutil.copy2(src, dst)
+
+
 def _copy_entry(src: str, dst: str) -> None:
     if os.path.isdir(src) and not os.path.islink(src):
-        shutil.copytree(src, dst)
+        shutil.copytree(src, dst, copy_function=_link_or_copy)
     else:
-        shutil.copy2(src, dst)
+        _link_or_copy(src, dst)
 
 
 def _temporary_windows_lock(error: OSError) -> bool:
@@ -399,24 +415,25 @@ def replace_in_place(staged: str, install: str, backup: str,
 
 def apply(archive: str, install: str, exe: str, pid: int,
           launch_after: bool = True) -> None:
-    status("Waiting for Karaoke Studio to close / Жду закрытия Студии…")
-    wait_for(pid)
-    status("The old process has closed / Старый процесс закрыт.")
-    install = os.path.abspath(install)
-    if not install_writable(install):
-        raise PermissionError(
-            f"administrator permission is required to update {install}")
-    stage_root = make_stage_root()
-    status("Unpacking the update / Распаковываю обновление…")
-    staged = safe_extract(archive, stage_root)
-    # The user may own C:\Program Files\KaraokeStudio without permission to
-    # create its sibling KaraokeStudio.previous. Keep rollback data in Temp as
-    # well; replacement only touches entries inside the writable install root.
-    backup = make_backup_path()
-    backup_root = os.path.dirname(backup)
+    stage_root = backup_root = None
     keep_backup = False
     replacement_done = False
     try:
+        status("Waiting for Karaoke Studio to close / Жду закрытия Студии…")
+        wait_for(pid)
+        status("The old process has closed / Старый процесс закрыт.")
+        install = os.path.abspath(install)
+        if not install_writable(install):
+            raise PermissionError(
+                f"administrator permission is required to update {install}")
+        stage_root = make_stage_root()
+        status("Unpacking the update / Распаковываю обновление…")
+        staged = safe_extract(archive, stage_root)
+        # The user may own C:\Program Files\KaraokeStudio without permission to
+        # create its sibling KaraokeStudio.previous. Keep rollback data in Temp as
+        # well; replacement only touches entries inside the writable install root.
+        backup = make_backup_path()
+        backup_root = os.path.dirname(backup)
         replace_in_place(staged, install, backup, status)
         replacement_done = True
         if launch_after:
@@ -430,13 +447,16 @@ def apply(archive: str, install: str, exe: str, pid: int,
             getattr(error, "_karaoke_keep_backup", False))
         raise
     finally:
-        shutil.rmtree(stage_root, ignore_errors=True)
-        if not keep_backup:
+        if stage_root:
+            shutil.rmtree(stage_root, ignore_errors=True)
+        if backup_root and not keep_backup:
             shutil.rmtree(backup_root, ignore_errors=True)
-    try:
-        shutil.rmtree(os.path.dirname(archive), ignore_errors=True)
-    except OSError:
-        pass
+        # Only the downloader's own temporary folder, including on failure.
+        download_root = os.path.abspath(os.path.dirname(archive))
+        if (os.path.basename(download_root).startswith('karaoke-update-')
+                and os.path.dirname(download_root) == os.path.abspath(tempfile.gettempdir())
+                and not os.path.islink(download_root)):
+            shutil.rmtree(download_root, ignore_errors=True)
 
 
 def start_application(install: str, exe: str) -> None:

@@ -15,6 +15,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import urllib.parse
 import urllib.request
 from typing import Callable, Dict, Optional
@@ -203,7 +205,7 @@ def download(log: Callable[[str], None]) -> Dict:
         log(tr("The update is verified and ready.",
                "Обновление проверено и готово."))
         return {"path": archive, "version": info["version"]}
-    except Exception:
+    except BaseException:
         shutil.rmtree(temp, ignore_errors=True)
         raise
 
@@ -233,14 +235,91 @@ def launch(archive: str) -> None:
                               "в установленной программе нет KaraokeUpdater.exe"))
     temp_dir = tempfile.mkdtemp(prefix="karaoke-updater-")
     updater_dir = os.path.join(temp_dir, "updater")
-    shutil.copytree(source_dir, updater_dir)
+    try:
+        shutil.copytree(source_dir, updater_dir)
+    except BaseException:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
     updater = os.path.join(updater_dir, "KaraokeUpdater.exe")
     env = os.environ.copy()
     env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
-    subprocess.Popen([updater, "--pid", str(os.getpid()), "--archive", archive,
+    try:
+        process = subprocess.Popen([updater, "--pid", str(os.getpid()), "--archive", archive,
                       "--install", _bundle_root(), "--exe", "KaraokeStudio.exe"],
                      # Replacement can take tens of seconds even on an SSD.
                      # A small progress console is better than an apparently
                      # hung background process with no visible explanation.
                      creationflags=getattr(subprocess, "CREATE_NEW_CONSOLE", 0),
-                     close_fds=True, env=env)
+                                   close_fds=True, env=env)
+    except BaseException:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise
+    try:
+        with open(os.path.join(temp_dir, 'helper.json'), 'w', encoding='utf-8') as f:
+            json.dump({'kind': 'karaoke-updater', 'pid': process.pid}, f)
+    except OSError:
+        pass
+
+
+def _retire_helper_executable(executable: str) -> bool:
+    """Windows refuses to unlink a running EXE even when reads are unlocked.
+
+    This is called only for a validated temporary updater copy, never Studio.
+    Deleting this first also prevents partially deleting a running helper's DLLs.
+    """
+    try:
+        os.remove(executable)
+        return True
+    except FileNotFoundError:
+        return True
+    except OSError:
+        return False
+
+
+def cleanup_helpers(attempts=30, delay=1.0) -> None:
+    """Retire recognised updater copies after their EXEs release locks.
+
+    Includes old releases. Downloads, rollback snapshots, model caches and
+    unrelated temporary folders are outside this sweep.
+    """
+    from pathlib import Path
+    root = Path(tempfile.gettempdir()).resolve()
+    pending = []
+    for folder in root.glob('karaoke-updater-*'):
+        if folder.is_symlink() or not folder.is_dir() or folder.resolve().parent != root:
+            continue
+        executable = folder/'updater/KaraokeUpdater.exe'
+        if (folder/'updater').is_symlink():
+            continue
+        known = executable.is_file() and (folder/'updater/_internal/base_library.zip').is_file()
+        if not known:
+            try:
+                known = json.loads((folder/'helper.json').read_text(encoding='utf-8')).get('kind') == 'karaoke-updater'
+            except (OSError, ValueError, AttributeError):
+                pass
+        if known:
+            try:
+                (folder/'helper.json').write_text(json.dumps({'kind': 'karaoke-updater'}), encoding='utf-8')
+            except OSError:
+                continue  # need a marker to recognise a partially cleaned copy
+            pending.append((folder, executable))
+    for attempt in range(attempts):
+        remaining = []
+        for folder, executable in pending:
+            if not _retire_helper_executable(str(executable)):
+                remaining.append((folder, executable))
+                continue
+            shutil.rmtree(folder, ignore_errors=True)
+            if folder.exists():
+                remaining.append((folder, executable))
+        if not remaining:
+            return
+        pending = remaining
+        if attempt + 1 < attempts:
+            time.sleep(delay)
+
+
+def retire_helpers() -> None:
+    if supported():
+        threading.Thread(target=cleanup_helpers, daemon=True,
+                         name='update-helper-cleanup').start()

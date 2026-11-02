@@ -75,6 +75,8 @@ const STR = {
     qwenMissing: "Qwen is not installed in this build. Install app/requirements-qwen.txt into the app's Python environment.",
     qwenUnavailable: "not installed",
     qwenHint: "Qwen3-ForcedAligner-0.6B · recommended for supplied lyrics, not transcription. Check the result. Long songs use approximate search-window boundaries. Backing vocals still need checking.",
+    qwenRuntimeHint: "The Qwen runtime downloads separately on first use and is kept between application updates.",
+    qwenWeightsReady: "Model weights are already on disk.",
     qwenFolderOpened: "The Qwen model folder is open",
     qwenDeleteHint: "Qwen weights are in a separate folder (about 1.8 GB). Delete the weights there to free space; they download again when needed.",
     alignFast: "Fast, without a neural net",
@@ -590,6 +592,8 @@ const STR = {
     qwenMissing: "Qwen не установлен в этой сборке. Установите app/requirements-qwen.txt в Python-окружение программы.",
     qwenUnavailable: "не установлен",
     qwenHint: "Qwen3-ForcedAligner-0.6B · рекомендуется для загруженного текста, не распознаёт его заново. Проверьте результат. В длинных песнях границы поисковых окон приблизительные. Бэки тоже нужно проверить.",
+    qwenRuntimeHint: "Движок Qwen скачивается отдельно при первом использовании и сохраняется между обновлениями программы.",
+    qwenWeightsReady: "Веса модели уже на диске.",
     qwenFolderOpened: "Папка модели Qwen открыта",
     qwenDeleteHint: "Веса Qwen хранятся в отдельной папке (около 1,8 ГБ). Для освобождения места удалите их оттуда; при необходимости они скачаются снова.",
     alignFast: "Быстро, без нейросети",
@@ -1420,7 +1424,8 @@ function modelNote(){
   if (deleteHint) deleteHint.textContent = qwen ? T.qwenDeleteHint : T.modelDeleteHint;
   if (qwen){
     $("qwenNote").textContent = !caps.qwen ? T.qwenMissing : T.qwenHint + " " +
-      (caps.qwenModel ? T.noteReady : T.noteDownload) + " " + T.qwenMemoryHint;
+      (caps.qwenRuntimeReady === false ? T.qwenRuntimeHint + ' ' : '') +
+      (caps.qwenModel ? (caps.qwenRuntimeReady === false ? T.qwenWeightsReady : T.noteReady) : T.noteDownload) + " " + T.qwenMemoryHint;
     return;
   }
   const v = $("selModel").value, have = (caps.models || {})[v];
@@ -5144,7 +5149,8 @@ function retimeNote(){
   $("retimeGo").disabled = engine === "qwen" ? !caps.qwen : engine === "whisper" ? !caps.whisper : false;
   if (engine === "qwen"){
     $("retimeNote").textContent = T.alignExplainQwen + " " +
-      (!caps.qwen ? T.qwenMissing : (caps.qwenModel ? T.noteReady : T.noteDownload) + " " + T.qwenMemoryHint);
+      (!caps.qwen ? T.qwenMissing : (caps.qwenRuntimeReady === false ? T.qwenRuntimeHint + ' ' : '') +
+       (caps.qwenModel ? (caps.qwenRuntimeReady === false ? T.qwenWeightsReady : T.noteReady) : T.noteDownload) + " " + T.qwenMemoryHint);
   } else if (engine === "energy"){
     $("retimeNote").textContent = T.alignExplainFast;
   } else {

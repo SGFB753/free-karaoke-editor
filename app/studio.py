@@ -330,7 +330,7 @@ def discard_staged(path: str) -> None:
 
 
 def capabilities() -> dict:
-    from kstudio import qwen as QW, models as M
+    from kstudio import qwen as QW, models as M, components
     have_ts = True
     try:
         import stable_whisper  # noqa: F401
@@ -349,6 +349,7 @@ def capabilities() -> dict:
     from kstudio import sysinfo
     return {"ffmpeg": ff, "whisper": have_ts, "demucs": S.available(),
             "qwen": QW.available(), "qwenModel": M.qwen_ready(),
+            "qwenRuntimeReady": not components.supported() or components.ready('qwen'),
             "pillow": have_pil, "version": __version__,
             "updates": UP.supported(),
             "desktopSession": DESKTOP_SESSION,
@@ -2850,11 +2851,35 @@ def main(argv=None) -> int:
                 # bundled pythonnet/.NET bridge without opening a window.
                 import webview  # noqa: F401
             from kstudio import qwen as QW
-            if QW.available():
+            import shutil
+            from kstudio import components
+            check_components = bool(os.environ.get('KARAOKE_COMPONENTS_DIR'))
+            if check_components:
+                components.ensure('qwen')
+                components.ensure('node')
+            if QW.available() and (not components.supported() or check_components or components.ready('qwen')):
+                if components.supported():
+                    components.activate_qwen()
                 # A selectable Qwen engine must import from the finished EXE,
                 # not only from the build venv. No weights/network are needed.
                 QW.prepare_import()
+                # nagisa_utils imports this from Cython, which static import
+                # analysis otherwise misses in a clean Windows build.
+                from six.moves import cPickle  # noqa: F401
                 from qwen_asr import Qwen3ForcedAligner  # noqa: F401
+                if os.environ.get('KARAOKE_CHECK_CACHED_QWEN') == '1':
+                    # Opt-in maintainer check: exercise actual frozen tensor
+                    # inference using existing weights, never download them.
+                    from kstudio import models as M
+                    import numpy as np
+                    import torch
+                    if not M.qwen_ready():
+                        raise RuntimeError('Cached Qwen weights are required for the inference check')
+                    aligner = Qwen3ForcedAligner.from_pretrained(M.qwen_dir(), device_map='cpu',
+                        dtype=torch.float32, attn_implementation='sdpa')
+                    QW._model_alignment(aligner, audio=(np.zeros(16000, dtype='float32'), 16000),
+                                        text='Hello', language='English')
+                    del aligner
             if FE.available():
                 import pytubefix  # noqa: F401
                 import yt_dlp_ejs  # noqa: F401
@@ -2862,13 +2887,17 @@ def main(argv=None) -> int:
                 for script in ('core.min.js', 'lib.min.js'):
                     if not files('yt_dlp_ejs.yt.solver').joinpath(script).is_file():
                         raise RuntimeError('Packaged YouTube JavaScript solver is missing: ' + script)
-                runtime = FE.javascript_args()
+                runtime = FE.javascript_args() if (not components.supported() or check_components or components.ready('node')) else None
+                if runtime is None:
+                    runtime = ['--js-runtimes', 'node:' + shutil.which('node')] if shutil.which('node') else []
                 if not runtime:
-                    raise RuntimeError('Packaged YouTube JavaScript runtime is missing')
-                result = WP.run([runtime[-1].split(':', 1)[1], '--version'],
-                                capture_output=True, text=True, timeout=10)
-                if result.returncode or int(result.stdout.strip().lstrip('v').split('.')[0]) < 22:
-                    raise RuntimeError('Packaged YouTube JavaScript runtime must be Node 22 or newer')
+                    if check_components:
+                        raise RuntimeError('Packaged YouTube JavaScript runtime is missing')
+                else:
+                    result = WP.run([runtime[-1].split(':', 1)[1], '--version'],
+                                    capture_output=True, text=True, timeout=10)
+                    if result.returncode or int(result.stdout.strip().lstrip('v').split('.')[0]) < 22:
+                        raise RuntimeError('Packaged YouTube JavaScript runtime must be Node 22 or newer')
             from PIL import (Image, ImageDraw, ImageEnhance, ImageFilter,
                              ImageFont, ImageStat)
             image = Image.new("RGB", (4, 4), "white")
@@ -2910,6 +2939,7 @@ def main(argv=None) -> int:
     force_browser = "--browser-window" in args
     args = [a for a in args if a != "--browser-window"]
     want, no_browser, host = parse_args(args)
+    UP.retire_helpers()
     if launched_by_updater():
         close_stale_studio_windows()
     # Versions before 4.46.6 kept uploads in a second, hidden-looking store.

@@ -306,6 +306,9 @@ def main() -> int:
     if start_at:
         say(f"  --from {start_at}: the Python suites and the earlier window ones are skipped")
     head("1. Pipeline: the text, the timing, building the page")
+    for suite in (() if start_at else ('test_components.py', 'test_updater_files.py')):
+        if subprocess.run([sys.executable, os.path.join(ROOT, 'tests', suite)], cwd=ROOT).returncode:
+            return 1
     r = (SKIPPED if start_at else
          subprocess.run([sys.executable, os.path.join(ROOT, "tests", "test_pipeline.py")],
                         cwd=ROOT))

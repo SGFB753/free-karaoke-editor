@@ -28,7 +28,8 @@ def check(name, yes):
         raise AssertionError(name)
 
 
-def main():
+@patch.object(updater, 'status')
+def main(_status=None):
     # A downloader fault in the windowed frozen helper must return to its
     # parent as an ordinary failed command. Letting it escape opens a separate
     # PyInstaller "Unhandled exception in script" dialog over the Studio.

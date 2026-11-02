@@ -99,8 +99,8 @@ def _player_refusal(message: str) -> bool:
                 and (TRY_AGAIN.search(message) or UNAVAILABLE.search(message)))
 
 
-def javascript_args() -> list:
-    """Enable the Node already shipped for the independent downloader.
+def javascript_args(log=lambda message: None) -> list:
+    """Enable installed or separately cached Node for the downloader.
 
     Node is not enabled by yt-dlp merely because it is installed. Pass its
     actual path (including in a frozen build), with no profile access or
@@ -119,6 +119,24 @@ def javascript_args() -> list:
     except ImportError:
         pass
     node = shutil.which('node')
+    from . import components
+    if components.supported():
+        try:
+            node = str(components.ensure('node', log)/'node.exe')
+            # pytubefix imports these paths once at module load. Point both
+            # its already-loaded runners and the wheel shim at the cached EXE.
+            import nodejs_wheel.executable
+            folder = os.path.dirname(node)
+            nodejs_wheel.executable.ROOT_DIR = folder
+            for name in ('pytubefix.sig_nsig.node_runner', 'pytubefix.botGuard.bot_guard'):
+                module = sys.modules.get(name)
+                if module is not None:
+                    module.NODE_DIR = folder
+                    if hasattr(module, 'NODE_PATH'):
+                        module.NODE_PATH = node
+        except (OSError, RuntimeError, ValueError) as exc:
+            log(tr(f'Node runtime unavailable; trying download fallbacks: {exc}',
+                   f'Движок Node недоступен; пробую резервные способы загрузки: {exc}'))
     return ['--js-runtimes', 'node:' + node] if node else []
 
 
@@ -524,7 +542,7 @@ def _tools(tmp: str) -> tuple:
     return folder, bool(fp)
 
 
-def _base_args(cmd: list, tmp: str) -> list:
+def _base_args(cmd: list, tmp: str, log=lambda message: None) -> list:
     args = list(cmd) + [
         "--no-playlist",          # a link that also holds a playlist: one song
         "--newline",              # progress in whole lines, not rewritten ones
@@ -541,7 +559,7 @@ def _base_args(cmd: list, tmp: str) -> list:
         "--restrict-filenames",   # Latin letters, like everywhere else here
         "-o", os.path.join(tmp, "%(title).60s [%(id)s].%(ext)s"),
     ]
-    args += javascript_args()
+    args += javascript_args(log)
     where, can_extract = _tools(tmp)
     if where:                     # a pip-installed ffmpeg is not on PATH
         args += ["--ffmpeg-location", where]
@@ -751,7 +769,7 @@ def _download(url: str, dest_dir: str, log: Optional[Callable] = None, *, browse
     try:
         clients = ('',) if browser or cookie_file else CLIENTS
         for i, client in enumerate(clients):
-            args = _base_args(cmd, tmp)
+            args = _base_args(cmd, tmp, say)
             if client:
                 args += ["--extractor-args", f"youtube:player_client={client}"]
             args += extra_args() + ["--", url]
@@ -879,7 +897,7 @@ def clip(url: str, dest_dir: str, log: Optional[Callable] = None) -> str:
                 "--restrict-filenames",
                 "-o", os.path.join(tmp, "clip.%(ext)s"),
             ]
-            args += javascript_args()
+            args += javascript_args(say)
             if client:
                 args += ["--extractor-args", f"youtube:player_client={client}"]
             args += extra_args() + ["--", url]
