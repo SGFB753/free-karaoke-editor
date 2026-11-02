@@ -51,7 +51,8 @@ class UpdaterFilesTests(unittest.TestCase):
             archive = download/'update.zip'
             with zipfile.ZipFile(archive, 'w') as z:
                 z.writestr('partial/data.dll', b'unpacked before missing EXE is detected')
-            with patch.object(tempfile, 'tempdir', str(root)), patch.object(U, 'status'):
+            with patch.object(tempfile, 'tempdir', str(root)), patch.object(U, 'status'), \
+                    patch.object(U, 'wait_for'):
                 with self.assertRaisesRegex(RuntimeError, 'missing'):
                     U.apply(str(archive), str(install), 'KaraokeStudio.exe', 0, launch_after=False)
             self.assertEqual(list(root.iterdir()), [install])
@@ -72,7 +73,8 @@ class UpdaterFilesTests(unittest.TestCase):
                 with zipfile.ZipFile(archive, 'w') as z:
                     z.writestr('KaraokeStudio/KaraokeStudio.exe', b'new executable')
                     z.writestr('KaraokeStudio/_internal/engine.dll', b'new engine')
-                with patch.object(tempfile, 'tempdir', str(root)), patch.object(U, 'status'):
+                with patch.object(tempfile, 'tempdir', str(root)), patch.object(U, 'status'), \
+                        patch.object(U, 'wait_for'):
                     U.apply(str(archive), str(install), 'KaraokeStudio.exe', 0, launch_after=False)
                 self.assertEqual(sorted(p.name for p in root.iterdir()), ['cache', 'install'])
                 self.assertFalse((install/'qwen-obsolete.dll').exists())
