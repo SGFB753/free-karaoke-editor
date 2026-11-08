@@ -7,6 +7,16 @@ commits themselves are one click away in the history.
 
 ---
 
+## 5.1.4
+
+- When Whisper loses its place, it recognises phrase locations independently
+  and retries alignment within bounded sections. A missed phrase should no
+  longer push the remaining lyrics to the outro. Recovery compares the original
+  recording and the separated vocals when available.
+- Failed Qwen recovery no longer aborts the entire project: usable timing is
+  retained, and unheard lyrics are preserved separately for review instead of
+  receiving invented timestamps at the end of the recording.
+
 ## 5.1.3
 
 - Qwen dependencies and the downloader's Node binary are separate from the

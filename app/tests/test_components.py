@@ -53,11 +53,12 @@ class ComponentTests(unittest.TestCase):
                 weights = root/'model.safetensors'; weights.write_bytes(b'keep weights')
                 with patch.object(C, 'cache_root', return_value=root), \
                         patch.object(C, '_download', side_effect=self.fake_download(self.archive(unsafe), [], bad_hash)):
+                    destination = C.component_dir('node')
                     with self.assertRaises(ValueError):
                         C.ensure('node')
                 self.assertEqual(weights.read_bytes(), b'keep weights')
                 self.assertFalse((root/'outside.txt').exists())
-                self.assertFalse(C.component_dir('node').exists())
+                self.assertFalse(destination.exists())
                 self.assertEqual(list(root.iterdir()), [weights])
 
     def test_cancellation_keeps_cache_and_model_data_untouched(self):

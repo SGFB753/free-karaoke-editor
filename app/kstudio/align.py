@@ -337,6 +337,20 @@ def _lost_alignment_index(lines: List[Line]) -> Optional[int]:
         got = [w.prob for w in line.words if w.prob is not None]
         return sum(got) / len(got) if got else 1.0
 
+    # A collapsed suffix has no large gaps at all: every missing word is put
+    # at the same final timestamp. Detect it before minimum widths/repairs can
+    # disguise it as plausible geometry. Restart from the last sound prefix.
+    collapsed = []
+    for line in lines:
+        ws = line.words
+        collapsed.append(bool(ws and (any(w.start is None or w.end is None for w in ws)
+            or sum(w.end-w.start <= .005 for w in ws) >= max(1, len(ws)*.5)
+            or confidence(line) < .05)))
+    if len(lines) >= 5 and sum(collapsed) >= max(3, len(lines)*.3):
+        for i, line in enumerate(lines):
+            if collapsed[i] or confidence(line) < .3:
+                return i
+
     for i in range(1, len(lines)):
         _a0, previous_end = bounds(lines[i - 1])
         current_start, _b1 = bounds(lines[i])
@@ -364,7 +378,7 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                   model_name: str = "medium", language: str = "ru",
                   device: Optional[str] = None, log: Log = _noop,
                   isolated: bool = False, skip: Optional[List[tuple]] = None,
-                  model=None) -> Lyrics:
+                  model=None, recovery_audio=None) -> Lyrics:
     lent = model is not None
     import stable_whisper
 
@@ -591,6 +605,54 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                 if block_no == 0 and len(blocks) == 1 and decoded:
                     lost = _lost_alignment_index(main_lines)
                     if lost is not None:
+                        from . import alignment_recovery as AR
+                        raw_offset = (_safe_alignment_anchor(result.segments[:lost], max_gap=float('inf'))
+                                      if lost else 0.)
+                        if raw_offset is None:
+                            lost, raw_offset = 0, 0.
+                        try:
+                            sources = [audio_input]
+                            # Levelled vocals help forced alignment, but can
+                            # damage free transcription. Locate recovery
+                            # anchors in natural dynamics and compare stems
+                            # only after the primary alignment actually failed.
+                            paths = (([audio_path] if isolated else []) +
+                                     ([recovery_audio] if recovery_audio and recovery_audio != audio_path else []))
+                            for source in paths if callable(getattr(model, 'transcribe', None)) else []:
+                                try:
+                                    pcm = A.read_pcm_mono(source, 16000)
+                                    raw = np.frombuffer(pcm.tobytes(), dtype='<i2').astype('float32')/32768.
+                                    if keep:
+                                        raw = np.concatenate([raw[int(a*16000):int(b*16000)] for a,b in keep])
+                                    if source == audio_path:
+                                        sources[0] = raw
+                                    else:
+                                        sources.append(raw)
+                                except (OSError, RuntimeError, ValueError) as exc:
+                                    log(tr(f'Could not decode a recovery source: {exc}',
+                                           f'Не удалось декодировать запасной источник: {exc}'))
+                            plan = (AR.recover(main_lines, audio_input, model, language,
+                                               lost, raw_offset, whole, log, sources=sources)
+                                    if lyrics.allow_unplaced_ending and not lyrics.has_manual_times
+                                    and not any(line.lock for line in main_lines) else None)
+                        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+                            log(tr(f'Independent phrase search unavailable: {exc}',
+                                   f'Независимый поиск фраз недоступен: {exc}'))
+                            plan = None
+                        if plan is not None:
+                            lyrics.recovery_plan = plan
+                            failed_ids = {id(main_lines[i]) for i in plan.failed}
+                            for index, line in enumerate(lyrics.lines, 1):
+                                if id(line) in failed_ids:
+                                    lyrics.unplaced_lyrics.append(dict(text=line.text, line=index,
+                                        reason='alignment-unreliable'))
+                            lyrics.lines = [line for line in lyrics.lines if id(line) not in failed_ids]
+                            main_lines = [line for line in main_lines if id(line) not in failed_ids]
+                            probs = [float(w.prob) for line in main_lines for w in line.words if w.prob is not None]
+                            if failed_ids:
+                                log(tr(f'{len(failed_ids)} phrases could not be heard reliably; their text is preserved separately.',
+                                       f'Не удалось надёжно привязать фраз: {len(failed_ids)}; текст сохранён отдельно.'))
+                            continue
                         recovery = _alignment_blocks(main_lines[lost:])
                         # Do not let timings from the failed full pass survive
                         # in words a recovery block could not hear either.
@@ -599,10 +661,8 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                             for word in line.words:
                                 word.start = word.end = word.prob = None
                         blocks.extend(recovery)
-                        previous = main_lines[lost - 1]
-                        previous_end = max(
-                            (w.end for w in previous.words if w.end is not None),
-                            default=0.0)
+                        previous_end = (max((w.end for w in main_lines[lost - 1].words
+                                             if w.end is not None), default=0.0) if lost else 0.0)
                         cursor = max(0.0, previous_end - 0.25)
                         log(tr(
                             f"  alignment lost its place at line {lost + 1}; "
@@ -617,7 +677,13 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
                         cursor = max(cursor, raw_end - 0.25)
                 del result
         stack.__exit__(None, None, None)
+        if getattr(lyrics, 'recovery_plan', None) is not None:
+            log(tr('Whisper pass diagnostics below include phrases already recovered:',
+                   'Ниже предупреждения проходов Whisper, включая уже восстановленные фразы:'))
         report_warnings(caught, len(lyrics.lines), log)
+        if getattr(lyrics, 'recovery_plan', None) is not None:
+            log(tr(f'Recovery result: {len(lyrics.lines)} timed phrases, {len(lyrics.unplaced_lyrics)} untimed phrases preserved.',
+                   f'Итог восстановления: размечено фраз — {len(lyrics.lines)}, без таймингов сохранено — {len(lyrics.unplaced_lyrics)}.'))
     except FileNotFoundError as e:
         stack.__exit__(None, None, None)
         raise RuntimeError(tr(
@@ -664,13 +730,16 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     import gc
     gc.collect()
 
-    _trim_leading_silence(lyrics)
+    independently_recovered = getattr(lyrics, 'recovery_plan', None) is not None
+    if not independently_recovered:
+        _trim_leading_silence(lyrics)
     if isolated:
         refine_leading_silence(lyrics, audio_path, log=log)
     # Line bounds come from the words — without this step lines have no times
     # yet, and the repairs would compare emptiness with emptiness.
     _fill_lines(lyrics, duration)
-    repair_lines(lyrics, log=log)      # Whisper sometimes drops a word far away
+    if not independently_recovered:
+        repair_lines(lyrics, log=log)  # raw full-pass outliers only
     # …and sometimes drops a dozen of them in one spot. Looking at the audio is
     # only worth it once we know there is a pile to spread.
     # The same stretches bound the repairs: spreading a pile over a vocalise is
@@ -678,14 +747,14 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
     sung_end = min(last_sound(audio_path, duration), keep[-1][1] if keep else duration)
     text_end = max((ln.end for ln in lyrics.lines if ln.end is not None), default=0.0)
     untexted = max(0.0, sung_end - text_end)
-    if pile_runs(lyrics.lines):
+    if not independently_recovered and pile_runs(lyrics.lines):
         repair_piles(lyrics, duration, log=log,
                      floor=max(first_sound(audio_path), keep[0][0] if keep else 0.0),
                      untexted=untexted)
     # Only on a separated vocal: there silence is silence. On a mix a “quiet”
     # stretch may simply be a quieter verse, and moving lines off it would do
     # the damage it is meant to prevent.
-    if isolated or skip:
+    if not independently_recovered and (isolated or skip):
         repair_silent(lyrics, duration, audio_path, log=log, skip=skip)
     if any(ln.backing for ln in lyrics.lines):
         place_backing(lyrics, duration, log=log)
@@ -697,13 +766,16 @@ def align_whisper(lyrics: Lyrics, audio_path: str, duration: float,
         # …and whatever is left overlapping after every gentler pass is forced
         # out: the marks are the person's own words, and they win.
         enforce_marks(lyrics, skip, duration, log=log)
-    repair_overlapping_repeats(lyrics, duration, log=log)
+    if not independently_recovered:
+        repair_overlapping_repeats(lyrics, duration, log=log)
     # Run this after every audio and pile repair: an unheard line at the edge
     # of a recovery block must remain inside the final gap and must not push or
     # overlap the accurately heard next block.
-    fit_unheard_lines(lyrics, log=log)
+    if not independently_recovered:
+        fit_unheard_lines(lyrics, log=log)
     repair_order(lyrics, log=log)
-    repair_ragged(lyrics, log=log)
+    if not independently_recovered:
+        repair_ragged(lyrics, log=log)
     _fill_lines(lyrics, duration)      # after repairs the bounds may exceed the track
     if isolated:
         refine_trailing_silence(lyrics, audio_path, log=log)
@@ -2043,7 +2115,7 @@ def align_anchored(lyrics: Lyrics, audio_path: str, duration: float,
 
     out: List = []
     for a, b, t0, t1 in bounds:
-        piece = Lyrics(lines=lyrics.lines[a:b + 1])
+        piece = Lyrics(lines=lyrics.lines[a:b + 1], allow_unplaced_ending=False)
         for ln in piece.lines:
             ln.start = ln.end = None
             for w in ln.words:
@@ -2306,7 +2378,7 @@ def _align_main(lyrics: Lyrics, audio_path: str, duration: float, engine: str = 
             try:
                 return align_whisper(lyrics, audio_path, duration, model_name,
                                      language, device, log, isolated=isolated,
-                                     skip=skip), "whisper"
+                                     skip=skip, recovery_audio=fallback_audio), "whisper"
             except Exception as e:
                 if engine == "whisper":
                     raise

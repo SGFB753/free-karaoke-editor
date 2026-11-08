@@ -143,11 +143,11 @@ class QwenTests(unittest.TestCase):
         model=FakeModel()
         model.align=lambda **kw:[[Item(text=w,start_time=1,end_time=1) for w in kw['text'].split()]]
         with patch('kstudio.audio.read_pcm_mono',return_value=np.zeros(320000,dtype=np.int16)), \
-                patch.object(Q,'_independent_jobs',return_value=[(0,4,0,10),(4,8,10,20)]), \
-                patch.object(A,'_fill_lines') as fill:
-            with self.assertRaisesRegex(ValueError,'will not be saved|не будет сохранён'):
-                Q.align_qwen(lyr,'unused',20,'en',model=model)
-            fill.assert_not_called()
+                patch.object(Q,'_independent_jobs',return_value=[(0,4,0,10),(4,8,10,20)]):
+            Q.align_qwen(lyr,'unused',20,'en',model=model)
+            self.assertFalse(lyr.lines)
+            self.assertEqual(len(lyr.unplaced_lyrics),8)
+            self.assertTrue(all(x['text']=='Hello again world' for x in lyr.unplaced_lyrics))
 
     def test_energy_and_low_confidence_cannot_supply_recovery_anchors(self):
         lyr=L.parse('\n'.join(['Hello again world']*8))
@@ -160,6 +160,44 @@ class QwenTests(unittest.TestCase):
                 patch.object(A,'align_energy',side_effect=AssertionError('energy must not anchor Qwen')):
             with self.assertRaisesRegex(ValueError,'boundaries|границы'):
                 Q._independent_jobs(lyr.lines,'audio',20,0,20,'en',None,lambda msg:None,[], 'small')
+
+    def test_bad_independent_placement_keeps_heard_prefix_and_preserves_remaining_text(self):
+        import numpy as np
+        lyrics=L.parse('\n'.join('Unique phrase '+str(i) for i in range(8)))
+        from copy import deepcopy
+        guide=deepcopy(lyrics.lines)
+        for i,line in enumerate(guide):
+            for j,w in enumerate(line.words):
+                w.start=i*2+j*.3 if i<3 else 19
+                w.end=w.start+(.25 if i<3 else 0)
+                w.prob=.9 if i<3 else 0
+        model=FakeModel()
+        model.align=lambda **kw:[[Item(text=w,start_time=1,end_time=1) for w in kw['text'].split()]]
+        with patch('kstudio.audio.read_pcm_mono',return_value=np.zeros(320000,dtype=np.int16)), \
+                patch.object(Q,'_independent_jobs',side_effect=Q.RecoveryUnreliable('lost',guide)):
+            Q.align_qwen(lyrics,'unused',20,'en',model=model)
+        self.assertEqual([l.text for l in lyrics.lines], [l.text for l in guide[:3]])
+        self.assertEqual([l['text'] for l in lyrics.unplaced_lyrics], [l.text for l in guide[3:]])
+        self.assertEqual(lyrics.lines[1].words[0].start,2)
+        self.assertTrue(all(l.timing_review for l in lyrics.lines))
+
+    def test_bad_qwen_recovery_window_does_not_abort_a_later_healthy_window(self):
+        import numpy as np
+        lyrics=L.parse('First phrase\nSecond phrase')
+        model=FakeModel()
+        def infer(**kw):
+            words=kw['text'].split()
+            if kw['text'].startswith('First') and len(words)==2:
+                raise ValueError('invalid timestamps')
+            return [[Item(text=w,start_time=-1 if len(words)==4 else .2+i*.3,
+                          end_time=-1 if len(words)==4 else .4+i*.3) for i,w in enumerate(words)]]
+        model.align=infer
+        with patch('kstudio.audio.read_pcm_mono',return_value=np.zeros(128000,dtype=np.int16)), \
+                patch.object(Q,'_independent_jobs',return_value=[(0,1,0,4),(1,2,4,8)]):
+            Q.align_qwen(lyrics,'unused',8,'en',model=model)
+        self.assertEqual(lyrics.lines[0].text,'Second phrase')
+        self.assertGreater(lyrics.lines[0].start,4)
+        self.assertEqual([l['text'] for l in lyrics.unplaced_lyrics],['First phrase'])
 
     def test_cache_status_requires_both_weights_and_tokenizer_files(self):
         with tempfile.TemporaryDirectory(prefix='karaoke_qwen_cache_') as folder, \

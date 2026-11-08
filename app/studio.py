@@ -1309,7 +1309,7 @@ def timing_audio(folder: str, data: dict, engine=None) -> tuple:
     Demucs stems are playback material.  They are not a reliable transcript
     source: a separator can lose quiet speech or processed vocals.  Prefer the
     original file, then a mix kept by older/non-separated projects.  A vocal
-    stem is only the last-resort fallback for a project whose source moved.
+    stem is also available for independent phrase recovery after a failed pass.
     Qwen is the exception: it prefers the vocal stem, and can retry suspicious
     phrases against the complete original. An explicit engine choice wins
     over the engine saved in the project.
@@ -1334,7 +1334,7 @@ def timing_audio(folder: str, data: dict, engine=None) -> tuple:
 
 
 def vocal_timing_audio(folder: str, data: dict) -> Optional[str]:
-    """Separated vocal used only to prove that an early line starts in silence."""
+    """Separated vocal for edge checks and failed-alignment phrase recovery."""
     name = (data.get("tracks") or {}).get("vocals")
     path = os.path.join(folder, name) if name else ""
     return path if path and os.path.isfile(path) else None
@@ -1380,7 +1380,7 @@ def realign_part(folder: str, opts: dict, log) -> dict:
 
     chosen_engine = opts.get("align", "qwen" if data.get("engine") == "qwen" else "auto")
     audio, isolated = timing_audio(folder, data, chosen_engine)
-    original = timing_audio(folder, data, "auto")[0] if isolated and chosen_engine == "qwen" else None
+    original = timing_audio(folder, data, "auto")[0] if isolated and chosen_engine == "qwen" else vocal_timing_audio(folder, data)
     AU.ensure_on_path()
     model = (opts.get("model") or data.get("model") or "small")
     log(tr(f"Timing lines {a + 1}–{b + 1} again, inside {A.mmss(lo)}–{A.mmss(hi)}, "
@@ -1538,7 +1538,7 @@ def _realign(folder: str, opts: dict, log, scratch: str) -> dict:
 
     chosen_engine = opts.get("align", "qwen" if data.get("engine") == "qwen" else "auto")
     audio, isolated = timing_audio(folder, data, chosen_engine)
-    original = timing_audio(folder, data, "auto")[0] if isolated and chosen_engine == "qwen" else None
+    original = timing_audio(folder, data, "auto")[0] if isolated and chosen_engine == "qwen" else vocal_timing_audio(folder, data)
     AU.ensure_on_path()
     holes = A.spans(opts.get("noText") or "", data["duration"]) + \
         A.spans(getattr(lyr, "skips", []), data["duration"])
